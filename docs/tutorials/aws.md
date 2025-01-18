@@ -923,7 +923,7 @@ Running several fast polling ExternalDNS instances in a given account can easily
   * `--min-event-sync-interval=5m` (default `5s`)
 * Limit the [sources watched](https://github.com/kubernetes-sigs/external-dns/blob/master/pkg/apis/externaldns/types.go#L364) when the `--events` flag is specified to specific types, namespaces, labels, or annotations
   * `--source=ingress --source=service` - specify multiple times for multiple sources
-  * `--namespace=my-app`
+  * `--namespace=my-app
   * `--label-filter=app in (my-app)`
   * `--ingress-class=nginx-external`
 * Limit services watched by type (not applicable to ingress or other types)
