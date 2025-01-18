@@ -94,11 +94,14 @@ func NewRegexDomainFilter(regexDomainFilter *regexp.Regexp, regexDomainExclusion
 // Match checks whether a domain can be found in the DomainFilter.
 // RegexFilter takes precedence over Filters
 func (df DomainFilter) Match(domain string) bool {
+	fmt.Println("line 97 domain_filter.go DomainFilter Match", domain, "enter")
 	if df.regex != nil && df.regex.String() != "" || df.regexExclusion != nil && df.regexExclusion.String() != "" {
 		return matchRegex(df.regex, df.regexExclusion, domain)
 	}
 
-	return matchFilter(df.Filters, domain, true) && !matchFilter(df.exclude, domain, false)
+	r := matchFilter(df.Filters, domain, true) && !matchFilterExclude(df.exclude, domain, false)
+	fmt.Println("line 103 domain_filter.go DomainFilter Match", domain, "exit:", r)
+	return r
 }
 
 // matchFilter determines if any `filters` match `domain`.
@@ -109,22 +112,68 @@ func matchFilter(filters []string, domain string, emptyval bool) bool {
 		return emptyval
 	}
 
+	fmt.Println("line 115 matchFilter, domain:", domain)
 	strippedDomain := strings.ToLower(strings.TrimSuffix(domain, "."))
+    fmt.Println("line 117 matchFilter, strippedDomain:", strippedDomain)
 	for _, filter := range filters {
+		fmt.Println("line 119 matchFilter, filter:", filter)
+		if filter == "" {
+			continue
+		}
+
+		if strings.HasPrefix(filter, ".") {
+			if strippedDomain == filter {
+				fmt.Println("line 127 BINGO")
+				return true
+			}
+		} else {
+
+		}
+
+		if strings.HasPrefix(filter, ".") && strings.HasSuffix(strippedDomain, filter) {
+			fmt.Println("line 127 strings.HasPrefix")
+			// todo: add logs
+			return false
+		} else if strippedDomain == filter {
+			fmt.Println("line 128 strings.Count(strippedDomain,...")
+			return false
+		} else if strings.HasSuffix(strippedDomain, "."+filter) {
+			fmt.Println("133 strings.HasSuffix(strippedDomain, . +filter)")
+			return true
+		}
+	}
+	fmt.Println("line 133:... filter:", strippedDomain, "false")
+	return false
+}
+
+func matchFilterExclude(filters []string, domain string, emptyval bool) bool {
+	if len(filters) == 0 {
+		return emptyval
+	}
+
+	fmt.Println("line 115 matchFilter, domain:", domain)
+	strippedDomain := strings.ToLower(strings.TrimSuffix(domain, "."))
+    fmt.Println("line 117 matchFilter, strippedDomain:", strippedDomain)
+	for _, filter := range filters {
+		fmt.Println("line 119 matchFilter, filter:", filter)
 		if filter == "" {
 			continue
 		}
 
 		if strings.HasPrefix(filter, ".") && strings.HasSuffix(strippedDomain, filter) {
+			fmt.Println("line 127 strings.Count(strippedDomain,...")
 			return true
 		} else if strings.Count(strippedDomain, ".") == strings.Count(filter, ".") {
+			fmt.Println("line 127 strings.Count(strippedDomain,...")
 			if strippedDomain == filter {
 				return true
 			}
 		} else if strings.HasSuffix(strippedDomain, "."+filter) {
+			fmt.Println("133 strings.HasSuffix(strippedDomain, . +filter)")
 			return true
 		}
 	}
+	fmt.Println("line 169:... filterExclude:", strippedDomain, "false")
 	return false
 }
 
@@ -207,7 +256,7 @@ func (df *DomainFilter) UnmarshalJSON(b []byte) error {
 }
 
 func (df DomainFilter) MatchParent(domain string) bool {
-	if matchFilter(df.exclude, domain, false) {
+	if matchFilterExclude(df.exclude, domain, false) {
 		return false
 	}
 	if len(df.Filters) == 0 {

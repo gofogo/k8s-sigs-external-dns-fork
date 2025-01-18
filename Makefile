@@ -53,12 +53,12 @@ go-lint: golangci-lint
 licensecheck:
 	@echo ">> checking license header"
 	@licRes=$$(for file in $$(find . -type f -iname '*.go' ! -path './vendor/*') ; do \
-               awk 'NR<=5' $$file | grep -Eq "(Copyright|generated|GENERATED)" || echo $$file; \
-       done); \
-       if [ -n "$${licRes}" ]; then \
-               echo "license header checking failed:"; echo "$${licRes}"; \
-               exit 1; \
-       fi
+			   awk 'NR<=5' $$file | grep -Eq "(Copyright|generated|GENERATED)" || echo $$file; \
+	   done); \
+	   if [ -n "$${licRes}" ]; then \
+			   echo "license header checking failed:"; echo "$${licRes}"; \
+			   exit 1; \
+	   fi
 
 # Requires to install spectral. See https://github.com/stoplightio/spectral
 oas-lint:
@@ -102,11 +102,11 @@ build/$(BINARY): $(SOURCES)
 
 build.push/multiarch: ko
 	KO_DOCKER_REPO=${IMAGE} \
-    VERSION=${VERSION} \
-    ko build --tags ${VERSION} --bare --sbom ${IMG_SBOM} \
-      --image-label org.opencontainers.image.source="https://github.com/kubernetes-sigs/external-dns" \
-      --image-label org.opencontainers.image.revision=$(shell git rev-parse HEAD) \
-      --platform=${IMG_PLATFORM}  --push=${IMG_PUSH} .
+	VERSION=${VERSION} \
+	ko build --tags ${VERSION} --bare --sbom ${IMG_SBOM} \
+	  --image-label org.opencontainers.image.source="https://github.com/kubernetes-sigs/external-dns" \
+	  --image-label org.opencontainers.image.revision=$(shell git rev-parse HEAD) \
+	  --platform=${IMG_PLATFORM}  --push=${IMG_PUSH} .
 
 build.image/multiarch:
 	$(MAKE) IMG_PUSH=false build.push/multiarch
@@ -165,3 +165,14 @@ ko:
 .PHONE: generate-flags-documentation
 generate-flags-documentation:
 	go run internal/gen/docs/flags/main.go
+
+run:
+	go run main.go --log-level=debug \
+		--log-format=text \
+		--interval=5m \
+		--policy=sync \
+		--domain-filter=.sandbox.hbi.systems \
+		--provider=aws \
+		--aws-zone-type=public \
+		--source=service \
+		--namespace=apps-paas-test

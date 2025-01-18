@@ -310,3 +310,52 @@ ExternalDNS is an effort to unify the following similar projects in order to bri
 * A full demo on GKE Kubernetes. See [How-to Kubernetes with DNS management (ssl-manager pre-req)](https://medium.com/@jpantjsoha/how-to-kubernetes-with-dns-management-for-gitops-31239ea75d8d)
 * Run external-dns on GKE with workload identity. See [Kubernetes, ingress-nginx, cert-manager & external-dns](https://blog.atomist.com/kubernetes-ingress-nginx-cert-manager-external-dns/)
 * [ExternalDNS integration with Azure DNS using workload identity](https://cloudchronicles.blog/blog/ExternalDNS-integration-with-Azure-DNS-using-workload-identity/)
+
+results
+```
+input
+- .sandbox.hbi.systems
+
+line 346: eu-west-1.sandbox.hbi.systems.
+line 346: sandbox.hbi.systems.
+line 346: http2.eu-west-1.sandbox.hbi.systems.
+line 346: api-sandbox.hbi.systems.
+line 346: tools-sandbox.hbi.systems.
+line 346: auth-sandbox.hbi.systems.
+line 346: ds.eu-west-1.sandbox.hbi.systems.
+
+> results
+
+DEBU[0002] Considering zone: /hostedzone/Z1SCK7XPWZKEKU (domain: eu-west-1.sandbox.hbi.systems.)
+DEBU[0002] Considering zone: /hostedzone/Z03194814RC9GOX0GVFU (domain: http2.eu-west-1.sandbox.hbi.systems.)
+DEBU[0002] Considering zone: /hostedzone/Z0640548D9RVJCFL511A (domain: ds.eu-west-1.sandbox.hbi.systems.)
+
+Applying provider record filter for domains: [ds.eu-west-1.sandbox.hbi.systems. .ds.eu-west-1.sandbox.hbi.systems. eu-west-1.sandbox.hbi.systems. .eu-west-1.sandbox.hbi.systems. http2.eu-west-1.sandbox.hbi.systems. .http2.eu-west-1.sandbox.hbi.systems.]
+
+```
+
+test
+
+```
+input
+- sandbox.hbi.systems
+
+line 346: eu-west-1.sandbox.hbi.systems.
+line 346: sandbox.hbi.systems.
+line 346: http2.eu-west-1.sandbox.hbi.systems.
+line 346: api-sandbox.hbi.systems.
+line 346: tools-sandbox.hbi.systems.
+line 346: auth-sandbox.hbi.systems.
+line 346: ds.eu-west-1.sandbox.hbi.systems.
+
+> results
+
+Applying provider record filter for domains: [eu-west-1.sandbox.hbi.systems. .eu-west-1.sandbox.hbi.systems. sandbox.hbi.systems. .sandbox.hbi.systems. http2.eu-west-1.sandbox.hbi.systems. .http2.eu-west-1.sandbox.hbi.systems. ds.eu-west-1.sandbox.hbi.systems. .ds.eu-west-1.sandbox.hbi.systems.]
+```
+
+
+
+
+`some-record.test-zone.example.org` and `a-metadata-only.test-zone.example.org`.
+
+By any chance could you add some example resulting records for A, AAAA, CNAME and domain with subdomain test.example.org?

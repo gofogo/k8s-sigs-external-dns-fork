@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -314,6 +315,7 @@ func (p *AWSProvider) Zones(ctx context.Context) (map[string]*route53types.Hoste
 	for id, zone := range zones {
 		result[id] = zone.zone
 	}
+	print("line 318:", result)
 	return result, nil
 }
 
@@ -343,21 +345,28 @@ func (p *AWSProvider) zones(ctx context.Context) (map[string]*profiledZone, erro
 				return nil, provider.NewSoftError(fmt.Errorf("failed to list hosted zones: %w", err))
 			}
 			for _, zone := range resp.HostedZones {
+				fmt.Println("line 346:", *zone.Name)
 				if !p.zoneIDFilter.Match(*zone.Id) {
+					fmt.Println("line 350:", *zone.Name, "!p.zoneIDFilter.Match")
 					continue
 				}
 
 				if !p.zoneTypeFilter.Match(zone) {
+					fmt.Println("line 355:", *zone.Name, "!p.zoneTypeFilter.Match")
 					continue
 				}
 
 				if !p.domainFilter.Match(*zone.Name) {
+					fmt.Println("line 360:", *zone.Name, "!p.domainFilter.Match enter")
 					if !p.zoneMatchParent {
+						fmt.Println("line 362:", "!p.zoneMatchParent")
 						continue
 					}
 					if !p.domainFilter.MatchParent(*zone.Name) {
+						fmt.Println("line 366:", "!p.domainFilter.MatchParent(*zone.Name)")
 						continue
 					}
+					fmt.Println("line 367:", *zone.Name, "!p.domainFilter.Match exit")
 				}
 
 				// Only fetch tags if a tag filter was specified
@@ -371,6 +380,8 @@ func (p *AWSProvider) zones(ctx context.Context) (map[string]*profiledZone, erro
 						continue
 					}
 				}
+
+				fmt.Println("line 381:", *zone.Name, "!!zone-is-ok!!")
 
 				zones[*zone.Id] = &profiledZone{
 					profile: profile,
@@ -391,6 +402,8 @@ func (p *AWSProvider) zones(ctx context.Context) (map[string]*profiledZone, erro
 		p.zonesCache.zones = zones
 		p.zonesCache.age = time.Now()
 	}
+
+	fmt.Println("line 396:", zones)
 
 	return zones, nil
 }
@@ -601,6 +614,7 @@ func (p *AWSProvider) GetDomainFilter() endpoint.DomainFilterInterface {
 		zoneNames = append(zoneNames, *z.Name, "."+*z.Name)
 	}
 	log.Infof("Applying provider record filter for domains: %v", zoneNames)
+	os.Exit(0)
 	return endpoint.NewDomainFilter(zoneNames)
 }
 
