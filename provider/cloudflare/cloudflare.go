@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	cloudflare "github.com/cloudflare/cloudflare-go"
+	cloudflare "github.com/cloudflare/cloudflare-go/v4"
 	log "github.com/sirupsen/logrus"
 
 	"sigs.k8s.io/external-dns/endpoint"
@@ -83,6 +83,9 @@ type zoneService struct {
 }
 
 func (z zoneService) UserDetails(ctx context.Context) (cloudflare.User, error) {
+	cl := cloudflare.Client{}
+	cl.DNS.NewDNSService()
+
 	return z.service.UserDetails(ctx)
 }
 
