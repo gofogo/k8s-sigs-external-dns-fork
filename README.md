@@ -103,6 +103,8 @@ Known providers using webhooks:
 | Mikrotik              | https://github.com/mirceanton/external-dns-provider-mikrotik         |
 | Netcup                | https://github.com/mrueg/external-dns-netcup-webhook                 |
 | Netic                 | https://github.com/neticdk/external-dns-tidydns-webhook              |
+| OpenStack Designate   | https://github.com/inovex/external-dns-designate-webhook             |
+| OpenWRT               | https://github.com/renanqts/external-dns-openwrt-webhook             |
 | RouterOS              | https://github.com/benfiola/external-dns-routeros-provider           |
 | STACKIT               | https://github.com/stackitcloud/external-dns-stackit-webhook         |
 | Unifi                 | https://github.com/kashalls/external-dns-unifi-webhook               |
@@ -311,7 +313,7 @@ would have at least two maintainers. It would be nice if the maintainers run the
 is not strictly required. Provider listed [here](https://github.com/kubernetes-sigs/external-dns#status-of-in-tree-providers)
 that do not have a maintainer listed are in need of assistance.
 
-Read the [contributing guidelines](CONTRIBUTING.md) and have a look at [the contributing docs](docs/contributing/getting-started.md) to learn about building the project, the project structure, and the purpose of each package.
+Read the [contributing guidelines](CONTRIBUTING.md) and have a look at [the contributing docs](docs/contributing/dev-guide.md) to learn about building the project, the project structure, and the purpose of each package.
 
 For an overview on how to write new Sources and Providers check out [Sources and Providers](docs/contributing/sources-and-providers.md).
 
