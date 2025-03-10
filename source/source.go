@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/pkg/fqdn"
 )
 
 const (
@@ -69,7 +70,7 @@ const (
 
 // Provider-specific annotations
 const (
-	// The annotation used for determining if traffic will go through Cloudflare
+	// CloudflareProxiedKey The annotation used for determining if traffic will go through Cloudflare
 	CloudflareProxiedKey        = "external-dns.alpha.kubernetes.io/cloudflare-proxied"
 	CloudflareCustomHostnameKey = "external-dns.alpha.kubernetes.io/cloudflare-custom-hostname"
 
@@ -130,6 +131,7 @@ type kubeObject interface {
 	metav1.Object
 }
 
+// TODO: This function should be moved to a more appropriate package
 func execTemplate(tmpl *template.Template, obj kubeObject) (hostnames []string, err error) {
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, obj); err != nil {
@@ -144,14 +146,9 @@ func execTemplate(tmpl *template.Template, obj kubeObject) (hostnames []string, 
 	return hostnames, nil
 }
 
-func parseTemplate(fqdnTemplate string) (tmpl *template.Template, err error) {
-	if fqdnTemplate == "" {
-		return nil, nil
-	}
-	funcs := template.FuncMap{
-		"trimPrefix": strings.TrimPrefix,
-	}
-	return template.New("endpoint").Funcs(funcs).Parse(fqdnTemplate)
+// TODO: This function should be moved to a more appropriate package
+func parseTemplate(input string) (tmpl *template.Template, err error) {
+	return fqdn.ParseTemplate(input)
 }
 
 func getHostnamesFromAnnotations(annotations map[string]string) []string {
