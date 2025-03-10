@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package source
+package fake
 
 import (
 	"context"
@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/source/common"
 )
 
 func generateTestEndpoints() []*endpoint.Endpoint {
@@ -70,4 +71,4 @@ func TestFakeEndpointsResolveToIPAddresses(t *testing.T) {
 }
 
 // Validate that FakeSource is a source
-var _ Source = &fakeSource{}
+var _ common.Source = &fakeSource{}

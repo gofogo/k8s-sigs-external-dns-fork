@@ -18,7 +18,7 @@ limitations under the License.
 Note: currently only supports IP targets (A records), not hostname targets
 */
 
-package source
+package fake
 
 import (
 	"context"
@@ -27,6 +27,7 @@ import (
 	"net"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/source/common"
 )
 
 // fakeSource is an implementation of Source that provides dummy endpoints for
@@ -40,7 +41,7 @@ const (
 )
 
 // NewFakeSource creates a new fakeSource with the given config.
-func NewFakeSource(fqdnTemplate string) (Source, error) {
+func NewFakeSource(fqdnTemplate string) (common.Source, error) {
 	if fqdnTemplate == "" {
 		fqdnTemplate = defaultFQDNTemplate
 	}

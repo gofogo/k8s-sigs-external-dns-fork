@@ -36,6 +36,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	gateway "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
+
+	"sigs.k8s.io/external-dns/source/fake"
 )
 
 // ErrSourceNotFound is returned when a requested source doesn't exist.
@@ -313,7 +315,7 @@ func BuildWithConfig(ctx context.Context, source string, p ClientGenerator, cfg 
 		}
 		return NewOcpRouteSource(ctx, ocpClient, cfg.Namespace, cfg.AnnotationFilter, cfg.FQDNTemplate, cfg.CombineFQDNAndAnnotation, cfg.IgnoreHostnameAnnotation, cfg.LabelFilter, cfg.OCPRouterName)
 	case "fake":
-		return NewFakeSource(cfg.FQDNTemplate)
+		return fake.NewFakeSource(cfg.FQDNTemplate)
 	case "connector":
 		return NewConnectorSource(cfg.ConnectorServer)
 	case "crd":
