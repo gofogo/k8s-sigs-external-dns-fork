@@ -18,14 +18,16 @@ package source
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/cloudfoundry-community/go-cfclient"
-	"github.com/linki/instrumented_http"
+	"k8s.io/client-go/util/flowcontrol"
+
+	// _ "github.com/linki/instrumented_http"
 	openshift "github.com/openshift/client-go/route/clientset/versioned"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -373,19 +375,47 @@ func BuildWithConfig(ctx context.Context, source string, p ClientGenerator, cfg 
 	return nil, ErrSourceNotFound
 }
 
+type timeoutRoundTripper struct {
+	rt      http.RoundTripper
+	timeout time.Duration
+}
+
+func (t *timeoutRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx, cancel := context.WithTimeout(req.Context(), t.timeout)
+	defer cancel()
+	req = req.WithContext(ctx)
+	return t.rt.RoundTrip(req)
+}
+
 func instrumentedRESTConfig(kubeConfig, apiServerURL string, requestTimeout time.Duration) (*rest.Config, error) {
 	config, err := GetRestConfig(kubeConfig, apiServerURL)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("TIMEOUT:", requestTimeout)
+	// config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+	// 	return instrumented_http.NewTransport(rt, &instrumented_http.Callbacks{
+	// 		PathProcessor: func(path string) string {
+	// 			fmt.Println("PATH:", path)
+	// 			parts := strings.Split(path, "/")
+	// 			return parts[len(parts)-1]
+	// 		},
+	// 		QueryProcessor: func(query string) string {
+	// 			fmt.Println("QUERY:", query)
+	// 			return query
+	// 		},
+	// 	})
+	// }
 	config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
-		return instrumented_http.NewTransport(rt, &instrumented_http.Callbacks{
-			PathProcessor: func(path string) string {
-				parts := strings.Split(path, "/")
-				return parts[len(parts)-1]
-			},
-		})
+		return &timeoutRoundTripper{
+			rt:      rt,
+			timeout: requestTimeout,
+		}
 	}
+
+	config.QPS = 2
+	config.Burst = 5
+	config.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(config.QPS, config.Burst)
 	config.Timeout = requestTimeout
 	return config, nil
 }
@@ -406,6 +436,7 @@ func GetRestConfig(kubeConfig, apiServerURL string) (*rest.Config, error) {
 		config *rest.Config
 		err    error
 	)
+
 	if kubeConfig == "" {
 		log.Infof("Using inCluster-config based on serviceaccount-token")
 		config, err = rest.InClusterConfig()
