@@ -499,7 +499,7 @@ func testEndpointsFromGatewayConfig(t *testing.T) {
 			gatewayCfg := ti.config.Config()
 			if source, err := newTestGatewaySource(ti.lbServices, ti.ingresses); err != nil {
 				require.NoError(t, err)
-			} else if hostnames, err := source.hostNamesFromGateway(gatewayCfg); err != nil {
+			} else if hostnames, err := source.hostNamesFromGatewayV1Alpha3(gatewayCfg); err != nil {
 				require.NoError(t, err)
 			} else if endpoints, err := source.endpointsFromGateway(context.Background(), hostnames, gatewayCfg); err != nil {
 				require.NoError(t, err)
