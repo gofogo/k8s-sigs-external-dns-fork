@@ -19,10 +19,19 @@ package source
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
-	cfclient "github.com/cloudfoundry-community/go-cfclient"
+	"github.com/cloudfoundry-community/go-cfclient"
+	"github.com/linki/instrumented_http"
 	openshift "github.com/openshift/client-go/route/clientset/versioned"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
@@ -219,6 +228,164 @@ func (suite *ByNamesTestSuite) TestIstioClientFails() {
 
 	_, err = ByNames(context.TODO(), mockClientGenerator, []string{"contour-httpproxy"}, &Config{})
 	suite.Error(err, "should return an error if contour client cannot be created")
+}
+
+func TestCaptureUsesellesLogs(t *testing.T) {
+
+	// log.SetOutput(ioutil.Discard)
+	log.SetLevel(log.DebugLevel)
+	// buf := testutils.LogsToBuffer(log.DebugLevel, t)
+	// klog.SetLogger(logr.Discard())
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		log.Fatal(http.ListenAndServe("127.0.0.1:9099", nil))
+	}()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+		// w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := instrumented_http.NewClient(nil, &instrumented_http.Callbacks{
+		PathProcessor: func(path string) string {
+			parts := strings.Split(path, "/")
+			return parts[len(parts)-1]
+		},
+		// QueryProcessor: instrumented_http.IdentityProcessor,
+	})
+
+	client.Timeout = 4 * time.Second
+
+	func() {
+		resp, err := client.Get(server.URL)
+		if err != nil {
+			fmt.Println("error", err)
+			log.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		fmt.Printf("%d\n", resp.StatusCode)
+	}()
+
+	func() {
+		resp, err := client.Get("https://kubernetes.io/docs/search/?q=pods")
+		if err != nil {
+			fmt.Println("error", err)
+			log.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		fmt.Printf("%d\n", resp.StatusCode)
+	}()
+
+	// fmt.Println(buf.String())
+
+	// cfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+	// 	return instrumented_http.NewTransport(rt, &instrumented_http.Callbacks{
+	// 		PathProcessor: instrumented_http.LastPathElementProcessor,
+	// 	})
+	// }
+
+}
+
+func TestServerWithoutCancelation(t *testing.T) {
+	// fake.NewClientset()
+	log.SetLevel(log.DebugLevel)
+
+	// Create a new test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// w.WriteHeader(http.StatusOK)
+		// w.Write([]byte("Hello, client"))
+		r.Close = true
+		r.Cancel = make(chan struct{})
+		w.Header().Add("Content-Type", "application/json")
+		r.Body.Close()
+		fmt.Fprintln(w, `response from the mock server goes here`)
+
+	}))
+	defer server.Close()
+
+	client := instrumented_http.NewClient(nil, &instrumented_http.Callbacks{
+		PathProcessor: func(path string) string {
+			fmt.Println("path:", path)
+			parts := strings.Split(path, "/")
+			return parts[len(parts)-1]
+		},
+		// QueryProcessor: instrumented_http.IdentityProcessor,
+	})
+
+	// Make a request to the test server
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("Failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	// Print the response status and body
+	fmt.Printf("Status: %d\n", resp.StatusCode)
+	fmt.Printf("Body: %s\n", string(body))
+
+}
+
+func TestAnother(t *testing.T) {
+	// Use the default transport which is an instance of *http.Transport that supports cancellation.
+	client := &http.Client{
+		Transport: http.DefaultTransport,
+	}
+
+	// Create a request with a cancellable context.
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://example.com", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Cancel the request after 2 seconds.
+	go func() {
+		time.Sleep(2 * time.Second)
+		cancel()
+		log.Println("Request cancelled")
+	}()
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Request error:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Response:", string(body))
+}
+
+func TestWriteTimeoutCancellation(t *testing.T) {
+	backend := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body.Close() // to show that it is not https://github.com/golang/go/issues/23262
+
+		time.Sleep(1 * time.Second)
+		_, err := w.Write([]byte("ok"))
+		ctxErr := r.Context().Err()
+
+		_, _ = ctxErr, err // breakpoint here to see the errors, they are both nil
+	}))
+	backend.Config.WriteTimeout = 500 * time.Millisecond
+	backend.EnableHTTP2 = true // you can also try false
+
+	backend.Start()
+	defer backend.Close()
+
+	start := time.Now()
+	res, err := backend.Client().Get(backend.URL)
+	t.Logf("took %s", time.Since(start)) // for me this always takes 1s, although the write timeout is 500ms
+	_, _ = res, err                      // breakpoint here, err is EOF, res is nil
 }
 
 func TestByNames(t *testing.T) {
