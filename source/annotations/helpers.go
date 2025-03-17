@@ -26,16 +26,15 @@ import (
 )
 
 func hasAliasFromAnnotations(annotations map[string]string) bool {
-	aliasAnnotation, exists := annotations[AliasAnnotationKey]
-	return exists && aliasAnnotation == "true"
+	aliasAnnotation, ok := annotations[AliasKey]
+	return ok && aliasAnnotation == "true"
 }
 
-// TTLFromAnnotations TODO: copied from source.go. Refactor to avoid duplication.
 // TTLFromAnnotations extracts the TTL from the annotations of the given resource.
 func TTLFromAnnotations(annotations map[string]string, resource string) endpoint.TTL {
 	ttlNotConfigured := endpoint.TTL(0)
-	ttlAnnotation, exists := annotations[TtlAnnotationKey]
-	if !exists {
+	ttlAnnotation, ok := annotations[TtlKey]
+	if !ok {
 		return ttlNotConfigured
 	}
 	ttlValue, err := parseTTL(ttlAnnotation)
@@ -54,9 +53,8 @@ func TTLFromAnnotations(annotations map[string]string, resource string) endpoint
 // parseTTL supports both integers like "600" and durations based
 // on Go Duration like "10m", hence "600" and "10m" represent the same value.
 //
-// Note: for durations like "1.5s" the fraction is omitted (resulting in 1 second
-// for the example).
-func parseTTL(s string) (ttlSeconds int64, err error) {
+// Note: for durations like "1.5s" the fraction is omitted (resulting in 1 second for the example).
+func parseTTL(s string) (int64, error) {
 	ttlDuration, errDuration := time.ParseDuration(s)
 	if errDuration != nil {
 		ttlInt, err := strconv.ParseInt(s, 10, 64)
@@ -87,10 +85,9 @@ func ParseFilter(annotationFilter string) (labels.Selector, error) {
 // Returns empty endpoints array if none are found.
 func TargetsFromTargetAnnotation(annotations map[string]string) endpoint.Targets {
 	var targets endpoint.Targets
-
 	// Get the desired hostname of the ingress from the annotation.
-	targetAnnotation, exists := annotations[TargetKey]
-	if exists && targetAnnotation != "" {
+	targetAnnotation, ok := annotations[TargetKey]
+	if ok && targetAnnotation != "" {
 		// splits the hostname annotation and removes the trailing periods
 		targetsList := strings.Split(strings.Replace(targetAnnotation, " ", "", -1), ",")
 		for _, targetHostname := range targetsList {
