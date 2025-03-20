@@ -33,6 +33,7 @@ import (
 	networkv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"sigs.k8s.io/external-dns/source/utils"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
@@ -2036,7 +2037,7 @@ func testGatewaySelectorMatchesService(t *testing.T) {
 		},
 	} {
 		t.Run(ti.title, func(t *testing.T) {
-			require.Equal(t, ti.expected, gatewaySelectorMatchesServiceSelector(ti.gwSelector, ti.lbSelector))
+			require.Equal(t, ti.expected, utils.SelectorMatchesServiceSelector(ti.gwSelector, ti.lbSelector))
 		})
 	}
 }
