@@ -28,12 +28,13 @@ controller-gen:
 ifeq (, $(shell which controller-gen))
 	@{ \
 	set -e ;\
-	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.15.0 ;\
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.17.2 ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
+REGISTER_GEN=$(shell which register-gen)
 
 #? golangci-lint: Install golangci-lint tool
 golangci-lint:
@@ -72,7 +73,7 @@ lint: licensecheck go-lint oas-lint
 #? crd: Generates CRD using controller-gen
 .PHONY: crd
 crd: controller-gen
-	${CONTROLLER_GEN} crd:crdVersions=v1 paths="./endpoint/..." output:crd:stdout > docs/contributing/crd-source/crd-manifest.yaml
+	${CONTROLLER_GEN} crd:crdVersions=v1 paths="./endpoint/..." output:crd:stdout > crd-manifest-old.yaml
 
 #? test: The verify target runs tasks similar to the CI tasks, but without code coverage
 .PHONY: test
@@ -198,3 +199,25 @@ helm-test:
 #? helm-template: Run helm template
 helm-template:
 	scripts/helm-tools.sh --helm-template
+
+#? crd-v1: Generates CRD using controller-gen
+.PHONY: crd-v1
+crd-v1:
+	${CONTROLLER_GEN} crd:crdVersions=v1 paths="./apis/..." output:crd:stdout > crd-manifest.yaml
+
+#? crd-v2: Generates CRD using controller-gen
+crd-v2:
+	${CONTROLLER_GEN} object:headerFile="scripts/api/boilerplate.go.txt" paths="./apis/..."
+
+#? crd-register: Generates CRD using controller-gen
+crd-register:
+	${REGISTER_GEN} --output-file zz_generated.register.go "apis/dnsendpoint/v1alpha1"
+
+BUNDLE_DIR  ?= deploy/crds
+CRD_DIR     ?= config/crds
+
+#? generate: Generate code and crds
+.PHONY: generate
+generate: ## Generate code and crds
+	@./scripts/api/crd.generate.sh $(BUNDLE_DIR) $(CRD_DIR)
+	@$(OK) Finished generating deepcopy and crds
