@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	dnsapiv1alpha "sigs.k8s.io/external-dns/apis/dnsendpoint/v1alpha1"
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
@@ -53,8 +54,8 @@ type crdSource struct {
 
 func addKnownTypes(scheme *runtime.Scheme, groupVersion schema.GroupVersion) error {
 	scheme.AddKnownTypes(groupVersion,
-		&endpoint.DNSEndpoint{},
-		&endpoint.DNSEndpointList{},
+		&dnsapiv1alpha.DNSEndpoint{},
+		&dnsapiv1alpha.DNSEndpointList{},
 	)
 	metav1.AddToGroupVersion(scheme, groupVersion)
 	return nil
@@ -129,7 +130,7 @@ func NewCRDSource(crdClient rest.Interface, namespace, kind string, annotationFi
 					return sourceCrd.watch(context.TODO(), &lo)
 				},
 			},
-			&endpoint.DNSEndpoint{},
+			&dnsapiv1alpha.DNSEndpoint{},
 			0)
 		sourceCrd.informer = &informer
 		go informer.Run(wait.NeverStop)
@@ -164,7 +165,7 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 	endpoints := []*endpoint.Endpoint{}
 
 	var (
-		result *endpoint.DNSEndpointList
+		result *dnsapiv1alpha.DNSEndpointList
 		err    error
 	)
 
@@ -229,7 +230,7 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 	return endpoints, nil
 }
 
-func (cs *crdSource) setResourceLabel(crd *endpoint.DNSEndpoint, endpoints []*endpoint.Endpoint) {
+func (cs *crdSource) setResourceLabel(crd *dnsapiv1alpha.DNSEndpoint, endpoints []*endpoint.Endpoint) {
 	for _, ep := range endpoints {
 		ep.Labels[endpoint.ResourceLabelKey] = fmt.Sprintf("crd/%s/%s", crd.ObjectMeta.Namespace, crd.ObjectMeta.Name)
 	}
@@ -244,8 +245,8 @@ func (cs *crdSource) watch(ctx context.Context, opts *metav1.ListOptions) (watch
 		Watch(ctx)
 }
 
-func (cs *crdSource) List(ctx context.Context, opts *metav1.ListOptions) (result *endpoint.DNSEndpointList, err error) {
-	result = &endpoint.DNSEndpointList{}
+func (cs *crdSource) List(ctx context.Context, opts *metav1.ListOptions) (result *dnsapiv1alpha.DNSEndpointList, err error) {
+	result = &dnsapiv1alpha.DNSEndpointList{}
 	err = cs.crdClient.Get().
 		Namespace(cs.namespace).
 		Resource(cs.crdResource).
@@ -255,8 +256,8 @@ func (cs *crdSource) List(ctx context.Context, opts *metav1.ListOptions) (result
 	return
 }
 
-func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *endpoint.DNSEndpoint) (result *endpoint.DNSEndpoint, err error) {
-	result = &endpoint.DNSEndpoint{}
+func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *dnsapiv1alpha.DNSEndpoint) (result *dnsapiv1alpha.DNSEndpoint, err error) {
+	result = &dnsapiv1alpha.DNSEndpoint{}
 	err = cs.crdClient.Put().
 		Namespace(dnsEndpoint.Namespace).
 		Resource(cs.crdResource).
@@ -269,7 +270,7 @@ func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *endpoint.DNS
 }
 
 // filterByAnnotations filters a list of dnsendpoints by a given annotation selector.
-func (cs *crdSource) filterByAnnotations(dnsendpoints *endpoint.DNSEndpointList) (*endpoint.DNSEndpointList, error) {
+func (cs *crdSource) filterByAnnotations(dnsendpoints *dnsapiv1alpha.DNSEndpointList) (*dnsapiv1alpha.DNSEndpointList, error) {
 	labelSelector, err := metav1.ParseToLabelSelector(cs.annotationFilter)
 	if err != nil {
 		return nil, err
@@ -284,7 +285,7 @@ func (cs *crdSource) filterByAnnotations(dnsendpoints *endpoint.DNSEndpointList)
 		return dnsendpoints, nil
 	}
 
-	filteredList := endpoint.DNSEndpointList{}
+	filteredList := dnsapiv1alpha.DNSEndpointList{}
 
 	for _, dnsendpoint := range dnsendpoints.Items {
 		// convert the dnsendpoint' annotations to an equivalent label selector
