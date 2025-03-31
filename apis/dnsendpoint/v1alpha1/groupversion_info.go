@@ -22,6 +22,6 @@ var (
 	AddToScheme = SchemeBuilder.AddToScheme
 )
 
-// func init() {
-// 	SchemeBuilder.Register(&DNSEndpoint{}, &DNSEndpointList{})
-// }
+func init() {
+	SchemeBuilder.Register(&DNSEndpoint{}, &DNSEndpointList{})
+}
