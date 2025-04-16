@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/netip"
 	"reflect"
 	"strings"
 	"text/template"
@@ -34,7 +33,6 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
-	"sigs.k8s.io/external-dns/source/utils"
 )
 
 const (
@@ -104,32 +102,20 @@ func parseTemplate(fqdnTemplate string) (tmpl *template.Template, err error) {
 	return template.New("endpoint").Funcs(funcs).Parse(fqdnTemplate)
 }
 
-func getHostnamesFromAnnotations(annotations map[string]string) []string {
-	hostnameAnnotation, ok := annotations[hostnameAnnotationKey]
-	if !ok {
-		return nil
-	}
-	return splitHostnameAnnotation(hostnameAnnotation)
+func getHostnamesFromAnnotations(input map[string]string) []string {
+	return annotations.HostnamesFromAnnotations(input)
 }
 
-func getAccessFromAnnotations(annotations map[string]string) string {
-	return annotations[accessAnnotationKey]
+func getAccessFromAnnotations(input map[string]string) string {
+	return input[accessAnnotationKey]
 }
 
-func getEndpointsTypeFromAnnotations(annotations map[string]string) string {
-	return annotations[endpointsTypeAnnotationKey]
+func getEndpointsTypeFromAnnotations(input map[string]string) string {
+	return input[endpointsTypeAnnotationKey]
 }
 
-func getInternalHostnamesFromAnnotations(annotations map[string]string) []string {
-	internalHostnameAnnotation, ok := annotations[internalHostnameAnnotationKey]
-	if !ok {
-		return nil
-	}
-	return splitHostnameAnnotation(internalHostnameAnnotation)
-}
-
-func splitHostnameAnnotation(annotation string) []string {
-	return strings.Split(strings.Replace(annotation, " ", "", -1), ",")
+func getInternalHostnamesFromAnnotations(input map[string]string) []string {
+	return annotations.InternalHostnamesFromAnnotations(input)
 }
 
 func getProviderSpecificAnnotations(input map[string]string) (endpoint.ProviderSpecific, string) {
@@ -139,13 +125,17 @@ func getProviderSpecificAnnotations(input map[string]string) (endpoint.ProviderS
 // getTargetsFromTargetAnnotation gets endpoints from optional "target" annotation.
 // Returns empty endpoints array if none are found.
 func getTargetsFromTargetAnnotation(input map[string]string) endpoint.Targets {
+	return annotations.TargetsFromTargetAnnotation(input)
+}
+
+func getTargetsFromTargetAnnotation(annotations map[string]string) endpoint.Targets {
 	var targets endpoint.Targets
 
 	// Get the desired hostname of the ingress from the annotation.
-	targetAnnotation, ok := input[targetAnnotationKey]
-	if ok && targetAnnotation != "" {
+	targetAnnotation, exists := annotations[targetAnnotationKey]
+	if exists && targetAnnotation != "" {
 		// splits the hostname annotation and removes the trailing periods
-		targetsList := strings.Split(strings.Replace(targetAnnotation, " ", "", -1), ",")
+		targetsList := strings.Split(strings.ReplaceAll(targetAnnotation, " ", ""), ",")
 		for _, targetHostname := range targetsList {
 			targetHostname = strings.TrimSuffix(targetHostname, ".")
 			targets = append(targets, targetHostname)
@@ -164,11 +154,12 @@ func suitableType(target string) string {
 		return endpoint.RecordTypeAAAA
 	}
 	return endpoint.RecordTypeCNAME
+>>>>>>> 3835c62b (chore(ci): update linter to v2.0.2)
 }
 
 // endpointsForHostname returns the endpoint objects for each host-target combination.
 func endpointsForHostname(hostname string, targets endpoint.Targets, ttl endpoint.TTL, providerSpecific endpoint.ProviderSpecific, setIdentifier string, resource string) []*endpoint.Endpoint {
-	return utils.EndpointsForHostname(hostname, targets, ttl, providerSpecific, setIdentifier, resource)
+	return EndpointsForHostname(hostname, targets, ttl, providerSpecific, setIdentifier, resource)
 }
 
 func getLabelSelector(annotationFilter string) (labels.Selector, error) {
@@ -180,8 +171,7 @@ func getLabelSelector(annotationFilter string) (labels.Selector, error) {
 }
 
 func matchLabelSelector(selector labels.Selector, srcAnnotations map[string]string) bool {
-	annotations := labels.Set(srcAnnotations)
-	return selector.Matches(annotations)
+	return selector.Matches(labels.Set(srcAnnotations))
 }
 
 type eventHandlerFunc func()

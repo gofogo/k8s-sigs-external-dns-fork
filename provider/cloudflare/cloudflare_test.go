@@ -405,7 +405,11 @@ func getCustomHostnameIdxByID(chs []cloudflare.CustomHostname, customHostnameID 
 	return -1
 }
 
+<<<<<<< HEAD
 func getCustomHostnameIDbyCustomHostnameAndOrigin(chs CustomHostnamesMap, customHostname string, origin string) (string, string) {
+=======
+func getCustomHostnameIDbyCustomHostnameAndOrigin(chs []cloudflare.CustomHostname, customHostname string, origin string) (string, string) {
+>>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
 	for _, ch := range chs {
 		if ch.Hostname == customHostname && ch.CustomOriginServer == origin {
 			return ch.ID, ch.Hostname
@@ -2328,7 +2332,19 @@ func TestCloudflareCustomHostnameNotFoundOnRecordDeletion(t *testing.T) {
 			Name:         "remove DNS record with unexpectedly missing custom hostname",
 			Endpoints:    []*endpoint.Endpoint{},
 			preApplyHook: "corrupt",
+<<<<<<< HEAD
+<<<<<<< HEAD
+<<<<<<< HEAD
 			logOutput:    "level=warning msg=\"failed to delete custom hostname \\\"newerror-getCustomHostnameOrigin.foo.fancybar.com\\\": failed to get custom hostname: \\\"newerror-getCustomHostnameOrigin.foo.fancybar.com\\\" not found\" action=DELETE record=create.foo.bar.com",
+=======
+			logOutput:    "level=info msg=\"Custom hostname newerror-getCustomHostnameOrigin.foo.fancybar.com not found\" action=DELETE record=create.foo.bar.com",
+>>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
+=======
+			logOutput:    "level=warning msg=\"failed to delete custom hostname newerror-getCustomHostnameOrigin.foo.fancybar.com: not found\" action=DELETE record=create.foo.bar.com",
+>>>>>>> 2a15aba5 (syntax/style)
+=======
+			logOutput:    "level=warning msg=\"failed to delete custom hostname \\\"newerror-getCustomHostnameOrigin.foo.fancybar.com\\\": not found\" action=DELETE record=create.foo.bar.com",
+>>>>>>> 12cce6fa (Use %q log fmt for cloudflare provider code)
 		},
 		{
 			Name:         "duplicate custom hostname",
@@ -2354,7 +2370,15 @@ func TestCloudflareCustomHostnameNotFoundOnRecordDeletion(t *testing.T) {
 				},
 			},
 			preApplyHook: "",
+<<<<<<< HEAD
+<<<<<<< HEAD
 			logOutput:    "custom hostname \\\"a.foo.fancybar.com\\\" already exists with the same origin \\\"a.foo.bar.com\\\", continue",
+=======
+			logOutput:    "custom hostname a.foo.fancybar.com already exists with the same origin a.foo.bar.com, continue",
+>>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
+=======
+			logOutput:    "custom hostname \\\"a.foo.fancybar.com\\\" already exists with the same origin \\\"a.foo.bar.com\\\", continue",
+>>>>>>> 12cce6fa (Use %q log fmt for cloudflare provider code)
 		},
 	}
 
@@ -2382,12 +2406,29 @@ func TestCloudflareCustomHostnameNotFoundOnRecordDeletion(t *testing.T) {
 		// the purpose is to cause getCustomHostnameOrigin() to fail on change.Action == cloudFlareDelete
 		chs, chErr := provider.listCustomHostnamesWithPagination(ctx, zoneID)
 		if chErr != nil {
+<<<<<<< HEAD
+<<<<<<< HEAD
 			t.Errorf("should not fail - %q, %v", tc.Name, chErr)
 		}
 		if tc.preApplyHook == "corrupt" {
 			if ch, err := getCustomHostname(chs, "newerror-getCustomHostnameOrigin.foo.fancybar.com"); err == nil {
 				chID := ch.ID
 				t.Logf("corrupting custom hostname %q", chID)
+=======
+			t.Errorf("should not fail - %s, %s", tc.Name, chErr)
+=======
+			t.Errorf("should not fail - %q, %v", tc.Name, chErr)
+>>>>>>> 12cce6fa (Use %q log fmt for cloudflare provider code)
+		}
+		if tc.preApplyHook == "corrupt" {
+			if ch, err := getCustomHostname(chs, "newerror-getCustomHostnameOrigin.foo.fancybar.com"); err == nil {
+				chID := ch.ID
+<<<<<<< HEAD
+				t.Logf("corrupting custom hostname %v", chID)
+>>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
+=======
+				t.Logf("corrupting custom hostname %q", chID)
+>>>>>>> 12cce6fa (Use %q log fmt for cloudflare provider code)
 				oldIdx := getCustomHostnameIdxByID(client.customHostnames[zoneID], chID)
 				oldCh := client.customHostnames[zoneID][oldIdx]
 				ch := cloudflare.CustomHostname{

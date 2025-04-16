@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package utils
+package source
 
 import (
 	"testing"
@@ -103,7 +103,7 @@ func TestParseIngress(t *testing.T) {
 	}
 }
 
-func TestSelectorMatchesServiceSelector(t *testing.T) {
+func TestSelectorMatchesService(t *testing.T) {
 	tests := []struct {
 		name        string
 		selector    map[string]string

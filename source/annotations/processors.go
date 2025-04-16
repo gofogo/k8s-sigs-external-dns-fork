@@ -89,11 +89,37 @@ func TargetsFromTargetAnnotation(annotations map[string]string) endpoint.Targets
 	targetAnnotation, ok := annotations[TargetKey]
 	if ok && targetAnnotation != "" {
 		// splits the hostname annotation and removes the trailing periods
-		targetsList := strings.Split(strings.Replace(targetAnnotation, " ", "", -1), ",")
+		targetsList := SplitHostnameAnnotation(targetAnnotation)
 		for _, targetHostname := range targetsList {
 			targetHostname = strings.TrimSuffix(targetHostname, ".")
 			targets = append(targets, targetHostname)
 		}
 	}
 	return targets
+}
+
+// HostnamesFromAnnotations extracts the hostnames from the given annotations map.
+// It returns a slice of hostnames if the HostnameKey annotation is present, otherwise it returns nil.
+func HostnamesFromAnnotations(input map[string]string) []string {
+	return extractHostnamesFromAnnotations(input, HostnameKey)
+}
+
+// InternalHostnamesFromAnnotations extracts the internal hostnames from the given annotations map.
+// It returns a slice of internal hostnames if the InternalHostnameKey annotation is present, otherwise it returns nil.
+func InternalHostnamesFromAnnotations(input map[string]string) []string {
+	return extractHostnamesFromAnnotations(input, InternalHostnameKey)
+}
+
+// SplitHostnameAnnotation splits a comma-separated hostname annotation string into a slice of hostnames.
+// It trims any leading or trailing whitespace and removes any spaces within the anno
+func SplitHostnameAnnotation(input string) []string {
+	return strings.Split(strings.TrimSpace(strings.ReplaceAll(input, " ", "")), ",")
+}
+
+func extractHostnamesFromAnnotations(input map[string]string, key string) []string {
+	annotation, ok := input[key]
+	if !ok {
+		return nil
+	}
+	return SplitHostnameAnnotation(annotation)
 }

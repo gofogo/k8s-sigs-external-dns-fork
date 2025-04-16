@@ -487,8 +487,35 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 				return fmt.Errorf("could not fetch custom hostnames from zone, %v", chErr)
 			}
 			if change.Action == cloudFlareUpdate {
+<<<<<<< HEAD
 				if !p.submitCustomHostnameChanges(ctx, zoneID, change, chs, logFields) {
 					failedChange = true
+=======
+				if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] {
+					prevChName := change.CustomHostnamePrev
+					newChName := change.CustomHostname.Hostname
+					if prevCh, err := getCustomHostname(chs, prevChName); err == nil {
+						prevChID := prevCh.ID
+						if prevChID != "" && prevChName != newChName {
+							log.WithFields(logFields).Infof("Removing previous custom hostname %q/%q", prevChID, prevChName)
+							chErr := p.Client.DeleteCustomHostname(ctx, zoneID, prevChID)
+							if chErr != nil {
+								failedChange = true
+								log.WithFields(logFields).Errorf("failed to remove previous custom hostname %q/%q: %v", prevChID, prevChName, chErr)
+							}
+						}
+					}
+					if newChName != "" {
+						if prevChName != newChName {
+							log.WithFields(logFields).Infof("Adding custom hostname %q", newChName)
+							_, chErr := p.Client.CreateCustomHostname(ctx, zoneID, change.CustomHostname)
+							if chErr != nil {
+								failedChange = true
+								log.WithFields(logFields).Errorf("failed to add custom hostname %q: %v", newChName, chErr)
+							}
+						}
+					}
+>>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
 				}
 				recordID := p.getRecordID(records, change.ResourceRecord)
 				if recordID == "" {
@@ -520,8 +547,23 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 					failedChange = true
 					log.WithFields(logFields).Errorf("failed to delete record: %v", err)
 				}
+<<<<<<< HEAD
 				if !p.submitCustomHostnameChanges(ctx, zoneID, change, chs, logFields) {
 					failedChange = true
+=======
+				if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] && change.CustomHostname.Hostname != "" {
+					log.WithFields(logFields).Infof("Deleting custom hostname %q", change.CustomHostname.Hostname)
+					if ch, err := getCustomHostname(chs, change.CustomHostname.Hostname); err == nil {
+						chID := ch.ID
+						chErr := p.Client.DeleteCustomHostname(ctx, zoneID, chID)
+						if chErr != nil {
+							failedChange = true
+							log.WithFields(logFields).Errorf("failed to delete custom hostname %q/%q: %v", chID, change.CustomHostname.Hostname, chErr)
+						}
+					} else {
+						log.WithFields(logFields).Warnf("failed to delete custom hostname %q: %v", change.CustomHostname.Hostname, err)
+					}
+>>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
 				}
 			} else if change.Action == cloudFlareCreate {
 				recordParam := getCreateDNSRecordParam(*change)
@@ -530,8 +572,27 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 					failedChange = true
 					log.WithFields(logFields).Errorf("failed to create record: %v", err)
 				}
+<<<<<<< HEAD
 				if !p.submitCustomHostnameChanges(ctx, zoneID, change, chs, logFields) {
 					failedChange = true
+=======
+				if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] && change.CustomHostname.Hostname != "" {
+					log.WithFields(logFields).Infof("Creating custom hostname %q", change.CustomHostname.Hostname)
+					if ch, err := getCustomHostname(chs, change.CustomHostname.Hostname); err == nil {
+						if change.CustomHostname.CustomOriginServer == ch.CustomOriginServer {
+							log.WithFields(logFields).Warnf("custom hostname %q already exists with the same origin %q, continue", change.CustomHostname.Hostname, ch.CustomOriginServer)
+						} else {
+							failedChange = true
+							log.WithFields(logFields).Errorf("failed to create custom hostname, %q already exists with origin %q", change.CustomHostname.Hostname, ch.CustomOriginServer)
+						}
+					} else {
+						_, chErr := p.Client.CreateCustomHostname(ctx, zoneID, change.CustomHostname)
+						if chErr != nil {
+							failedChange = true
+							log.WithFields(logFields).Errorf("failed to create custom hostname %q: %v", change.CustomHostname.Hostname, chErr)
+						}
+					}
+>>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
 				}
 			}
 		}
@@ -591,14 +652,33 @@ func (p *CloudFlareProvider) getRecordID(records DNSRecordsMap, record cloudflar
 	return ""
 }
 
+<<<<<<< HEAD
+<<<<<<< HEAD
 func getCustomHostname(chs CustomHostnamesMap, chName string) (cloudflare.CustomHostname, error) {
 	if chName == "" {
 		return cloudflare.CustomHostname{}, fmt.Errorf("failed to get custom hostname: %q is empty", chName)
+=======
+func getCustomHostnameIdWithOrigin(chs []cloudflare.CustomHostname, hostname string) (string, string) {
+=======
+func getCustomHostname(chs []cloudflare.CustomHostname, chName string) (cloudflare.CustomHostname, error) {
+	if chName == "" {
+		return cloudflare.CustomHostname{}, fmt.Errorf("empty")
 	}
+>>>>>>> 2a15aba5 (syntax/style)
+	for _, ch := range chs {
+		if ch.Hostname == chName {
+			return ch, nil
+		}
+>>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
+	}
+<<<<<<< HEAD
 	if ch, ok := chs[CustomHostnameIndex{Hostname: chName}]; ok {
 		return ch, nil
 	}
 	return cloudflare.CustomHostname{}, fmt.Errorf("failed to get custom hostname: %q not found", chName)
+=======
+	return cloudflare.CustomHostname{}, fmt.Errorf("not found")
+>>>>>>> 2a15aba5 (syntax/style)
 }
 
 func (p *CloudFlareProvider) newCloudFlareChange(action string, endpoint *endpoint.Endpoint, target string, current *endpoint.Endpoint) *cloudFlareChange {
@@ -673,7 +753,7 @@ func (p *CloudFlareProvider) listDNSRecordsWithAutoPagination(ctx context.Contex
 			records[newDNSRecordIndex(r)] = r
 		}
 		params.ResultInfo = resultInfo.Next()
-		if params.ResultInfo.Done() {
+		if params.Done() {
 			break
 		}
 	}
