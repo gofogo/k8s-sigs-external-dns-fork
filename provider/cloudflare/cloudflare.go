@@ -20,8 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +94,12 @@ var recordTypeCustomHostnameSupported = map[string]bool{
 	"CNAME": true,
 }
 
+var recordTypeRegionalHostnameSupported = map[string]bool{
+	"A":     true,
+	"AAAA":  true,
+	"CNAME": true,
+}
+
 // cloudFlareDNS is the subset of the CloudFlare API that we actually use.  Add methods as required. Signatures must match exactly.
 type cloudFlareDNS interface {
 	UserDetails(ctx context.Context) (cloudflare.User, error)
@@ -102,7 +111,9 @@ type cloudFlareDNS interface {
 	CreateDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, rp cloudflare.CreateDNSRecordParams) (cloudflare.DNSRecord, error)
 	DeleteDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, recordID string) error
 	UpdateDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, rp cloudflare.UpdateDNSRecordParams) error
+	CreateDataLocalizationRegionalHostname(ctx context.Context, rc *cloudflare.ResourceContainer, rp cloudflare.CreateDataLocalizationRegionalHostnameParams) error
 	UpdateDataLocalizationRegionalHostname(ctx context.Context, rc *cloudflare.ResourceContainer, rp cloudflare.UpdateDataLocalizationRegionalHostnameParams) error
+	DeleteDataLocalizationRegionalHostname(ctx context.Context, rc *cloudflare.ResourceContainer, hostname string) error
 	CustomHostnames(ctx context.Context, zoneID string, page int, filter cloudflare.CustomHostname) ([]cloudflare.CustomHostname, cloudflare.ResultInfo, error)
 	DeleteCustomHostname(ctx context.Context, zoneID string, customHostnameID string) error
 	CreateCustomHostname(ctx context.Context, zoneID string, ch cloudflare.CustomHostname) (*cloudflare.CustomHostnameResponse, error)
@@ -137,9 +148,18 @@ func (z zoneService) UpdateDNSRecord(ctx context.Context, rc *cloudflare.Resourc
 	return err
 }
 
+func (z zoneService) CreateDataLocalizationRegionalHostname(ctx context.Context, rc *cloudflare.ResourceContainer, rp cloudflare.CreateDataLocalizationRegionalHostnameParams) error {
+	_, err := z.service.CreateDataLocalizationRegionalHostname(ctx, rc, rp)
+	return err
+}
+
 func (z zoneService) UpdateDataLocalizationRegionalHostname(ctx context.Context, rc *cloudflare.ResourceContainer, rp cloudflare.UpdateDataLocalizationRegionalHostnameParams) error {
 	_, err := z.service.UpdateDataLocalizationRegionalHostname(ctx, rc, rp)
 	return err
+}
+
+func (z zoneService) DeleteDataLocalizationRegionalHostname(ctx context.Context, rc *cloudflare.ResourceContainer, hostname string) error {
+	return z.service.DeleteDataLocalizationRegionalHostname(ctx, rc, hostname)
 }
 
 func (z zoneService) DeleteDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, recordID string) error {
@@ -182,11 +202,11 @@ type CloudFlareProvider struct {
 
 // cloudFlareChange differentiates between ChangActions
 type cloudFlareChange struct {
-	Action             string
-	ResourceRecord     cloudflare.DNSRecord
-	RegionalHostname   cloudflare.RegionalHostname
-	CustomHostname     cloudflare.CustomHostname
-	CustomHostnamePrev string
+	Action              string
+	ResourceRecord      cloudflare.DNSRecord
+	RegionalHostname    cloudflare.RegionalHostname
+	CustomHostnames     map[string]cloudflare.CustomHostname
+	CustomHostnamesPrev []string
 }
 
 // RecordParamsTypes is a typeset of the possible Record Params that can be passed to cloudflare-go library
@@ -205,11 +225,19 @@ func updateDNSRecordParam(cfc cloudFlareChange) cloudflare.UpdateDNSRecordParams
 	}
 }
 
+// createDataLocalizationRegionalHostnameParams is a function that returns the appropriate RegionalHostname Param based on the cloudFlareChange passed in
+func createDataLocalizationRegionalHostnameParams(rhc DataLocalizationRegionalHostnameChange) cloudflare.CreateDataLocalizationRegionalHostnameParams {
+	return cloudflare.CreateDataLocalizationRegionalHostnameParams{
+		Hostname:  rhc.Hostname,
+		RegionKey: rhc.RegionKey,
+	}
+}
+
 // updateDataLocalizationRegionalHostnameParams is a function that returns the appropriate RegionalHostname Param based on the cloudFlareChange passed in
-func updateDataLocalizationRegionalHostnameParams(cfc cloudFlareChange) cloudflare.UpdateDataLocalizationRegionalHostnameParams {
+func updateDataLocalizationRegionalHostnameParams(rhc DataLocalizationRegionalHostnameChange) cloudflare.UpdateDataLocalizationRegionalHostnameParams {
 	return cloudflare.UpdateDataLocalizationRegionalHostnameParams{
-		Hostname:  cfc.RegionalHostname.Hostname,
-		RegionKey: cfc.RegionalHostname.RegionKey,
+		Hostname:  rhc.Hostname,
+		RegionKey: rhc.RegionKey,
 	}
 }
 
@@ -324,6 +352,7 @@ func (p *CloudFlareProvider) Records(ctx context.Context) ([]*endpoint.Endpoint,
 			return nil, err
 		}
 
+		// nil if custom hostnames are not enabled
 		chs, chErr := p.listCustomHostnamesWithPagination(ctx, zone.ID)
 		if chErr != nil {
 			return nil, chErr
@@ -342,9 +371,24 @@ func (p *CloudFlareProvider) Records(ctx context.Context) ([]*endpoint.Endpoint,
 func (p *CloudFlareProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	cloudflareChanges := []*cloudFlareChange{}
 
+<<<<<<< HEAD
 	for _, endpoint := range changes.Create {
 		for _, target := range endpoint.Targets {
 			cloudflareChanges = append(cloudflareChanges, p.newCloudFlareChange(cloudFlareCreate, endpoint, target, nil))
+=======
+	// if custom hostnames are enabled, deleting first allows to avoid conflicts with the new ones
+	if p.CustomHostnamesConfig.Enabled {
+		for _, e := range changes.Delete {
+			for _, target := range e.Targets {
+				cloudflareChanges = append(cloudflareChanges, p.newCloudFlareChange(cloudFlareDelete, e, target, nil))
+			}
+		}
+	}
+
+	for _, e := range changes.Create {
+		for _, target := range e.Targets {
+			cloudflareChanges = append(cloudflareChanges, p.newCloudFlareChange(cloudFlareCreate, e, target, nil))
+>>>>>>> 3ef8c733 (rename variables with ambiguous "endpoint" names)
 		}
 	}
 
@@ -366,9 +410,18 @@ func (p *CloudFlareProvider) ApplyChanges(ctx context.Context, changes *plan.Cha
 		}
 	}
 
+<<<<<<< HEAD
 	for _, endpoint := range changes.Delete {
 		for _, target := range endpoint.Targets {
 			cloudflareChanges = append(cloudflareChanges, p.newCloudFlareChange(cloudFlareDelete, endpoint, target, nil))
+=======
+	// TODO: consider deleting before creating even if custom hostnames are not in use
+	if !p.CustomHostnamesConfig.Enabled {
+		for _, e := range changes.Delete {
+			for _, target := range e.Targets {
+				cloudflareChanges = append(cloudflareChanges, p.newCloudFlareChange(cloudFlareDelete, e, target, nil))
+			}
+>>>>>>> 3ef8c733 (rename variables with ambiguous "endpoint" names)
 		}
 	}
 
@@ -399,49 +452,178 @@ func (p *CloudFlareProvider) submitCustomHostnameChanges(ctx context.Context, zo
 					}
 				}
 			}
-			if newChName != "" && prevChName != newChName {
-				log.WithFields(logFields).Infof("Adding custom hostname %q", newChName)
-				_, chErr := p.Client.CreateCustomHostname(ctx, zoneID, change.CustomHostname)
-				if chErr != nil {
-					failedChange = true
-					log.WithFields(logFields).Errorf("failed to add custom hostname %q: %v", newChName, chErr)
+			if newChName != "" {
+				if prevChName != newChName {
+					log.WithFields(logFields).Infof("Adding custom hostname %q", newChName)
+					_, chErr := p.Client.CreateCustomHostname(ctx, zoneID, change.CustomHostname)
+					if chErr != nil {
+						failedChange = true
+						log.WithFields(logFields).Errorf("failed to add custom hostname %q: %v", newChName, chErr)
+					}
 				}
 			}
 		}
 	case cloudFlareDelete:
-		if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] && change.CustomHostname.Hostname != "" {
-			log.WithFields(logFields).Infof("Deleting custom hostname %q", change.CustomHostname.Hostname)
-			if ch, err := getCustomHostname(chs, change.CustomHostname.Hostname); err == nil {
-				chID := ch.ID
-				chErr := p.Client.DeleteCustomHostname(ctx, zoneID, chID)
-				if chErr != nil {
-					failedChange = true
-					log.WithFields(logFields).Errorf("failed to delete custom hostname %q/%q: %v", chID, change.CustomHostname.Hostname, chErr)
+		for _, changeCH := range change.CustomHostnames {
+			if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] && changeCH.Hostname != "" {
+				log.WithFields(logFields).Infof("Deleting custom hostname %q", changeCH.Hostname)
+				if ch, err := getCustomHostname(chs, changeCH.Hostname); err == nil {
+					chID := ch.ID
+					chErr := p.Client.DeleteCustomHostname(ctx, zoneID, chID)
+					if chErr != nil {
+						failedChange = true
+						log.WithFields(logFields).Errorf("failed to delete custom hostname %q/%q: %v", chID, changeCH.Hostname, chErr)
+					}
+				} else {
+					log.WithFields(logFields).Warnf("failed to delete custom hostname %q: %v", changeCH.Hostname, err)
 				}
-			} else {
-				log.WithFields(logFields).Warnf("failed to delete custom hostname %q: %v", change.CustomHostname.Hostname, err)
 			}
 		}
 	case cloudFlareCreate:
-		if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] && change.CustomHostname.Hostname != "" {
-			log.WithFields(logFields).Infof("Creating custom hostname %q", change.CustomHostname.Hostname)
-			if ch, err := getCustomHostname(chs, change.CustomHostname.Hostname); err == nil {
-				if change.CustomHostname.CustomOriginServer == ch.CustomOriginServer {
-					log.WithFields(logFields).Warnf("custom hostname %q already exists with the same origin %q, continue", change.CustomHostname.Hostname, ch.CustomOriginServer)
+		for _, changeCH := range change.CustomHostnames {
+			if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] && changeCH.Hostname != "" {
+				log.WithFields(logFields).Infof("Creating custom hostname %q", changeCH.Hostname)
+				if ch, err := getCustomHostname(chs, changeCH.Hostname); err == nil {
+					if changeCH.CustomOriginServer == ch.CustomOriginServer {
+						log.WithFields(logFields).Warnf("custom hostname %q already exists with the same origin %q, continue", changeCH.Hostname, ch.CustomOriginServer)
+					} else {
+						failedChange = true
+						log.WithFields(logFields).Errorf("failed to create custom hostname, %q already exists with origin %q", changeCH.Hostname, ch.CustomOriginServer)
+					}
 				} else {
-					failedChange = true
-					log.WithFields(logFields).Errorf("failed to create custom hostname, %q already exists with origin %q", change.CustomHostname.Hostname, ch.CustomOriginServer)
-				}
-			} else {
-				_, chErr := p.Client.CreateCustomHostname(ctx, zoneID, change.CustomHostname)
-				if chErr != nil {
-					failedChange = true
-					log.WithFields(logFields).Errorf("failed to create custom hostname %q: %v", change.CustomHostname.Hostname, chErr)
+					_, chErr := p.Client.CreateCustomHostname(ctx, zoneID, changeCH)
+					if chErr != nil {
+						failedChange = true
+						log.WithFields(logFields).Errorf("failed to create custom hostname %q: %v", changeCH.Hostname, chErr)
+					}
 				}
 			}
 		}
 	}
 	return !failedChange
+}
+
+// submitDataLocalizationRegionalHostnameChanges applies a set of data localization regional hostname changes, returns false if it fails
+func (p *CloudFlareProvider) submitDataLocalizationRegionalHostnameChanges(ctx context.Context, changes []DataLocalizationRegionalHostnameChange, resourceContainer *cloudflare.ResourceContainer) bool {
+	failedChange := false
+
+	for _, change := range changes {
+		logFields := log.Fields{
+			"hostname":   change.Hostname,
+			"region_key": change.RegionKey,
+			"action":     change.Action,
+			"zone":       resourceContainer.Identifier,
+		}
+		log.WithFields(logFields).Info("Changing regional hostname")
+		switch change.Action {
+		case cloudFlareCreate:
+			log.WithFields(logFields).Debug("Creating regional hostname")
+			if p.DryRun {
+				continue
+			}
+			regionalHostnameParam := createDataLocalizationRegionalHostnameParams(change)
+			err := p.Client.CreateDataLocalizationRegionalHostname(ctx, resourceContainer, regionalHostnameParam)
+			if err != nil {
+				var apiErr *cloudflare.Error
+				if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
+					log.WithFields(logFields).Debug("Regional hostname already exists, updating instead")
+					params := updateDataLocalizationRegionalHostnameParams(change)
+					err := p.Client.UpdateDataLocalizationRegionalHostname(ctx, resourceContainer, params)
+					if err != nil {
+						failedChange = true
+						log.WithFields(logFields).Errorf("failed to update regional hostname: %v", err)
+					}
+					continue
+				}
+				failedChange = true
+				log.WithFields(logFields).Errorf("failed to create regional hostname: %v", err)
+			}
+		case cloudFlareUpdate:
+			log.WithFields(logFields).Debug("Updating regional hostname")
+			if p.DryRun {
+				continue
+			}
+			regionalHostnameParam := updateDataLocalizationRegionalHostnameParams(change)
+			err := p.Client.UpdateDataLocalizationRegionalHostname(ctx, resourceContainer, regionalHostnameParam)
+			if err != nil {
+				var apiErr *cloudflare.Error
+				if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+					log.WithFields(logFields).Debug("Regional hostname not does not exists, creating instead")
+					params := createDataLocalizationRegionalHostnameParams(change)
+					err := p.Client.CreateDataLocalizationRegionalHostname(ctx, resourceContainer, params)
+					if err != nil {
+						failedChange = true
+						log.WithFields(logFields).Errorf("failed to create regional hostname: %v", err)
+					}
+					continue
+				}
+				failedChange = true
+				log.WithFields(logFields).Errorf("failed to update regional hostname: %v", err)
+			}
+		case cloudFlareDelete:
+			log.WithFields(logFields).Debug("Deleting regional hostname")
+			if p.DryRun {
+				continue
+			}
+			err := p.Client.DeleteDataLocalizationRegionalHostname(ctx, resourceContainer, change.Hostname)
+			if err != nil {
+				var apiErr *cloudflare.Error
+				if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+					log.WithFields(logFields).Debug("Regional hostname does not exists, nothing to do")
+					continue
+				}
+				failedChange = true
+				log.WithFields(logFields).Errorf("failed to delete regional hostname: %v", err)
+			}
+		}
+	}
+
+	return !failedChange
+}
+
+// dataLocalizationRegionalHostnamesChanges processes a slice of cloudFlare changes and consolidates them
+// into a list of data localization regional hostname changes.
+// returns nil if no changes are needed
+func dataLocalizationRegionalHostnamesChanges(changes []*cloudFlareChange) ([]DataLocalizationRegionalHostnameChange, error) {
+	regionalHostnameChanges := make(map[string]DataLocalizationRegionalHostnameChange)
+	for _, change := range changes {
+		if change.RegionalHostname.Hostname == "" {
+			continue
+		}
+		if change.RegionalHostname.RegionKey == "" {
+			return nil, fmt.Errorf("region key is empty for regional hostname %q", change.RegionalHostname.Hostname)
+		}
+		regionalHostname, ok := regionalHostnameChanges[change.RegionalHostname.Hostname]
+		switch change.Action {
+		case cloudFlareCreate, cloudFlareUpdate:
+			if !ok {
+				regionalHostnameChanges[change.RegionalHostname.Hostname] = DataLocalizationRegionalHostnameChange{
+					Action:           change.Action,
+					RegionalHostname: change.RegionalHostname,
+				}
+				continue
+			}
+			if regionalHostname.RegionKey != change.RegionalHostname.RegionKey {
+				return nil, fmt.Errorf("conflicting region keys for regional hostname %q: %q and %q", change.RegionalHostname.Hostname, regionalHostname.RegionKey, change.RegionalHostname.RegionKey)
+			}
+			if (change.Action == cloudFlareUpdate && regionalHostname.Action != cloudFlareUpdate) ||
+				regionalHostname.Action == cloudFlareDelete {
+				regionalHostnameChanges[change.RegionalHostname.Hostname] = DataLocalizationRegionalHostnameChange{
+					Action:           cloudFlareUpdate,
+					RegionalHostname: change.RegionalHostname,
+				}
+			}
+		case cloudFlareDelete:
+			if !ok {
+				regionalHostnameChanges[change.RegionalHostname.Hostname] = DataLocalizationRegionalHostnameChange{
+					Action:           cloudFlareDelete,
+					RegionalHostname: change.RegionalHostname,
+				}
+				continue
+			}
+		}
+	}
+	return slices.Collect(maps.Values(regionalHostnameChanges)), nil
 }
 
 // submitChanges takes a zone and a collection of Changes and sends them as a single transaction.
@@ -460,7 +642,7 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 	changesByZone := p.changesByZone(zones, changes)
 
 	var failedZones []string
-	for zoneID, changes := range changesByZone {
+	for zoneID, zoneChanges := range changesByZone {
 		var failedChange bool
 		for _, change := range changes {
 			logFields := log.Fields{
@@ -477,7 +659,6 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 				continue
 			}
 
-			resourceContainer := cloudflare.ZoneIdentifier(zoneID)
 			records, err := p.listDNSRecordsWithAutoPagination(ctx, zoneID)
 			if err != nil {
 				return fmt.Errorf("could not fetch records from zone, %w", err)
@@ -487,35 +668,8 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 				return fmt.Errorf("could not fetch custom hostnames from zone, %v", chErr)
 			}
 			if change.Action == cloudFlareUpdate {
-<<<<<<< HEAD
 				if !p.submitCustomHostnameChanges(ctx, zoneID, change, chs, logFields) {
 					failedChange = true
-=======
-				if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] {
-					prevChName := change.CustomHostnamePrev
-					newChName := change.CustomHostname.Hostname
-					if prevCh, err := getCustomHostname(chs, prevChName); err == nil {
-						prevChID := prevCh.ID
-						if prevChID != "" && prevChName != newChName {
-							log.WithFields(logFields).Infof("Removing previous custom hostname %q/%q", prevChID, prevChName)
-							chErr := p.Client.DeleteCustomHostname(ctx, zoneID, prevChID)
-							if chErr != nil {
-								failedChange = true
-								log.WithFields(logFields).Errorf("failed to remove previous custom hostname %q/%q: %v", prevChID, prevChName, chErr)
-							}
-						}
-					}
-					if newChName != "" {
-						if prevChName != newChName {
-							log.WithFields(logFields).Infof("Adding custom hostname %q", newChName)
-							_, chErr := p.Client.CreateCustomHostname(ctx, zoneID, change.CustomHostname)
-							if chErr != nil {
-								failedChange = true
-								log.WithFields(logFields).Errorf("failed to add custom hostname %q: %v", newChName, chErr)
-							}
-						}
-					}
->>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
 				}
 				recordID := p.getRecordID(records, change.ResourceRecord)
 				if recordID == "" {
@@ -529,13 +683,6 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 					failedChange = true
 					log.WithFields(logFields).Errorf("failed to update record: %v", err)
 				}
-				if regionalHostnameParam := updateDataLocalizationRegionalHostnameParams(*change); regionalHostnameParam.RegionKey != "" {
-					regionalHostnameErr := p.Client.UpdateDataLocalizationRegionalHostname(ctx, resourceContainer, regionalHostnameParam)
-					if regionalHostnameErr != nil {
-						failedChange = true
-						log.WithFields(logFields).Errorf("failed to update record when editing region: %v", regionalHostnameErr)
-					}
-				}
 			} else if change.Action == cloudFlareDelete {
 				recordID := p.getRecordID(records, change.ResourceRecord)
 				if recordID == "" {
@@ -547,23 +694,8 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 					failedChange = true
 					log.WithFields(logFields).Errorf("failed to delete record: %v", err)
 				}
-<<<<<<< HEAD
 				if !p.submitCustomHostnameChanges(ctx, zoneID, change, chs, logFields) {
 					failedChange = true
-=======
-				if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] && change.CustomHostname.Hostname != "" {
-					log.WithFields(logFields).Infof("Deleting custom hostname %q", change.CustomHostname.Hostname)
-					if ch, err := getCustomHostname(chs, change.CustomHostname.Hostname); err == nil {
-						chID := ch.ID
-						chErr := p.Client.DeleteCustomHostname(ctx, zoneID, chID)
-						if chErr != nil {
-							failedChange = true
-							log.WithFields(logFields).Errorf("failed to delete custom hostname %q/%q: %v", chID, change.CustomHostname.Hostname, chErr)
-						}
-					} else {
-						log.WithFields(logFields).Warnf("failed to delete custom hostname %q: %v", change.CustomHostname.Hostname, err)
-					}
->>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
 				}
 			} else if change.Action == cloudFlareCreate {
 				recordParam := getCreateDNSRecordParam(*change)
@@ -572,30 +704,24 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 					failedChange = true
 					log.WithFields(logFields).Errorf("failed to create record: %v", err)
 				}
-<<<<<<< HEAD
 				if !p.submitCustomHostnameChanges(ctx, zoneID, change, chs, logFields) {
 					failedChange = true
-=======
-				if recordTypeCustomHostnameSupported[change.ResourceRecord.Type] && change.CustomHostname.Hostname != "" {
-					log.WithFields(logFields).Infof("Creating custom hostname %q", change.CustomHostname.Hostname)
-					if ch, err := getCustomHostname(chs, change.CustomHostname.Hostname); err == nil {
-						if change.CustomHostname.CustomOriginServer == ch.CustomOriginServer {
-							log.WithFields(logFields).Warnf("custom hostname %q already exists with the same origin %q, continue", change.CustomHostname.Hostname, ch.CustomOriginServer)
-						} else {
-							failedChange = true
-							log.WithFields(logFields).Errorf("failed to create custom hostname, %q already exists with origin %q", change.CustomHostname.Hostname, ch.CustomOriginServer)
-						}
-					} else {
-						_, chErr := p.Client.CreateCustomHostname(ctx, zoneID, change.CustomHostname)
-						if chErr != nil {
-							failedChange = true
-							log.WithFields(logFields).Errorf("failed to create custom hostname %q: %v", change.CustomHostname.Hostname, chErr)
-						}
-					}
->>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
 				}
 			}
 		}
+
+		if regionalHostnamesChanges, err := dataLocalizationRegionalHostnamesChanges(zoneChanges); err == nil {
+			if !p.submitDataLocalizationRegionalHostnameChanges(ctx, regionalHostnamesChanges, resourceContainer) {
+				failedChange = true
+			}
+		} else {
+			logFields := log.Fields{
+				"zone": zoneID,
+			}
+			log.WithFields(logFields).Errorf("failed to build data localization regional hostname changes: %v", err)
+			failedChange = true
+		}
+
 		if failedChange {
 			failedZones = append(failedZones, zoneID)
 		}
@@ -617,6 +743,17 @@ func (p *CloudFlareProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]
 			e.RecordTTL = 0
 		}
 		e.SetProviderSpecificProperty(source.CloudflareProxiedKey, strconv.FormatBool(proxied))
+
+		if p.CustomHostnamesConfig.Enabled {
+			// sort custom hostnames in annotation to properly detect changes
+			if customHostnames := getEndpointCustomHostnames(e); len(customHostnames) > 1 {
+				sort.Strings(customHostnames)
+				e.SetProviderSpecificProperty(source.CloudflareCustomHostnameKey, strings.Join(customHostnames, ","))
+			}
+		} else {
+			// ignore custom hostnames annotations if not enabled
+			e.DeleteProviderSpecificProperty(source.CloudflareCustomHostnameKey)
+		}
 
 		adjustedEndpoints = append(adjustedEndpoints, e)
 	}
@@ -652,41 +789,32 @@ func (p *CloudFlareProvider) getRecordID(records DNSRecordsMap, record cloudflar
 	return ""
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 func getCustomHostname(chs CustomHostnamesMap, chName string) (cloudflare.CustomHostname, error) {
 	if chName == "" {
 		return cloudflare.CustomHostname{}, fmt.Errorf("failed to get custom hostname: %q is empty", chName)
-=======
-func getCustomHostnameIdWithOrigin(chs []cloudflare.CustomHostname, hostname string) (string, string) {
-=======
-func getCustomHostname(chs []cloudflare.CustomHostname, chName string) (cloudflare.CustomHostname, error) {
-	if chName == "" {
-		return cloudflare.CustomHostname{}, fmt.Errorf("empty")
 	}
->>>>>>> 2a15aba5 (syntax/style)
-	for _, ch := range chs {
-		if ch.Hostname == chName {
-			return ch, nil
-		}
->>>>>>> 8d37820a (fix(cloudflare): custom hostnames edge-cases causing duplicates)
-	}
-<<<<<<< HEAD
 	if ch, ok := chs[CustomHostnameIndex{Hostname: chName}]; ok {
 		return ch, nil
 	}
 	return cloudflare.CustomHostname{}, fmt.Errorf("failed to get custom hostname: %q not found", chName)
-=======
-	return cloudflare.CustomHostname{}, fmt.Errorf("not found")
->>>>>>> 2a15aba5 (syntax/style)
 }
 
-func (p *CloudFlareProvider) newCloudFlareChange(action string, endpoint *endpoint.Endpoint, target string, current *endpoint.Endpoint) *cloudFlareChange {
-	ttl := defaultCloudFlareRecordTTL
-	proxied := shouldBeProxied(endpoint, p.proxiedByDefault)
+func (p *CloudFlareProvider) newCustomHostname(customHostname string, origin string) cloudflare.CustomHostname {
+	return cloudflare.CustomHostname{
+		Hostname:           customHostname,
+		CustomOriginServer: origin,
+		SSL:                getCustomHostnamesSSLOptions(p.CustomHostnamesConfig),
+<<<<<<< HEAD
+=======
+	}
+}
 
-	if endpoint.RecordTTL.IsConfigured() {
-		ttl = int(endpoint.RecordTTL)
+func (p *CloudFlareProvider) newCloudFlareChange(action string, ep *endpoint.Endpoint, target string, current *endpoint.Endpoint) *cloudFlareChange {
+	ttl := defaultCloudFlareRecordTTL
+	proxied := shouldBeProxied(ep, p.proxiedByDefault)
+
+	if ep.RecordTTL.IsConfigured() {
+		ttl = int(ep.RecordTTL)
 	}
 	dt := time.Now()
 
@@ -694,30 +822,35 @@ func (p *CloudFlareProvider) newCloudFlareChange(action string, endpoint *endpoi
 	newCustomHostname := cloudflare.CustomHostname{}
 	if p.CustomHostnamesConfig.Enabled {
 		if current != nil {
-			customHostnamePrev = getEndpointCustomHostname(current)
+			prevCustomHostnames = getEndpointCustomHostnames(current)
 		}
+<<<<<<< HEAD
 		newCustomHostname = cloudflare.CustomHostname{
 			Hostname:           getEndpointCustomHostname(endpoint),
 			CustomOriginServer: endpoint.DNSName,
 			SSL:                getCustomHostnamesSSLOptions(p.CustomHostnamesConfig),
+=======
+		for _, v := range getEndpointCustomHostnames(ep) {
+			newCustomHostnames[v] = p.newCustomHostname(v, ep.DNSName)
+>>>>>>> 3ef8c733 (rename variables with ambiguous "endpoint" names)
 		}
 	}
 	return &cloudFlareChange{
 		Action: action,
 		ResourceRecord: cloudflare.DNSRecord{
-			Name: endpoint.DNSName,
+			Name: ep.DNSName,
 			TTL:  ttl,
 			// We have to use pointers to bools now, as the upstream cloudflare-go library requires them
 			// see: https://github.com/cloudflare/cloudflare-go/pull/595
 			Proxied: &proxied,
-			Type:    endpoint.RecordType,
+			Type:    ep.RecordType,
 			Content: target,
 			Meta: map[string]interface{}{
 				"region": p.RegionKey,
 			},
 		},
 		RegionalHostname: cloudflare.RegionalHostname{
-			Hostname:  endpoint.DNSName,
+			Hostname:  ep.DNSName,
 			RegionKey: p.RegionKey,
 			CreatedOn: &dt,
 		},
@@ -726,7 +859,7 @@ func (p *CloudFlareProvider) newCloudFlareChange(action string, endpoint *endpoi
 	}
 }
 
-func newDNSRecordIndex(r cloudflare.DNSRecord) DNSRecordIndex {
+func NewDNSRecordIndex(r cloudflare.DNSRecord) DNSRecordIndex {
 	return DNSRecordIndex{Name: r.Name, Type: r.Type, Content: r.Content}
 }
 
@@ -750,7 +883,7 @@ func (p *CloudFlareProvider) listDNSRecordsWithAutoPagination(ctx context.Contex
 		}
 
 		for _, r := range pageRecords {
-			records[newDNSRecordIndex(r)] = r
+			records[NewDNSRecordIndex(r)] = r
 		}
 		params.ResultInfo = resultInfo.Next()
 		if params.Done() {
@@ -760,7 +893,7 @@ func (p *CloudFlareProvider) listDNSRecordsWithAutoPagination(ctx context.Contex
 	return records, nil
 }
 
-func newCustomHostnameIndex(ch cloudflare.CustomHostname) CustomHostnameIndex {
+func NewCustomHostnameIndex(ch cloudflare.CustomHostname) CustomHostnameIndex {
 	return CustomHostnameIndex{Hostname: ch.Hostname}
 }
 
@@ -785,7 +918,7 @@ func (p *CloudFlareProvider) listCustomHostnamesWithPagination(ctx context.Conte
 			return nil, err
 		}
 		for _, ch := range pageCustomHostnameListResponse {
-			chs[newCustomHostnameIndex(ch)] = ch
+			chs[NewCustomHostnameIndex(ch)] = ch
 		}
 		resultInfo = result.Next()
 		if resultInfo.Done() {
@@ -807,10 +940,10 @@ func getCustomHostnamesSSLOptions(customHostnamesConfig CustomHostnamesConfig) *
 	}
 }
 
-func shouldBeProxied(endpoint *endpoint.Endpoint, proxiedByDefault bool) bool {
+func shouldBeProxied(ep *endpoint.Endpoint, proxiedByDefault bool) bool {
 	proxied := proxiedByDefault
 
-	for _, v := range endpoint.ProviderSpecific {
+	for _, v := range ep.ProviderSpecific {
 		if v.Name == source.CloudflareProxiedKey {
 			b, err := strconv.ParseBool(v.Value)
 			if err != nil {
@@ -822,16 +955,27 @@ func shouldBeProxied(endpoint *endpoint.Endpoint, proxiedByDefault bool) bool {
 		}
 	}
 
-	if recordTypeProxyNotSupported[endpoint.RecordType] {
+	if recordTypeProxyNotSupported[ep.RecordType] {
 		proxied = false
 	}
 	return proxied
 }
 
+<<<<<<< HEAD
 func getEndpointCustomHostname(endpoint *endpoint.Endpoint) string {
 	for _, v := range endpoint.ProviderSpecific {
-		if v.Name == source.CloudflareCustomHostnameKey {
+<<<<<<< HEAD
+		if v.Name == source.CloudflareRegionKey {
 			return v.Value
+=======
+=======
+func getEndpointCustomHostnames(ep *endpoint.Endpoint) []string {
+	for _, v := range ep.ProviderSpecific {
+>>>>>>> 3ef8c733 (rename variables with ambiguous "endpoint" names)
+		if v.Name == source.CloudflareCustomHostnameKey {
+			customHostnames := strings.Split(v.Value, ",")
+			return customHostnames
+>>>>>>> 647d8507 (remove redunaant custom hostnames sort)
 		}
 	}
 	return ""
@@ -857,11 +1001,10 @@ func groupByNameAndTypeWithCustomHostnames(records DNSRecordsMap, chs CustomHost
 	}
 
 	// map custom origin to custom hostname, custom origin should match to a dns record
-	customOriginServers := map[string]string{}
+	customHostnames := map[string][]string{}
 
-	// only one latest custom hostname for a dns record would work; noop (chs is empty) if custom hostnames feature is not in use
 	for _, c := range chs {
-		customOriginServers[c.CustomOriginServer] = c.Hostname
+		customHostnames[c.CustomOriginServer] = append(customHostnames[c.CustomOriginServer], c.Hostname)
 	}
 
 	// create single endpoint with all the targets for each name/type
@@ -873,7 +1016,7 @@ func groupByNameAndTypeWithCustomHostnames(records DNSRecordsMap, chs CustomHost
 		for i, record := range records {
 			targets[i] = record.Content
 		}
-		ep := endpoint.NewEndpointWithTTL(
+		e := endpoint.NewEndpointWithTTL(
 			records[0].Name,
 			records[0].Type,
 			endpoint.TTL(records[0].TTL),
@@ -882,16 +1025,24 @@ func groupByNameAndTypeWithCustomHostnames(records DNSRecordsMap, chs CustomHost
 		if records[0].Proxied != nil {
 			proxied = *records[0].Proxied
 		}
-		if ep == nil {
+		if e == nil {
 			continue
 		}
+<<<<<<< HEAD
 		ep = ep.WithProviderSpecific(source.CloudflareProxiedKey, strconv.FormatBool(proxied))
 		// noop (customOriginServers is empty) if custom hostnames feature is not in use
 		if customHostname, ok := customOriginServers[records[0].Name]; ok {
 			ep = ep.WithProviderSpecific(source.CloudflareCustomHostnameKey, customHostname)
+=======
+		e = e.WithProviderSpecific(source.CloudflareProxiedKey, strconv.FormatBool(proxied))
+		// noop (customHostnames is empty) if custom hostnames feature is not in use
+		if customHostnames, ok := customHostnames[records[0].Name]; ok {
+			sort.Strings(customHostnames)
+			e = e.WithProviderSpecific(source.CloudflareCustomHostnameKey, strings.Join(customHostnames, ","))
+>>>>>>> 3ef8c733 (rename variables with ambiguous "endpoint" names)
 		}
 
-		endpoints = append(endpoints, ep)
+		endpoints = append(endpoints, e)
 	}
 
 	return endpoints
