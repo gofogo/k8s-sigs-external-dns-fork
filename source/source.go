@@ -55,9 +55,22 @@ const (
 
 // Provider-specific annotations
 const (
+<<<<<<< HEAD
+<<<<<<< HEAD
 	// CloudflareProxiedKey The annotation used for determining if traffic will go through Cloudflare
 	CloudflareProxiedKey        = annotations.CloudflareProxiedKey
 	CloudflareCustomHostnameKey = annotations.CloudflareCustomHostnameKey
+=======
+	// The annotation used for determining if traffic will go through Cloudflare
+	CloudflareProxiedKey        = "external-dns.alpha.kubernetes.io/cloudflare-proxied"
+	CloudflareCustomHostnameKey = "external-dns.alpha.kubernetes.io/cloudflare-custom-hostname"
+	CloudflareRegionKey         = "external-dns.alpha.kubernetes.io/cloudflare-region-key"
+>>>>>>> c3f0cd66 (fix cloudflare regional hostnames)
+=======
+	// CloudflareProxiedKey The annotation used for determining if traffic will go through Cloudflare
+	CloudflareProxiedKey        = annotations.CloudflareProxiedKey
+	CloudflareCustomHostnameKey = annotations.CloudflareCustomHostnameKey
+>>>>>>> 12ae6fea (chore(source): code cleanup)
 
 	SetIdentifierKey = annotations.SetIdentifierKey
 )
@@ -71,6 +84,7 @@ type Source interface {
 
 func getTTLFromAnnotations(input map[string]string, resource string) endpoint.TTL {
 	return annotations.TTLFromAnnotations(input, resource)
+<<<<<<< HEAD
 }
 
 type kubeObject interface {
@@ -118,8 +132,79 @@ func getInternalHostnamesFromAnnotations(input map[string]string) []string {
 	return annotations.InternalHostnamesFromAnnotations(input)
 }
 
+<<<<<<< HEAD
 func getProviderSpecificAnnotations(input map[string]string) (endpoint.ProviderSpecific, string) {
 	return annotations.ProviderSpecificAnnotations(input)
+=======
+func splitHostnameAnnotation(annotation string) []string {
+	return strings.Split(strings.ReplaceAll(annotation, " ", ""), ",")
+}
+
+func getAliasFromAnnotations(annotations map[string]string) bool {
+	aliasAnnotation, exists := annotations[aliasAnnotationKey]
+	return exists && aliasAnnotation == "true"
+}
+
+func getProviderSpecificAnnotations(annotations map[string]string) (endpoint.ProviderSpecific, string) {
+	providerSpecificAnnotations := endpoint.ProviderSpecific{}
+
+	if v, exists := annotations[CloudflareProxiedKey]; exists {
+		providerSpecificAnnotations = append(providerSpecificAnnotations, endpoint.ProviderSpecificProperty{
+			Name:  CloudflareProxiedKey,
+			Value: v,
+		})
+	}
+	if v, exists := annotations[CloudflareCustomHostnameKey]; exists {
+		providerSpecificAnnotations = append(providerSpecificAnnotations, endpoint.ProviderSpecificProperty{
+			Name:  CloudflareCustomHostnameKey,
+			Value: v,
+		})
+	}
+	if v, exists := annotations[CloudflareRegionKey]; exists {
+		providerSpecificAnnotations = append(providerSpecificAnnotations, endpoint.ProviderSpecificProperty{
+			Name:  CloudflareRegionKey,
+			Value: v,
+		})
+	}
+	if getAliasFromAnnotations(annotations) {
+		providerSpecificAnnotations = append(providerSpecificAnnotations, endpoint.ProviderSpecificProperty{
+			Name:  "alias",
+			Value: "true",
+		})
+	}
+	setIdentifier := ""
+	for k, v := range annotations {
+		if k == SetIdentifierKey {
+			setIdentifier = v
+		} else if strings.HasPrefix(k, "external-dns.alpha.kubernetes.io/aws-") {
+			attr := strings.TrimPrefix(k, "external-dns.alpha.kubernetes.io/aws-")
+			providerSpecificAnnotations = append(providerSpecificAnnotations, endpoint.ProviderSpecificProperty{
+				Name:  fmt.Sprintf("aws/%s", attr),
+				Value: v,
+			})
+		} else if strings.HasPrefix(k, "external-dns.alpha.kubernetes.io/scw-") {
+			attr := strings.TrimPrefix(k, "external-dns.alpha.kubernetes.io/scw-")
+			providerSpecificAnnotations = append(providerSpecificAnnotations, endpoint.ProviderSpecificProperty{
+				Name:  fmt.Sprintf("scw/%s", attr),
+				Value: v,
+			})
+		} else if strings.HasPrefix(k, "external-dns.alpha.kubernetes.io/ibmcloud-") {
+			attr := strings.TrimPrefix(k, "external-dns.alpha.kubernetes.io/ibmcloud-")
+			providerSpecificAnnotations = append(providerSpecificAnnotations, endpoint.ProviderSpecificProperty{
+				Name:  fmt.Sprintf("ibmcloud-%s", attr),
+				Value: v,
+			})
+		} else if strings.HasPrefix(k, "external-dns.alpha.kubernetes.io/webhook-") {
+			// Support for wildcard annotations for webhook providers
+			attr := strings.TrimPrefix(k, "external-dns.alpha.kubernetes.io/webhook-")
+			providerSpecificAnnotations = append(providerSpecificAnnotations, endpoint.ProviderSpecificProperty{
+				Name:  fmt.Sprintf("webhook/%s", attr),
+				Value: v,
+			})
+		}
+	}
+	return providerSpecificAnnotations, setIdentifier
+>>>>>>> c3f0cd66 (fix cloudflare regional hostnames)
 }
 
 // getTargetsFromTargetAnnotation gets endpoints from optional "target" annotation.
@@ -217,5 +302,124 @@ func waitForDynamicCacheSync(ctx context.Context, factory dynamicInformerFactory
 			}
 		}
 	}
+=======
+}
+
+type kubeObject interface {
+	runtime.Object
+	metav1.Object
+}
+
+func execTemplate(tmpl *template.Template, obj kubeObject) (hostnames []string, err error) {
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, obj); err != nil {
+		kind := obj.GetObjectKind().GroupVersionKind().Kind
+		return nil, fmt.Errorf("failed to apply template on %s %s/%s: %w", kind, obj.GetNamespace(), obj.GetName(), err)
+	}
+	for _, name := range strings.Split(buf.String(), ",") {
+		name = strings.TrimFunc(name, unicode.IsSpace)
+		name = strings.TrimSuffix(name, ".")
+		hostnames = append(hostnames, name)
+	}
+	return hostnames, nil
+}
+
+func parseTemplate(fqdnTemplate string) (tmpl *template.Template, err error) {
+	if fqdnTemplate == "" {
+		return nil, nil
+	}
+	funcs := template.FuncMap{
+		"trimPrefix": strings.TrimPrefix,
+	}
+	return template.New("endpoint").Funcs(funcs).Parse(fqdnTemplate)
+}
+
+func getHostnamesFromAnnotations(input map[string]string) []string {
+	return annotations.HostnamesFromAnnotations(input)
+}
+
+func getAccessFromAnnotations(input map[string]string) string {
+	return input[accessAnnotationKey]
+}
+
+func getEndpointsTypeFromAnnotations(input map[string]string) string {
+	return input[endpointsTypeAnnotationKey]
+}
+
+func getInternalHostnamesFromAnnotations(input map[string]string) []string {
+	return annotations.InternalHostnamesFromAnnotations(input)
+}
+
+func getProviderSpecificAnnotations(input map[string]string) (endpoint.ProviderSpecific, string) {
+	return annotations.ProviderSpecificAnnotations(input)
+}
+
+// getTargetsFromTargetAnnotation gets endpoints from optional "target" annotation.
+// Returns empty endpoints array if none are found.
+func getTargetsFromTargetAnnotation(input map[string]string) endpoint.Targets {
+	return annotations.TargetsFromTargetAnnotation(input)
+}
+
+// endpointsForHostname returns the endpoint objects for each host-target combination.
+func endpointsForHostname(hostname string, targets endpoint.Targets, ttl endpoint.TTL, providerSpecific endpoint.ProviderSpecific, setIdentifier string, resource string) []*endpoint.Endpoint {
+	return EndpointsForHostname(hostname, targets, ttl, providerSpecific, setIdentifier, resource)
+}
+
+func getLabelSelector(annotationFilter string) (labels.Selector, error) {
+	labelSelector, err := metav1.ParseToLabelSelector(annotationFilter)
+	if err != nil {
+		return nil, err
+	}
+	return metav1.LabelSelectorAsSelector(labelSelector)
+}
+
+func matchLabelSelector(selector labels.Selector, srcAnnotations map[string]string) bool {
+	return selector.Matches(labels.Set(srcAnnotations))
+}
+
+type eventHandlerFunc func()
+
+func (fn eventHandlerFunc) OnAdd(obj interface{}, isInInitialList bool) { fn() }
+func (fn eventHandlerFunc) OnUpdate(oldObj, newObj interface{})         { fn() }
+func (fn eventHandlerFunc) OnDelete(obj interface{})                    { fn() }
+
+type informerFactory interface {
+	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
+}
+
+func waitForCacheSync(ctx context.Context, factory informerFactory) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	for typ, done := range factory.WaitForCacheSync(ctx.Done()) {
+		if !done {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("failed to sync %v: %v", typ, ctx.Err())
+			default:
+				return fmt.Errorf("failed to sync %v", typ)
+			}
+		}
+	}
+	return nil
+}
+
+type dynamicInformerFactory interface {
+	WaitForCacheSync(stopCh <-chan struct{}) map[schema.GroupVersionResource]bool
+}
+
+func waitForDynamicCacheSync(ctx context.Context, factory dynamicInformerFactory) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	for typ, done := range factory.WaitForCacheSync(ctx.Done()) {
+		if !done {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("failed to sync %v: %v", typ, ctx.Err())
+			default:
+				return fmt.Errorf("failed to sync %v", typ)
+			}
+		}
+	}
+>>>>>>> 12ae6fea (chore(source): code cleanup)
 	return nil
 }
