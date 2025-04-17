@@ -35,6 +35,7 @@ import (
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	"sigs.k8s.io/external-dns/source/utils"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
@@ -435,7 +436,7 @@ func parseGateway(gateway string) (namespace, name string, err error) {
 }
 
 func (sc *virtualServiceSource) targetsFromIngress(ctx context.Context, ingressStr string, gateway *networkingv1alpha3.Gateway) (targets endpoint.Targets, err error) {
-	namespace, name, err := parseIngress(ingressStr)
+	namespace, name, err := utils.ParseIngress(ingressStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse Ingress annotation on Gateway (%s/%s): %w", gateway.Namespace, gateway.Name, err)
 	}
@@ -477,7 +478,7 @@ func (sc *virtualServiceSource) targetsFromGateway(ctx context.Context, gateway 
 	}
 
 	for _, service := range services {
-		if !gatewaySelectorMatchesServiceSelector(gateway.Spec.Selector, service.Spec.Selector) {
+		if !utils.SelectorMatchesServiceSelector(gateway.Spec.Selector, service.Spec.Selector) {
 			continue
 		}
 

@@ -89,6 +89,7 @@ type Source interface {
 	AddEventHandler(context.Context, func())
 }
 
+// TODO: refactore. moved to source/utils
 func getTTLFromAnnotations(annotations map[string]string, resource string) endpoint.TTL {
 	ttlNotConfigured := endpoint.TTL(0)
 	ttlAnnotation, exists := annotations[ttlAnnotationKey]
@@ -107,6 +108,7 @@ func getTTLFromAnnotations(annotations map[string]string, resource string) endpo
 	return endpoint.TTL(ttlValue)
 }
 
+// TODO: refactore. moved to source/utils
 // parseTTL parses TTL from string, returning duration in seconds.
 // parseTTL supports both integers like "600" and durations based
 // on Go Duration like "10m", hence "600" and "10m" represent the same value.
@@ -183,11 +185,13 @@ func splitHostnameAnnotation(annotation string) []string {
 	return strings.Split(strings.ReplaceAll(annotation, " ", ""), ",")
 }
 
+// TODO: refactore. moved to source/utils
 func getAliasFromAnnotations(annotations map[string]string) bool {
 	aliasAnnotation, exists := annotations[aliasAnnotationKey]
 	return exists && aliasAnnotation == "true"
 }
 
+// TODO: refactore. moved to source/utils
 func getProviderSpecificAnnotations(annotations map[string]string) (endpoint.ProviderSpecific, string) {
 	providerSpecificAnnotations := endpoint.ProviderSpecific{}
 
@@ -267,6 +271,7 @@ func getTargetsFromTargetAnnotation(annotations map[string]string) endpoint.Targ
 	return targets
 }
 
+// TODO: refactore. moved to source/utils
 // suitableType returns the DNS resource record type suitable for the target.
 // In this case type A/AAAA for IPs and type CNAME for everything else.
 func suitableType(target string) string {
@@ -279,6 +284,7 @@ func suitableType(target string) string {
 	return endpoint.RecordTypeCNAME
 }
 
+// TODO: refactore. move to source/utils
 // endpointsForHostname returns the endpoint objects for each host-target combination.
 func endpointsForHostname(hostname string, targets endpoint.Targets, ttl endpoint.TTL, providerSpecific endpoint.ProviderSpecific, setIdentifier string, resource string) []*endpoint.Endpoint {
 	var endpoints []*endpoint.Endpoint
