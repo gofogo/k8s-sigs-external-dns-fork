@@ -54,3 +54,54 @@ func TestDifference(t *testing.T) {
 	assert.Equal(t, remove, []string{"foo"})
 	assert.Equal(t, leave, []string{"bar"})
 }
+
+func TestMinTtl(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseTTL int
+		input   int
+		want    int
+	}{
+		{
+			name:    "Base TTL is greater than input value",
+			baseTTL: 10,
+			input:   5,
+			want:    5,
+		},
+		{
+			name:    "Base TTL is negative",
+			baseTTL: -1,
+			input:   5,
+			want:    5,
+		},
+		{
+			name:    "Base TTL is zero",
+			baseTTL: 0,
+			input:   6,
+			want:    6,
+		},
+		{
+			name:    "Base TTL is less than input value",
+			baseTTL: 5,
+			input:   10,
+			want:    5,
+		},
+		{
+			name:    "Base TTL is negative, return input value",
+			baseTTL: -1,
+			input:   10,
+			want:    10,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &BaseConfig{TTL: tc.baseTTL}
+			goInt := config.MinTtl(tc.input)
+			assert.Equal(t, tc.want, goInt)
+
+			gotInt64 := config.MinTtlInt64(tc.input)
+			assert.Equal(t, int64(tc.want), gotInt64)
+		})
+	}
+}

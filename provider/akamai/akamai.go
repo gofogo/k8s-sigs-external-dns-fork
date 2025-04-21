@@ -34,9 +34,9 @@ import (
 
 const (
 	// Default Record TTL
-	edgeDNSRecordTTL = 600
-	maxUint          = ^uint(0)
-	maxInt           = int(maxUint >> 1)
+	defaultTTL = 600 + 10
+	maxUint    = ^uint(0)
+	maxInt     = int(maxUint >> 1)
 )
 
 // edgeDNSClient is a proxy interface of the Akamai edgegrid configdns-v2 package that can be stubbed for testing.
@@ -66,6 +66,7 @@ type AkamaiConfig struct {
 // AkamaiProvider implements the DNS provider for Akamai.
 type AkamaiProvider struct {
 	provider.BaseProvider
+	bcfg provider.BaseConfig
 	// Edgedns zones to filter on
 	domainFilter endpoint.DomainFilter
 	// Contract Ids to filter on
@@ -87,17 +88,9 @@ type akamaiZone struct {
 }
 
 // NewAkamaiProvider initializes a new Akamai DNS based Provider.
-func NewAkamaiProvider(akamaiConfig AkamaiConfig, akaService AkamaiDNSService) (provider.Provider, error) {
+func NewAkamaiProvider(bcfg provider.BaseConfig, akamaiConfig AkamaiConfig, akaService AkamaiDNSService) (provider.Provider, error) {
 	var edgeGridConfig edgegrid.Config
 
-	/*
-		log.Debugf("Host: %s", akamaiConfig.ServiceConsumerDomain)
-		log.Debugf("ClientToken: %s", akamaiConfig.ClientToken)
-		log.Debugf("ClientSecret: %s", akamaiConfig.ClientSecret)
-		log.Debugf("AccessToken: %s", akamaiConfig.AccessToken)
-		log.Debugf("EdgePath: %s", akamaiConfig.EdgercPath)
-		log.Debugf("EdgeSection: %s", akamaiConfig.EdgercSection)
-	*/
 	// environment overrides edgerc file but config needs to be complete
 	if akamaiConfig.ServiceConsumerDomain == "" || akamaiConfig.ClientToken == "" || akamaiConfig.ClientSecret == "" || akamaiConfig.AccessToken == "" {
 		// Kubernetes config incomplete or non existent. Can't mix and match.
@@ -142,6 +135,7 @@ func NewAkamaiProvider(akamaiConfig AkamaiConfig, akaService AkamaiDNSService) (
 	}
 
 	provider := &AkamaiProvider{
+		bcfg:         bcfg,
 		domainFilter: akamaiConfig.DomainFilter,
 		zoneIDFilter: akamaiConfig.ZoneIDFilter,
 		config:       &edgeGridConfig,
@@ -357,10 +351,10 @@ func trimTxtRdata(rdata []string, rtype string) []string {
 	return rdata
 }
 
-func ttlAsInt(src endpoint.TTL) int {
+func ttlAsInt(bcfg provider.BaseConfig, src endpoint.TTL) int {
 	var temp interface{} = int64(src)
 	temp64 := temp.(int64)
-	var ttl = edgeDNSRecordTTL
+	var ttl = bcfg.MinTtl(defaultTTL)
 	if temp64 > 0 && temp64 <= int64(maxInt) {
 		ttl = int(temp64)
 	}
@@ -380,19 +374,19 @@ func (p AkamaiProvider) createRecordsets(zoneNameIDMapper provider.ZoneIDName, e
 	// create all recordsets by zone
 	for zone, endpoints := range endpointsByZone {
 		recordsets := &dns.Recordsets{Recordsets: make([]dns.Recordset, 0)}
-		for _, endpoint := range endpoints {
-			newrec := newAkamaiRecordset(endpoint.DNSName,
-				endpoint.RecordType,
-				ttlAsInt(endpoint.RecordTTL),
-				cleanTargets(endpoint.RecordType, endpoint.Targets...))
-			logfields := log.Fields{
+		for _, endt := range endpoints {
+			newrec := newAkamaiRecordset(endt.DNSName,
+				endt.RecordType,
+				ttlAsInt(p.bcfg, endt.RecordTTL),
+				cleanTargets(endt.RecordType, endt.Targets...))
+			logFields := log.Fields{
 				"record": newrec.Name,
 				"type":   newrec.Type,
 				"ttl":    newrec.TTL,
 				"target": fmt.Sprintf("%v", newrec.Rdata),
 				"zone":   zone,
 			}
-			log.WithFields(logfields).Info("Creating recordsets")
+			log.WithFields(logFields).Info("Creating recordsets")
 			recordsets.Recordsets = append(recordsets.Recordsets, newrec)
 		}
 
@@ -443,26 +437,26 @@ func (p AkamaiProvider) deleteRecordsets(zoneNameIDMapper provider.ZoneIDName, e
 
 // Update endpoint recordsets
 func (p AkamaiProvider) updateNewRecordsets(zoneNameIDMapper provider.ZoneIDName, endpoints []*endpoint.Endpoint) error {
-	for _, endpoint := range endpoints {
-		zoneName, _ := zoneNameIDMapper.FindZone(endpoint.DNSName)
+	for _, endt := range endpoints {
+		zoneName, _ := zoneNameIDMapper.FindZone(endt.DNSName)
 		if zoneName == "" {
-			log.Debugf("Skipping Akamai Edge DNS endpoint update: '%s' type: '%s', it does not match against Domain filters", endpoint.DNSName, endpoint.RecordType)
+			log.Debugf("Skipping Akamai Edge DNS endpoint update: '%s' type: '%s', it does not match against Domain filters", endt.DNSName, endt.RecordType)
 			continue
 		}
-		log.Infof("Akamai Edge DNS recordset update - Zone: '%s', DNSName: '%s', RecordType: '%s', Targets: '%+v'", zoneName, endpoint.DNSName, endpoint.RecordType, endpoint.Targets)
+		log.Infof("Akamai Edge DNS recordset update - Zone: '%s', DNSName: '%s', RecordType: '%s', Targets: '%+v'", zoneName, endt.DNSName, endt.RecordType, endt.Targets)
 
 		if p.dryRun {
 			continue
 		}
 
-		recName := strings.TrimSuffix(endpoint.DNSName, ".")
-		rec, err := p.client.GetRecord(zoneName, recName, endpoint.RecordType)
+		recName := strings.TrimSuffix(endt.DNSName, ".")
+		rec, err := p.client.GetRecord(zoneName, recName, endt.RecordType)
 		if err != nil {
 			log.Errorf("Endpoint update. Record validation failed. Error: %s", err.Error())
 			return err
 		}
-		rec.TTL = ttlAsInt(endpoint.RecordTTL)
-		rec.Target = cleanTargets(endpoint.RecordType, endpoint.Targets...)
+		rec.TTL = ttlAsInt(p.bcfg, endt.RecordTTL)
+		rec.Target = cleanTargets(endt.RecordType, endt.Targets...)
 		if err := p.client.UpdateRecord(rec, zoneName, true); err != nil {
 			log.Errorf("Akamai Edge DNS recordset update failed. Error: %s", err.Error())
 			return err

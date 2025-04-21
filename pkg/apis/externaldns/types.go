@@ -38,6 +38,12 @@ const (
 
 // Config is a project-wide configuration
 type Config struct {
+	// global provider configs
+	Provider          string
+	ProviderCacheTime time.Duration
+	ProviderTTL       int
+	DryRun            bool
+
 	APIServerURL                                  string
 	KubeConfig                                    string
 	RequestTimeout                                time.Duration
@@ -66,8 +72,6 @@ type Config struct {
 	PublishHostIP                                 bool
 	AlwaysPublishNotReadyAddresses                bool
 	ConnectorSourceServer                         string
-	Provider                                      string
-	ProviderCacheTime                             time.Duration
 	GoogleProject                                 string
 	GoogleBatchChangeSize                         int
 	GoogleBatchChangeInterval                     time.Duration
@@ -146,7 +150,6 @@ type Config struct {
 	Interval                                      time.Duration
 	MinEventSyncInterval                          time.Duration
 	Once                                          bool
-	DryRun                                        bool
 	UpdateEvents                                  bool
 	LogFormat                                     string
 	MetricsAddress                                string
@@ -219,6 +222,7 @@ type Config struct {
 var defaultConfig = &Config{
 	APIServerURL:                           "",
 	KubeConfig:                             "",
+	ProviderTTL:                            -1,
 	RequestTimeout:                         time.Second * 30,
 	DefaultTargets:                         []string{},
 	GlooNamespaces:                         []string{"gloo-system"},
@@ -452,7 +456,7 @@ func App(cfg *Config) *kingpin.Application {
 	// Flags related to Skipper RouteGroup
 	app.Flag("skipper-routegroup-groupversion", "The resource version for skipper routegroup").Default(defaultConfig.SkipperRouteGroupVersion).StringVar(&cfg.SkipperRouteGroupVersion)
 
-	// Flags related to processing source
+	// Flags related to a processing source
 	app.Flag("source", "The resource types that are queried for endpoints; specify multiple times for multiple sources (required, options: service, ingress, node, pod, fake, connector, gateway-httproute, gateway-grpcroute, gateway-tlsroute, gateway-tcproute, gateway-udproute, istio-gateway, istio-virtualservice, cloudfoundry, contour-httpproxy, gloo-proxy, crd, empty, skipper-routegroup, openshift-route, ambassador-host, kong-tcpingress, f5-virtualserver, f5-transportserver, traefik-proxy)").Required().PlaceHolder("source").EnumsVar(&cfg.Sources, "service", "ingress", "node", "pod", "gateway-httproute", "gateway-grpcroute", "gateway-tlsroute", "gateway-tcproute", "gateway-udproute", "istio-gateway", "istio-virtualservice", "cloudfoundry", "contour-httpproxy", "gloo-proxy", "fake", "connector", "crd", "empty", "skipper-routegroup", "openshift-route", "ambassador-host", "kong-tcpingress", "f5-virtualserver", "f5-transportserver", "traefik-proxy")
 	app.Flag("openshift-router-name", "if source is openshift-route then you can pass the ingress controller name. Based on this name external-dns will select the respective router from the route status and map that routerCanonicalHostname to the route host while creating a CNAME record.").StringVar(&cfg.OCPRouterName)
 	app.Flag("namespace", "Limit resources queried for endpoints to a specific namespace (default: all namespaces)").Default(defaultConfig.Namespace).StringVar(&cfg.Namespace)
@@ -492,6 +496,9 @@ func App(cfg *Config) *kingpin.Application {
 	providers := []string{"akamai", "alibabacloud", "aws", "aws-sd", "azure", "azure-dns", "azure-private-dns", "civo", "cloudflare", "coredns", "digitalocean", "dnsimple", "exoscale", "gandi", "godaddy", "google", "ibmcloud", "inmemory", "linode", "ns1", "oci", "ovh", "pdns", "pihole", "plural", "rfc2136", "scaleway", "skydns", "tencentcloud", "transip", "ultradns", "webhook"}
 	app.Flag("provider", "The DNS provider where the DNS records will be created (required, options: "+strings.Join(providers, ", ")+")").Required().PlaceHolder("provider").EnumVar(&cfg.Provider, providers...)
 	app.Flag("provider-cache-time", "The time to cache the DNS provider record list requests.").Default(defaultConfig.ProviderCacheTime.String()).DurationVar(&cfg.ProviderCacheTime)
+	app.Flag("provider-ttl", "TTL (in seconds) for records. This value will be used if the TTL is not configured. (optional, default: fallback to provider defaults when not set or set to 0)").IntVar(&cfg.ProviderTTL)
+
+	// Flags related to filters
 	app.Flag("domain-filter", "Limit possible target zones by a domain suffix; specify multiple times for multiple domains (optional)").Default("").StringsVar(&cfg.DomainFilter)
 	app.Flag("exclude-domains", "Exclude subdomains (optional)").Default("").StringsVar(&cfg.ExcludeDomains)
 	app.Flag("regex-domain-filter", "Limit possible domains and target zones by a Regex filter; Overrides domain-filter (optional)").Default(defaultConfig.RegexDomainFilter.String()).RegexpVar(&cfg.RegexDomainFilter)
@@ -563,7 +570,7 @@ func App(cfg *Config) *kingpin.Application {
 	// GoDaddy flags
 	app.Flag("godaddy-api-key", "When using the GoDaddy provider, specify the API Key (required when --provider=godaddy)").Default(defaultConfig.GoDaddyAPIKey).StringVar(&cfg.GoDaddyAPIKey)
 	app.Flag("godaddy-api-secret", "When using the GoDaddy provider, specify the API secret (required when --provider=godaddy)").Default(defaultConfig.GoDaddySecretKey).StringVar(&cfg.GoDaddySecretKey)
-	app.Flag("godaddy-api-ttl", "TTL (in seconds) for records. This value will be used if the provided TTL for a service/ingress is not provided.").Int64Var(&cfg.GoDaddyTTL)
+	app.Flag("godaddy-api-ttl", "TTL (in seconds) for records. This value will be used if the provided TTL for a service/ingress is not provided. Deprecated and about to be removed in future releases").Int64Var(&cfg.GoDaddyTTL)
 	app.Flag("godaddy-api-ote", "When using the GoDaddy provider, use OTE api (optional, default: false, when --provider=godaddy)").BoolVar(&cfg.GoDaddyOTE)
 
 	// Flags related to TLS communication

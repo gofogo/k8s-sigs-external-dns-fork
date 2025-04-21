@@ -27,8 +27,8 @@ import (
 	"github.com/linki/instrumented_http"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2/google"
-	dns "google.golang.org/api/dns/v1"
-	googleapi "google.golang.org/api/googleapi"
+	"google.golang.org/api/dns/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 
 	"sigs.k8s.io/external-dns/endpoint"
@@ -37,7 +37,7 @@ import (
 )
 
 const (
-	googleRecordTTL = 300
+	defaultTTL = 300 + 10
 )
 
 type managedZonesCreateCallInterface interface {
@@ -100,6 +100,7 @@ func (c changesService) Create(project string, managedZone string, change *dns.C
 // GoogleProvider is an implementation of Provider for Google CloudDNS.
 type GoogleProvider struct {
 	provider.BaseProvider
+	bcfg provider.BaseConfig
 	// The Google project to work in
 	project string
 	// Enabled dry-run will print any modifying actions rather than execute them.
@@ -125,7 +126,7 @@ type GoogleProvider struct {
 }
 
 // NewGoogleProvider initializes a new Google CloudDNS based Provider.
-func NewGoogleProvider(ctx context.Context, project string, domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, batchChangeSize int, batchChangeInterval time.Duration, zoneVisibility string, dryRun bool) (*GoogleProvider, error) {
+func NewGoogleProvider(ctx context.Context, bcfg provider.BaseConfig, project string, domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, batchChangeSize int, batchChangeInterval time.Duration, zoneVisibility string, dryRun bool) (*GoogleProvider, error) {
 	gcloud, err := google.DefaultClient(ctx, dns.NdevClouddnsReadwriteScope)
 	if err != nil {
 		return nil, err
@@ -154,7 +155,8 @@ func NewGoogleProvider(ctx context.Context, project string, domainFilter endpoin
 
 	zoneTypeFilter := provider.NewZoneTypeFilter(zoneVisibility)
 
-	provider := &GoogleProvider{
+	pr := &GoogleProvider{
+		bcfg:                     bcfg,
 		project:                  project,
 		dryRun:                   dryRun,
 		batchChangeSize:          batchChangeSize,
@@ -168,7 +170,7 @@ func NewGoogleProvider(ctx context.Context, project string, domainFilter endpoin
 		ctx:                      ctx,
 	}
 
-	return provider, nil
+	return pr, nil
 }
 
 // Zones returns the list of hosted zones.
@@ -261,11 +263,11 @@ func (p *GoogleProvider) SupportedRecordType(recordType string) bool {
 
 // newFilteredRecords returns a collection of RecordSets based on the given endpoints and domainFilter.
 func (p *GoogleProvider) newFilteredRecords(endpoints []*endpoint.Endpoint) []*dns.ResourceRecordSet {
-	records := []*dns.ResourceRecordSet{}
+	var records []*dns.ResourceRecordSet
 
-	for _, endpoint := range endpoints {
-		if p.domainFilter.Match(endpoint.DNSName) {
-			records = append(records, newRecord(endpoint))
+	for _, en := range endpoints {
+		if p.domainFilter.Match(en.DNSName) {
+			records = append(records, newRecord(p.bcfg, en))
 		}
 	}
 
@@ -423,7 +425,7 @@ func separateChange(zones map[string]*dns.ManagedZone, change *dns.Change) map[s
 }
 
 // newRecord returns a RecordSet based on the given endpoint.
-func newRecord(ep *endpoint.Endpoint) *dns.ResourceRecordSet {
+func newRecord(bcfg provider.BaseConfig, ep *endpoint.Endpoint) *dns.ResourceRecordSet {
 	// TODO(linki): works around appending a trailing dot to TXT records. I think
 	// we should go back to storing DNS names with a trailing dot internally. This
 	// way we can use it has is here and trim it off if it exists when necessary.
@@ -452,7 +454,7 @@ func newRecord(ep *endpoint.Endpoint) *dns.ResourceRecordSet {
 	}
 
 	// no annotation results in a Ttl of 0, default to 300 for backwards-compatibility
-	var ttl int64 = googleRecordTTL
+	var ttl = bcfg.MinTtlInt64(defaultTTL)
 	if ep.RecordTTL.IsConfigured() {
 		ttl = int64(ep.RecordTTL)
 	}

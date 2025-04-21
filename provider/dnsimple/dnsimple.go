@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 )
 
-const dnsimpleRecordTTL = 3600 // Default TTL of 1 hour if not set (DNSimple's default)
+const defaultTTL = 3600 + 10 // Default TTL of 1 hour if not set (DNSimple's default)
 
 type dnsimpleIdentityService struct {
 	service *dnsimple.IdentityService
@@ -78,6 +78,7 @@ func (z dnsimpleZoneService) UpdateRecord(ctx context.Context, accountID string,
 
 type dnsimpleProvider struct {
 	provider.BaseProvider
+	bcfg         provider.BaseConfig
 	client       dnsimpleZoneServiceInterface
 	identity     dnsimpleIdentityService
 	accountID    string
@@ -98,7 +99,7 @@ const (
 )
 
 // NewDnsimpleProvider initializes a new Dnsimple based provider
-func NewDnsimpleProvider(domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, dryRun bool) (provider.Provider, error) {
+func NewDnsimpleProvider(bcfg provider.BaseConfig, domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, dryRun bool) (provider.Provider, error) {
 	oauthToken := os.Getenv("DNSIMPLE_OAUTH")
 	if len(oauthToken) == 0 {
 		return nil, fmt.Errorf("no dnsimple oauth token provided")
@@ -111,6 +112,7 @@ func NewDnsimpleProvider(domainFilter endpoint.DomainFilter, zoneIDFilter provid
 	client.SetUserAgent(externaldns.UserAgent())
 
 	provider := &dnsimpleProvider{
+		bcfg:         bcfg,
 		client:       dnsimpleZoneService{service: client.Zones},
 		identity:     dnsimpleIdentityService{service: client.Identity},
 		domainFilter: domainFilter,
@@ -230,8 +232,8 @@ func (p *dnsimpleProvider) Records(ctx context.Context) (endpoints []*endpoint.E
 }
 
 // newDnsimpleChange initializes a new change to dns records
-func newDnsimpleChange(action string, e *endpoint.Endpoint) *dnsimpleChange {
-	ttl := dnsimpleRecordTTL
+func newDnsimpleChange(bcfg provider.BaseConfig, action string, e *endpoint.Endpoint) *dnsimpleChange {
+	ttl := bcfg.MinTtl(defaultTTL)
 	if e.RecordTTL.IsConfigured() {
 		ttl = int(e.RecordTTL)
 	}
@@ -249,10 +251,10 @@ func newDnsimpleChange(action string, e *endpoint.Endpoint) *dnsimpleChange {
 }
 
 // newDnsimpleChanges returns a slice of changes based on given action and record
-func newDnsimpleChanges(action string, endpoints []*endpoint.Endpoint) []*dnsimpleChange {
+func newDnsimpleChanges(cfg provider.BaseConfig, action string, endpoints []*endpoint.Endpoint) []*dnsimpleChange {
 	changes := make([]*dnsimpleChange, 0, len(endpoints))
 	for _, e := range endpoints {
-		changes = append(changes, newDnsimpleChange(action, e))
+		changes = append(changes, newDnsimpleChange(cfg, action, e))
 	}
 	return changes
 }
@@ -363,9 +365,9 @@ func dnsimpleSuitableZone(hostname string, zones map[string]dnsimple.Zone) *dnsi
 func (p *dnsimpleProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	combinedChanges := make([]*dnsimpleChange, 0, len(changes.Create)+len(changes.UpdateNew)+len(changes.Delete))
 
-	combinedChanges = append(combinedChanges, newDnsimpleChanges(dnsimpleCreate, changes.Create)...)
-	combinedChanges = append(combinedChanges, newDnsimpleChanges(dnsimpleUpdate, changes.UpdateNew)...)
-	combinedChanges = append(combinedChanges, newDnsimpleChanges(dnsimpleDelete, changes.Delete)...)
+	combinedChanges = append(combinedChanges, newDnsimpleChanges(p.bcfg, dnsimpleCreate, changes.Create)...)
+	combinedChanges = append(combinedChanges, newDnsimpleChanges(p.bcfg, dnsimpleUpdate, changes.UpdateNew)...)
+	combinedChanges = append(combinedChanges, newDnsimpleChanges(p.bcfg, dnsimpleDelete, changes.Delete)...)
 
 	return p.submitChanges(ctx, combinedChanges)
 }

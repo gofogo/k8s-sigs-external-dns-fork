@@ -28,6 +28,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/external-dns/provider"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
@@ -309,32 +310,32 @@ func TestDigitalOceanZones(t *testing.T) {
 func TestDigitalOceanMakeDomainEditRequest(t *testing.T) {
 	// Ensure that records at the root of the zone get `@` as the name.
 	r1 := makeDomainEditRequest("example.com", "example.com", endpoint.RecordTypeA,
-		"1.2.3.4", digitalOceanRecordTTL)
+		"1.2.3.4", defaultTTL)
 	assert.Equal(t, &godo.DomainRecordEditRequest{
 		Type: endpoint.RecordTypeA,
 		Name: "@",
 		Data: "1.2.3.4",
-		TTL:  digitalOceanRecordTTL,
+		TTL:  defaultTTL,
 	}, r1)
 
 	// Ensure the CNAME records have a `.` appended.
 	r2 := makeDomainEditRequest("example.com", "foo.example.com", endpoint.RecordTypeCNAME,
-		"bar.example.com", digitalOceanRecordTTL)
+		"bar.example.com", defaultTTL)
 	assert.Equal(t, &godo.DomainRecordEditRequest{
 		Type: endpoint.RecordTypeCNAME,
 		Name: "foo",
 		Data: "bar.example.com.",
-		TTL:  digitalOceanRecordTTL,
+		TTL:  defaultTTL,
 	}, r2)
 
 	// Ensure that CNAME records do not have an extra `.` appended if they already have a `.`
 	r3 := makeDomainEditRequest("example.com", "foo.example.com", endpoint.RecordTypeCNAME,
-		"bar.example.com.", digitalOceanRecordTTL)
+		"bar.example.com.", defaultTTL)
 	assert.Equal(t, &godo.DomainRecordEditRequest{
 		Type: endpoint.RecordTypeCNAME,
 		Name: "foo",
 		Data: "bar.example.com.",
-		TTL:  digitalOceanRecordTTL,
+		TTL:  defaultTTL,
 	}, r3)
 
 	// Ensure that custom TTLs can be set
@@ -350,24 +351,24 @@ func TestDigitalOceanMakeDomainEditRequest(t *testing.T) {
 
 	// Ensure that MX records have `.` appended.
 	r5 := makeDomainEditRequest("example.com", "foo.example.com", endpoint.RecordTypeMX,
-		"10 mx.example.com", digitalOceanRecordTTL)
+		"10 mx.example.com", defaultTTL)
 	assert.Equal(t, &godo.DomainRecordEditRequest{
 		Type:     endpoint.RecordTypeMX,
 		Name:     "foo",
 		Data:     "mx.example.com.",
 		Priority: 10,
-		TTL:      digitalOceanRecordTTL,
+		TTL:      defaultTTL,
 	}, r5)
 
 	// Ensure that MX records do not have an extra `.` appended if they already have a `.`
 	r6 := makeDomainEditRequest("example.com", "foo.example.com", endpoint.RecordTypeMX,
-		"10 mx.example.com.", digitalOceanRecordTTL)
+		"10 mx.example.com.", defaultTTL)
 	assert.Equal(t, &godo.DomainRecordEditRequest{
 		Type:     endpoint.RecordTypeMX,
 		Name:     "foo",
 		Data:     "mx.example.com.",
 		Priority: 10,
-		TTL:      digitalOceanRecordTTL,
+		TTL:      defaultTTL,
 	}, r6)
 }
 
@@ -406,7 +407,7 @@ func TestDigitalOceanProcessCreateActions(t *testing.T) {
 	}
 
 	var changes digitalOceanChanges
-	err := processCreateActions(recordsByDomain, createsByDomain, &changes)
+	err := processCreateActions(provider.BaseConfig{}, recordsByDomain, createsByDomain, &changes)
 	require.NoError(t, err)
 
 	assert.Equal(t, 4, len(changes.Creates))
@@ -420,7 +421,7 @@ func TestDigitalOceanProcessCreateActions(t *testing.T) {
 				Name: "foo",
 				Type: endpoint.RecordTypeA,
 				Data: "1.2.3.4",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 		},
 		{
@@ -429,7 +430,7 @@ func TestDigitalOceanProcessCreateActions(t *testing.T) {
 				Name: "@",
 				Type: endpoint.RecordTypeCNAME,
 				Data: "foo.example.com.",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 		},
 		{
@@ -439,7 +440,7 @@ func TestDigitalOceanProcessCreateActions(t *testing.T) {
 				Type:     endpoint.RecordTypeMX,
 				Priority: 10,
 				Data:     "mx.example.com.",
-				TTL:      digitalOceanRecordTTL,
+				TTL:      defaultTTL,
 			},
 		},
 		{
@@ -448,7 +449,7 @@ func TestDigitalOceanProcessCreateActions(t *testing.T) {
 				Name: "@",
 				Type: endpoint.RecordTypeTXT,
 				Data: "SOME-TXT-TEXT",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 		},
 	}
@@ -466,21 +467,21 @@ func TestDigitalOceanProcessUpdateActions(t *testing.T) {
 				Name: "foo",
 				Type: endpoint.RecordTypeA,
 				Data: "1.2.3.4",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 			{
 				ID:   2,
 				Name: "foo",
 				Type: endpoint.RecordTypeA,
 				Data: "5.6.7.8",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 			{
 				ID:   3,
 				Name: "@",
 				Type: endpoint.RecordTypeCNAME,
 				Data: "foo.example.com.",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 			{
 				ID:       4,
@@ -488,7 +489,7 @@ func TestDigitalOceanProcessUpdateActions(t *testing.T) {
 				Type:     endpoint.RecordTypeMX,
 				Data:     "mx1.example.com.",
 				Priority: 10,
-				TTL:      digitalOceanRecordTTL,
+				TTL:      defaultTTL,
 			},
 			{
 				ID:       5,
@@ -496,14 +497,14 @@ func TestDigitalOceanProcessUpdateActions(t *testing.T) {
 				Type:     endpoint.RecordTypeMX,
 				Data:     "mx2.example.com.",
 				Priority: 10,
-				TTL:      digitalOceanRecordTTL,
+				TTL:      defaultTTL,
 			},
 			{
 				ID:   6,
 				Name: "@",
 				Type: endpoint.RecordTypeTXT,
 				Data: "SOME_TXTX_TEXT",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 		},
 	}
@@ -518,7 +519,7 @@ func TestDigitalOceanProcessUpdateActions(t *testing.T) {
 	}
 
 	var changes digitalOceanChanges
-	err := processUpdateActions(recordsByDomain, updatesByDomain, &changes)
+	err := processUpdateActions(provider.BaseConfig{}, recordsByDomain, updatesByDomain, &changes)
 	require.NoError(t, err)
 
 	assert.Equal(t, 4, len(changes.Creates))
@@ -532,7 +533,7 @@ func TestDigitalOceanProcessUpdateActions(t *testing.T) {
 				Name: "foo",
 				Type: endpoint.RecordTypeA,
 				Data: "10.11.12.13",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 		},
 		{
@@ -541,7 +542,7 @@ func TestDigitalOceanProcessUpdateActions(t *testing.T) {
 				Name: "@",
 				Type: endpoint.RecordTypeCNAME,
 				Data: "bar.example.com.",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 		},
 		{
@@ -551,7 +552,7 @@ func TestDigitalOceanProcessUpdateActions(t *testing.T) {
 				Type:     endpoint.RecordTypeMX,
 				Data:     "mx3.example.com.",
 				Priority: 10,
-				TTL:      digitalOceanRecordTTL,
+				TTL:      defaultTTL,
 			},
 		},
 		{
@@ -560,7 +561,7 @@ func TestDigitalOceanProcessUpdateActions(t *testing.T) {
 				Name: "@",
 				Type: endpoint.RecordTypeTXT,
 				Data: "ANOTHER-TXT",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 		},
 	}
@@ -609,7 +610,7 @@ func TestDigitalOceanProcessDeleteActions(t *testing.T) {
 				Name: "foo",
 				Type: endpoint.RecordTypeA,
 				Data: "1.2.3.4",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 			// This record will not be deleted because it represents a target not specified to be deleted.
 			{
@@ -617,14 +618,14 @@ func TestDigitalOceanProcessDeleteActions(t *testing.T) {
 				Name: "foo",
 				Type: endpoint.RecordTypeA,
 				Data: "5.6.7.8",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 			{
 				ID:   3,
 				Name: "@",
 				Type: endpoint.RecordTypeCNAME,
 				Data: "foo.example.com.",
-				TTL:  digitalOceanRecordTTL,
+				TTL:  defaultTTL,
 			},
 		},
 	}
@@ -661,13 +662,14 @@ func TestDigitalOceanProcessDeleteActions(t *testing.T) {
 }
 
 func TestNewDigitalOceanProvider(t *testing.T) {
+	bcfg := provider.BaseConfig{}
 	_ = os.Setenv("DO_TOKEN", "xxxxxxxxxxxxxxxxx")
-	_, err := NewDigitalOceanProvider(context.Background(), endpoint.NewDomainFilter([]string{"ext-dns-test.zalando.to."}), true, 50)
+	_, err := NewDigitalOceanProvider(context.Background(), bcfg, endpoint.NewDomainFilter([]string{"ext-dns-test.zalando.to."}), true, 50)
 	if err != nil {
 		t.Errorf("should not fail, %s", err)
 	}
 	_ = os.Unsetenv("DO_TOKEN")
-	_, err = NewDigitalOceanProvider(context.Background(), endpoint.NewDomainFilter([]string{"ext-dns-test.zalando.to."}), true, 50)
+	_, err = NewDigitalOceanProvider(context.Background(), bcfg, endpoint.NewDomainFilter([]string{"ext-dns-test.zalando.to."}), true, 50)
 	if err == nil {
 		t.Errorf("expected to fail")
 	}

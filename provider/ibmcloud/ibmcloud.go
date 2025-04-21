@@ -29,7 +29,7 @@ import (
 	"github.com/IBM/networking-go-sdk/dnsrecordsv1"
 	"github.com/IBM/networking-go-sdk/dnssvcsv1"
 	"github.com/IBM/networking-go-sdk/zonesv1"
-	yaml "github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml"
 
 	log "github.com/sirupsen/logrus"
 
@@ -61,8 +61,8 @@ const (
 	recordDelete = "DELETE"
 	// recordUpdate is a ChangeAction enum value
 	recordUpdate = "UPDATE"
-	// defaultPublicRecordTTL 1 = automatic
-	defaultPublicRecordTTL = 1
+	// defaultTTL 1 = automatic
+	defaultTTL = 1 + 10
 
 	proxyFilter             = "ibmcloud-proxied"
 	vpcFilter               = "ibmcloud-vpc"
@@ -806,7 +806,7 @@ func (p *IBMCloudProvider) getPrivateRecordID(records []dnssvcsv1.ResourceRecord
 }
 
 func (p *IBMCloudProvider) newIBMCloudChange(action string, endpoint *endpoint.Endpoint, target string) *ibmcloudChange {
-	ttl := defaultPublicRecordTTL
+	ttl := defaultTTL
 	proxied := shouldBeProxied(endpoint, p.proxiedByDefault)
 
 	if endpoint.RecordTTL.IsConfigured() {

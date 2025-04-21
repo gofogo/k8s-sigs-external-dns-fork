@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	sdDefaultRecordTTL = 300
+	defaultTTL = 300 + 10
 
 	sdNamespaceTypePublic  = "public"
 	sdNamespaceTypePrivate = "private"
@@ -70,6 +70,7 @@ type AWSSDClient interface {
 // AWSSDProvider is an implementation of Provider for AWS Cloud Map.
 type AWSSDProvider struct {
 	provider.BaseProvider
+	bcfg   provider.BaseConfig
 	client AWSSDClient
 	dryRun bool
 	// only consider namespaces ending in this suffix
@@ -85,8 +86,9 @@ type AWSSDProvider struct {
 }
 
 // NewAWSSDProvider initializes a new AWS Cloud Map based Provider.
-func NewAWSSDProvider(domainFilter endpoint.DomainFilter, namespaceType string, dryRun, cleanEmptyService bool, ownerID string, tags map[string]string, client AWSSDClient) (*AWSSDProvider, error) {
+func NewAWSSDProvider(cfg provider.BaseConfig, domainFilter endpoint.DomainFilter, namespaceType string, dryRun, cleanEmptyService bool, ownerID string, tags map[string]string, client AWSSDClient) (*AWSSDProvider, error) {
 	p := &AWSSDProvider{
+		bcfg:                cfg,
 		client:              client,
 		dryRun:              dryRun,
 		namespaceFilter:     domainFilter,
@@ -407,7 +409,7 @@ func (p *AWSSDProvider) CreateService(ctx context.Context, namespaceID *string, 
 	srvType := p.serviceTypeFromEndpoint(ep)
 	routingPolicy := p.routingPolicyFromEndpoint(ep)
 
-	ttl := int64(sdDefaultRecordTTL)
+	ttl := p.bcfg.MinTtlInt64(defaultTTL)
 	if ep.RecordTTL.IsConfigured() {
 		ttl = int64(ep.RecordTTL)
 	}
@@ -443,7 +445,7 @@ func (p *AWSSDProvider) UpdateService(ctx context.Context, service *sdtypes.Serv
 
 	srvType := p.serviceTypeFromEndpoint(ep)
 
-	ttl := int64(sdDefaultRecordTTL)
+	ttl := p.bcfg.MinTtlInt64(defaultTTL)
 	if ep.RecordTTL.IsConfigured() {
 		ttl = int64(ep.RecordTTL)
 	}

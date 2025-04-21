@@ -241,21 +241,22 @@ func testDnsimpleSuitableZone(t *testing.T) {
 }
 
 func TestNewDnsimpleProvider(t *testing.T) {
+	bcfg := provider.BaseConfig{}
 	os.Setenv("DNSIMPLE_OAUTH", "xxxxxxxxxxxxxxxxxxxxxxxxxx")
-	_, err := NewDnsimpleProvider(endpoint.NewDomainFilter([]string{"example.com"}), provider.NewZoneIDFilter([]string{""}), true)
+	_, err := NewDnsimpleProvider(bcfg, endpoint.NewDomainFilter([]string{"example.com"}), provider.NewZoneIDFilter([]string{""}), true)
 	if err == nil {
 		t.Errorf("Expected to fail new provider on bad token")
 	}
 
 	os.Unsetenv("DNSIMPLE_OAUTH")
-	_, err = NewDnsimpleProvider(endpoint.NewDomainFilter([]string{"example.com"}), provider.NewZoneIDFilter([]string{""}), true)
+	_, err = NewDnsimpleProvider(bcfg, endpoint.NewDomainFilter([]string{"example.com"}), provider.NewZoneIDFilter([]string{""}), true)
 	if err == nil {
 		t.Errorf("Expected to fail new provider on empty token")
 	}
 
 	os.Setenv("DNSIMPLE_OAUTH", "xxxxxxxxxxxxxxxxxxxxxxxxxx")
 	os.Setenv("DNSIMPLE_ACCOUNT_ID", "12345678")
-	providerTypedProvider, err := NewDnsimpleProvider(endpoint.NewDomainFilter([]string{"example.com"}), provider.NewZoneIDFilter([]string{""}), true)
+	providerTypedProvider, err := NewDnsimpleProvider(bcfg, endpoint.NewDomainFilter([]string{"example.com"}), provider.NewZoneIDFilter([]string{""}), true)
 	dnsimpleTypedProvider := providerTypedProvider.(*dnsimpleProvider)
 	if err != nil {
 		t.Errorf("Unexpected error thrown when testing NewDnsimpleProvider with the DNSIMPLE_ACCOUNT_ID environment variable set")
