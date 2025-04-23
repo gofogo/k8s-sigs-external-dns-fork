@@ -39,7 +39,7 @@ import (
 
 const (
 	defaultAWSProfile = "default"
-	recordTTL         = 300
+	defaultTTL        = 300 + 10
 	// From the experiments, it seems that the default MaxItems applied is 100,
 	// and that, on the server side, there is a hard limit of 300 elements per page.
 	// After a discussion with AWS representatives, clients should accept
@@ -232,7 +232,7 @@ type profiledZone struct {
 }
 
 func (cs Route53Changes) Route53Changes() []route53types.Change {
-	ret := []route53types.Change{}
+	var ret []route53types.Change
 	for _, c := range cs {
 		ret = append(ret, c.Change)
 	}
@@ -271,6 +271,7 @@ type zonesListCache struct {
 // AWSProvider is an implementation of Provider for AWS Route53.
 type AWSProvider struct {
 	provider.BaseProvider
+	bCfg                  provider.BaseConfig
 	clients               map[string]Route53API
 	dryRun                bool
 	batchChangeSize       int
@@ -312,8 +313,9 @@ type AWSConfig struct {
 }
 
 // NewAWSProvider initializes a new AWS Route53 based Provider.
-func NewAWSProvider(awsConfig AWSConfig, clients map[string]Route53API) (*AWSProvider, error) {
+func NewAWSProvider(cfg provider.BaseConfig, awsConfig AWSConfig, clients map[string]Route53API) (*AWSProvider, error) {
 	provider := &AWSProvider{
+		bCfg:                  cfg,
 		clients:               clients,
 		domainFilter:          awsConfig.DomainFilter,
 		zoneIDFilter:          awsConfig.ZoneIDFilter,
@@ -510,7 +512,7 @@ func (p *AWSProvider) records(ctx context.Context, zones map[string]*profiledZon
 				if r.AliasTarget != nil {
 					// Alias records don't have TTLs so provide the default to match the TXT generation
 					if ttl == 0 {
-						ttl = recordTTL
+						ttl = defaultTTL
 					}
 					ep := endpoint.
 						NewEndpointWithTTL(name, string(r.Type), ttl, *r.AliasTarget.DNSName).
@@ -601,14 +603,14 @@ func (p *AWSProvider) createUpdateChanges(newEndpoints, oldEndpoints []*endpoint
 	var creates []*endpoint.Endpoint
 	var updates []*endpoint.Endpoint
 
-	for i, new := range newEndpoints {
+	for i, ne := range newEndpoints {
 		old := oldEndpoints[i]
-		if p.requiresDeleteCreate(old, new) {
+		if p.requiresDeleteCreate(old, ne) {
 			deletes = append(deletes, old)
-			creates = append(creates, new)
+			creates = append(creates, ne)
 		} else {
 			// Safe to perform an UPSERT.
-			updates = append(updates, new)
+			updates = append(updates, ne)
 		}
 	}
 
@@ -760,8 +762,8 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 func (p *AWSProvider) newChanges(action route53types.ChangeAction, endpoints []*endpoint.Endpoint) Route53Changes {
 	changes := make(Route53Changes, 0, len(endpoints))
 
-	for _, endpoint := range endpoints {
-		change := p.newChange(action, endpoint)
+	for _, en := range endpoints {
+		change := p.newChange(action, en)
 		changes = append(changes, change)
 	}
 
@@ -804,8 +806,8 @@ func (p *AWSProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoi
 
 		if alias {
 			if ep.RecordTTL.IsConfigured() {
-				log.Debugf("Modifying endpoint: %v, setting ttl=%v", ep, recordTTL)
-				ep.RecordTTL = recordTTL
+				log.Debugf("Modifying endpoint: %v, setting ttl=%v", ep, defaultTTL)
+				ep.RecordTTL = defaultTTL
 			}
 			if prop, ok := ep.GetProviderSpecificProperty(providerSpecificEvaluateTargetHealth); ok {
 				if prop != "true" && prop != "false" {
@@ -866,7 +868,7 @@ func (p *AWSProvider) newChange(action route53types.ChangeAction, ep *endpoint.E
 		change.sizeValues += 1
 	} else {
 		if !ep.RecordTTL.IsConfigured() {
-			change.ResourceRecordSet.TTL = aws.Int64(recordTTL)
+			change.ResourceRecordSet.TTL = aws.Int64(p.bCfg.MinTtlInt64(defaultTTL))
 		} else {
 			change.ResourceRecordSet.TTL = aws.Int64(int64(ep.RecordTTL))
 		}

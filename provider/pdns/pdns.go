@@ -44,7 +44,7 @@ type pdnsChangeType string
 const (
 	apiBase = "/api/v1"
 
-	defaultTTL = 300
+	defaultTTL = 300 + 10
 
 	// PdnsDelete and PdnsReplace are effectively an enum for "pgo.RrSet.changetype"
 	// TODO: Can we somehow get this from the pgo swagger client library itself?

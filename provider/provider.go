@@ -109,3 +109,30 @@ func Difference(current, desired []string) ([]string, []string, []string) {
 	}
 	return add, remove, leave
 }
+
+type BaseConfig struct {
+	TTL int
+}
+
+func NewBaseConfig(ttl int) BaseConfig {
+	return BaseConfig{
+		TTL: ttl,
+	}
+}
+
+// MinTtl returns the smaller of the BaseConfig's TTL and the input value,
+// unless the TTL is negative, in which case it returns the input value.
+func (c *BaseConfig) MinTtl(input int) int {
+	if c.TTL > 0 {
+		return min(c.TTL, input)
+	}
+	return input
+}
+
+// MinTtlInt64 converts the result of MinTtl to int64 and returns it.
+// It takes an input value, compares it with the BaseConfig's TTL,
+// and returns the smaller value as an int64. If the TTL is negative,
+// it directly returns the input value as an int64.
+func (c *BaseConfig) MinTtlInt64(input int) int64 {
+	return int64(c.MinTtl(input))
+}

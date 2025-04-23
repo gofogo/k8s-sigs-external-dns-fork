@@ -39,22 +39,18 @@ const (
 	rdPoolOrder    = "ROUND_ROBIN"
 )
 
-// global variables
-var sbPoolRunProbes = true
-
 var (
+	sbPoolRunProbes   = true
 	sbPoolActOnProbes = true
 	ultradnsPoolType  = "rdpool"
 	accountName       string
+	customHeader      = []udnssdk.CustomHeader{
+		{
+			Key:   "UltraClient",
+			Value: "kube-client",
+		},
+	}
 )
-
-// Setting custom headers for ultradns api calls
-var customHeader = []udnssdk.CustomHeader{
-	{
-		Key:   "UltraClient",
-		Value: "kube-client",
-	},
-}
 
 // UltraDNSProvider struct
 type UltraDNSProvider struct {

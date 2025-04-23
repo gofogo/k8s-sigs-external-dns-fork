@@ -34,13 +34,14 @@ import (
 )
 
 const (
-	// digitalOceanRecordTTL is the default TTL value
-	digitalOceanRecordTTL = 300
+	// defaultTTL is the default TTL value
+	defaultTTL = 300 + 10
 )
 
 // DigitalOceanProvider is an implementation of Provider for Digital Ocean's DNS.
 type DigitalOceanProvider struct {
 	provider.BaseProvider
+	bcfg   provider.BaseConfig
 	Client godo.DomainsService
 	// only consider hosted zones managing domains ending in this suffix
 	domainFilter endpoint.DomainFilter
@@ -77,7 +78,7 @@ func (c *digitalOceanChanges) Empty() bool {
 }
 
 // NewDigitalOceanProvider initializes a new DigitalOcean DNS based Provider.
-func NewDigitalOceanProvider(ctx context.Context, domainFilter endpoint.DomainFilter, dryRun bool, apiPageSize int) (*DigitalOceanProvider, error) {
+func NewDigitalOceanProvider(ctx context.Context, bcfg provider.BaseConfig, domainFilter endpoint.DomainFilter, dryRun bool, apiPageSize int) (*DigitalOceanProvider, error) {
 	token, ok := os.LookupEnv("DO_TOKEN")
 	if !ok {
 		return nil, fmt.Errorf("no token found")
@@ -91,6 +92,8 @@ func NewDigitalOceanProvider(ctx context.Context, domainFilter endpoint.DomainFi
 	}
 
 	p := &DigitalOceanProvider{
+		bcfg: bcfg,
+		// TODO: why is public?
 		Client:       client.Domains,
 		domainFilter: domainFilter,
 		apiPageSize:  apiPageSize,
@@ -393,11 +396,11 @@ func (p *DigitalOceanProvider) submitChanges(ctx context.Context, changes *digit
 	return nil
 }
 
-func getTTLFromEndpoint(ep *endpoint.Endpoint) int {
+func getTTLFromEndpoint(cfg provider.BaseConfig, ep *endpoint.Endpoint) int {
 	if ep.RecordTTL.IsConfigured() {
 		return int(ep.RecordTTL)
 	}
-	return digitalOceanRecordTTL
+	return cfg.MinTtl(defaultTTL)
 }
 
 func endpointsByZone(zoneNameIDMapper provider.ZoneIDName, endpoints []*endpoint.Endpoint) map[string][]*endpoint.Endpoint {
@@ -433,6 +436,7 @@ func getMatchingDomainRecords(records []godo.DomainRecord, domain string, ep *en
 }
 
 func processCreateActions(
+	bcfg provider.BaseConfig,
 	recordsByDomain map[string][]godo.DomainRecord,
 	createsByDomain map[string][]*endpoint.Endpoint,
 	changes *digitalOceanChanges,
@@ -459,7 +463,7 @@ func processCreateActions(
 				}).Warn("Preexisting records exist which should not exist for creation actions.")
 			}
 
-			ttl := getTTLFromEndpoint(ep)
+			ttl := getTTLFromEndpoint(bcfg, ep)
 
 			for _, target := range ep.Targets {
 				changes.Creates = append(changes.Creates, &digitalOceanChangeCreate{
@@ -474,6 +478,7 @@ func processCreateActions(
 }
 
 func processUpdateActions(
+	bcfg provider.BaseConfig,
 	recordsByDomain map[string][]godo.DomainRecord,
 	updatesByDomain map[string][]*endpoint.Endpoint,
 	changes *digitalOceanChanges,
@@ -514,7 +519,7 @@ func processUpdateActions(
 				matchingRecordsByTarget[r.Data] = r
 			}
 
-			ttl := getTTLFromEndpoint(ep)
+			ttl := getTTLFromEndpoint(bcfg, ep)
 
 			// Generate create and delete actions based on existence of a record for each target.
 			for _, target := range ep.Targets {
@@ -647,11 +652,11 @@ func (p *DigitalOceanProvider) ApplyChanges(ctx context.Context, planChanges *pl
 
 	var changes digitalOceanChanges
 
-	if err := processCreateActions(recordsByDomain, createsByDomain, &changes); err != nil {
+	if err := processCreateActions(p.bcfg, recordsByDomain, createsByDomain, &changes); err != nil {
 		return err
 	}
 
-	if err := processUpdateActions(recordsByDomain, updatesByDomain, &changes); err != nil {
+	if err := processUpdateActions(p.bcfg, recordsByDomain, updatesByDomain, &changes); err != nil {
 		return err
 	}
 

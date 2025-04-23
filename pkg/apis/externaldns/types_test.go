@@ -18,6 +18,7 @@ package externaldns
 
 import (
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -560,4 +561,57 @@ func TestPasswordsNotLogged(t *testing.T) {
 
 	assert.False(t, strings.Contains(s, "pdns-api-key"))
 	assert.False(t, strings.Contains(s, "tsig-secret"))
+}
+
+// Test for default values
+func TestParseDefaultFlags(t *testing.T) {
+	for _, ti := range []struct {
+		title         string
+		args          []string
+		compareFields []string
+		expected      *Config
+	}{
+		{
+			title: "default config with minimal flags defined and ttl is default",
+			args: []string{
+				"--provider=google",
+				"--source=service",
+			},
+			expected: &Config{
+				ProviderTTL: 0,
+			},
+			compareFields: []string{"ProviderTTL"},
+		},
+		{
+			title: "default config with minimal flags defined",
+			args: []string{
+				"--provider=google",
+				"--source=service",
+				"--provider-ttl=10",
+			},
+			expected: &Config{
+				ProviderTTL: 10,
+			},
+			compareFields: []string{"ProviderTTL"},
+		},
+	} {
+		t.Run(ti.title, func(t *testing.T) {
+
+			gotCfg := ti.expected
+
+			wantCfg := NewConfig()
+			require.NoError(t, wantCfg.ParseFlags(ti.args))
+
+			wantVal := reflect.ValueOf(wantCfg).Elem()
+			gotValue := reflect.ValueOf(gotCfg).Elem()
+			for _, fieldName := range ti.compareFields {
+				wantField := wantVal.FieldByName(fieldName)
+				gotField := gotValue.FieldByName(fieldName)
+
+				assert.True(t, wantField.IsValid())
+				assert.True(t, gotField.IsValid())
+				assert.Equal(t, wantField.Interface(), gotField.Interface())
+			}
+		})
+	}
 }

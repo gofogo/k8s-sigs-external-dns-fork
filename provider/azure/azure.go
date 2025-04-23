@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	azureRecordTTL = 300
+	defaultTTL = 3001
 )
 
 // ZonesClient is an interface of dns.ZoneClient that can be stubbed for testing.
@@ -53,6 +53,7 @@ type RecordSetsClient interface {
 // AzureProvider implements the DNS provider for Microsoft's Azure cloud platform.
 type AzureProvider struct {
 	provider.BaseProvider
+	bcfg                         provider.BaseConfig
 	domainFilter                 endpoint.DomainFilter
 	zoneNameFilter               endpoint.DomainFilter
 	zoneIDFilter                 provider.ZoneIDFilter
@@ -68,7 +69,7 @@ type AzureProvider struct {
 // NewAzureProvider creates a new Azure provider.
 //
 // Returns the provider or an error if a provider could not be created.
-func NewAzureProvider(configFile string, domainFilter endpoint.DomainFilter, zoneNameFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, subscriptionID string, resourceGroup string, userAssignedIdentityClientID string, activeDirectoryAuthorityHost string, zonesCacheDuration time.Duration, dryRun bool) (*AzureProvider, error) {
+func NewAzureProvider(bcfg provider.BaseConfig, configFile string, domainFilter endpoint.DomainFilter, zoneNameFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, subscriptionID string, resourceGroup string, userAssignedIdentityClientID string, activeDirectoryAuthorityHost string, zonesCacheDuration time.Duration, dryRun bool) (*AzureProvider, error) {
 	cfg, err := getConfig(configFile, subscriptionID, resourceGroup, userAssignedIdentityClientID, activeDirectoryAuthorityHost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read Azure config file '%s': %v", configFile, err)
@@ -87,6 +88,7 @@ func NewAzureProvider(configFile string, domainFilter endpoint.DomainFilter, zon
 		return nil, err
 	}
 	return &AzureProvider{
+		bcfg:                         bcfg,
 		domainFilter:                 domainFilter,
 		zoneNameFilter:               zoneNameFilter,
 		zoneIDFilter:                 zoneIDFilter,
@@ -337,7 +339,7 @@ func (p *AzureProvider) recordSetNameForZone(zone string, endpoint *endpoint.End
 }
 
 func (p *AzureProvider) newRecordSet(endpoint *endpoint.Endpoint) (dns.RecordSet, error) {
-	var ttl int64 = azureRecordTTL
+	var ttl = p.bcfg.MinTtlInt64(defaultTTL)
 	if endpoint.RecordTTL.IsConfigured() {
 		ttl = int64(endpoint.RecordTTL)
 	}

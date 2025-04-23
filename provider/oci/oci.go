@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	yaml "github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/common/auth"
 	"github.com/oracle/oci-go-sdk/v65/dns"
@@ -35,7 +35,7 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 )
 
-const ociRecordTTL = 300
+const defaultTTL = 300
 
 // OCIAuthConfig holds connection parameters for the OCI API.
 type OCIAuthConfig struct {
@@ -370,7 +370,7 @@ func newRecordOperation(ep *endpoint.Endpoint, opType dns.RecordOperationOperati
 	}
 	rdata := strings.Join(targets, " ")
 
-	ttl := ociRecordTTL
+	ttl := defaultTTL
 	if ep.RecordTTL.IsConfigured() {
 		ttl = int(ep.RecordTTL)
 	}
