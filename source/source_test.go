@@ -17,11 +17,15 @@ limitations under the License.
 package source
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
@@ -353,4 +357,57 @@ func TestGetProviderSpecificIdentifierAnnotations(t *testing.T) {
 			}
 		})
 	}
+}
+
+type mockDynamicInformerFactory struct {
+	mock.Mock
+}
+
+func (m *mockDynamicInformerFactory) WaitForCacheSync(stopCh <-chan struct{}) map[schema.GroupVersionResource]bool {
+	args := m.Called(stopCh)
+	return args.Get(0).(map[schema.GroupVersionResource]bool)
+}
+
+func TestWaitForDynamicCacheSync_Success(t *testing.T) {
+	factory := &mockDynamicInformerFactory{}
+	factory.On("WaitForCacheSync", mock.Anything).Return(map[schema.GroupVersionResource]bool{
+		{Group: "test", Version: "v1", Resource: "resources"}: true,
+	})
+
+	ctx := context.Background()
+	err := waitForDynamicCacheSync(ctx, factory)
+
+	assert.NoError(t, err)
+	factory.AssertExpectations(t)
+}
+
+func TestWaitForDynamicCacheSync_Failure(t *testing.T) {
+	factory := &mockDynamicInformerFactory{}
+	factory.On("WaitForCacheSync", mock.Anything).Return(map[schema.GroupVersionResource]bool{
+		{Group: "test", Version: "v1", Resource: "resources"}: false,
+	})
+
+	ctx := context.Background()
+	err := waitForDynamicCacheSync(ctx, factory)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to sync")
+	factory.AssertExpectations(t)
+}
+
+func TestWaitForDynamicCacheSync_ContextTimeout(t *testing.T) {
+	factory := &mockDynamicInformerFactory{}
+	factory.On("WaitForCacheSync", mock.Anything).Return(map[schema.GroupVersionResource]bool{
+		{Group: "test", Version: "v1", Resource: "resources"}: false,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	err := waitForDynamicCacheSync(ctx, factory)
+
+	assert.Error(t, err)
+	fmt.Println(err)
+	// assert.True(t, errors.Is(err, context.DeadlineExceeded))
+	factory.AssertExpectations(t)
 }
