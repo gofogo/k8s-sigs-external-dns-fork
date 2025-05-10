@@ -84,11 +84,6 @@ func getEndpointsTypeFromAnnotations(annotations map[string]string) string {
 	return annotations[endpointsTypeAnnotationKey]
 }
 
-// endpointsForHostname returns the endpoint objects for each host-target combination.
-func endpointsForHostname(hostname string, targets endpoint.Targets, ttl endpoint.TTL, providerSpecific endpoint.ProviderSpecific, setIdentifier string, resource string) []*endpoint.Endpoint {
-	return EndpointsForHostname(hostname, targets, ttl, providerSpecific, setIdentifier, resource)
-}
-
 func getLabelSelector(annotationFilter string) (labels.Selector, error) {
 	labelSelector, err := metav1.ParseToLabelSelector(annotationFilter)
 	if err != nil {
