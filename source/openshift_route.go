@@ -33,6 +33,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/fqdn"
 )
 
 // ocpRouteSource is an implementation of Source for OpenShift Route objects.

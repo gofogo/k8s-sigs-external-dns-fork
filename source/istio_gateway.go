@@ -35,10 +35,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 
-	"sigs.k8s.io/external-dns/source/fqdn"
-
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/fqdn"
 )
 
 // IstioGatewayIngressSource is the annotation used to determine if the gateway is implemented by an Ingress object
@@ -218,7 +217,6 @@ func (sc *gatewaySource) filterByAnnotations(gateways []*networkingv1alpha3.Gate
 	for _, gw := range gateways {
 		// include if the annotations match the selector
 		if selector.Matches(labels.Set(gw.Annotations)) {
-		if selector.Matches(labels.Set(gw.Annotations)) {
 			filteredList = append(filteredList, gw)
 		}
 	}
@@ -279,7 +277,7 @@ func (sc *gatewaySource) endpointsFromGateway(ctx context.Context, hostnames []s
 
 	ttl := annotations.TTLFromAnnotations(gateway.Annotations, resource)
 
-	targets := getTargetsFromTargetAnnotation(annotations)
+	targets := annotations.TargetsFromTargetAnnotation(gateway.Annotations)
 	if len(targets) == 0 {
 		targets, err = sc.targetsFromGateway(ctx, gateway)
 		if err != nil {
@@ -287,7 +285,7 @@ func (sc *gatewaySource) endpointsFromGateway(ctx context.Context, hostnames []s
 		}
 	}
 
-	providerSpecific, setIdentifier := getProviderSpecificAnnotations(annotations)
+	providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(gateway.Annotations)
 
 	for _, host := range hostnames {
 		endpoints = append(endpoints, endpointsForHostname(host, targets, ttl, providerSpecific, setIdentifier, resource)...)

@@ -163,7 +163,6 @@ func (gs *glooSource) generateEndpointsFromProxy(ctx context.Context, proxy *pro
 	for _, listener := range proxy.Spec.Listeners {
 		for _, virtualHost := range listener.HTTPListener.VirtualHosts {
 			ants, err := gs.annotationsFromProxySource(ctx, virtualHost)
-			ants, err := gs.annotationsFromProxySource(ctx, virtualHost)
 			if err != nil {
 				return nil, err
 			}
