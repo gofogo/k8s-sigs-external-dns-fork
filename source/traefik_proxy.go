@@ -142,7 +142,7 @@ func NewTraefikSource(ctx context.Context, dynamicKubeClient dynamic.Interface, 
 		)
 	}
 
-	informerFactory.Start((ctx.Done()))
+	informerFactory.Start(ctx.Done())
 
 	// wait for the local cache to be populated.
 	if err := waitForDynamicCacheSync(context.Background(), informerFactory); err != nil {
@@ -259,10 +259,8 @@ func (ts *traefikSource) ingressRouteEndpoints() ([]*endpoint.Endpoint, error) {
 
 		fullname := fmt.Sprintf("%s/%s", ingressRoute.Namespace, ingressRoute.Name)
 
-		ingressEndpoints, err := ts.endpointsFromIngressRoute(ingressRoute, targets)
-		if err != nil {
-			return nil, err
-		}
+		ingressEndpoints := ts.endpointsFromIngressRoute(ingressRoute, targets)
+
 		if len(ingressEndpoints) == 0 {
 			log.Debugf("No endpoints could be generated from Host %s", fullname)
 			continue
@@ -415,10 +413,8 @@ func (ts *traefikSource) oldIngressRouteEndpoints() ([]*endpoint.Endpoint, error
 
 		fullname := fmt.Sprintf("%s/%s", ingressRoute.Namespace, ingressRoute.Name)
 
-		ingressEndpoints, err := ts.endpointsFromIngressRoute(ingressRoute, targets)
-		if err != nil {
-			return nil, err
-		}
+		ingressEndpoints := ts.endpointsFromIngressRoute(ingressRoute, targets)
+
 		if len(ingressEndpoints) == 0 {
 			log.Debugf("No endpoints could be generated from Host %s", fullname)
 			continue
@@ -629,7 +625,7 @@ func (ts *traefikSource) filterIngressRouteUdpByAnnotations(ingressRoutes []*Ing
 }
 
 // endpointsFromIngressRoute extracts the endpoints from a IngressRoute object
-func (ts *traefikSource) endpointsFromIngressRoute(ingressRoute *IngressRoute, targets endpoint.Targets) ([]*endpoint.Endpoint, error) {
+func (ts *traefikSource) endpointsFromIngressRoute(ingressRoute *IngressRoute, targets endpoint.Targets) []*endpoint.Endpoint {
 	var endpoints []*endpoint.Endpoint
 
 	resource := fmt.Sprintf("ingressroute/%s/%s", ingressRoute.Namespace, ingressRoute.Name)
@@ -661,7 +657,7 @@ func (ts *traefikSource) endpointsFromIngressRoute(ingressRoute *IngressRoute, t
 		}
 	}
 
-	return endpoints, nil
+	return endpoints
 }
 
 // endpointsFromIngressRouteTCP extracts the endpoints from a IngressRouteTCP object
