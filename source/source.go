@@ -34,6 +34,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic/dynamicinformer"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/tools/cache"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
@@ -383,4 +386,26 @@ func waitForDynamicCacheSync(ctx context.Context, factory dynamicInformerFactory
 		}
 	}
 	return nil
+}
+
+func initInformerWithDefaultCacheEventHandler(
+	factory dynamicinformer.DynamicSharedInformerFactory,
+	gvr schema.GroupVersionResource,
+) informers.GenericInformer {
+	informer := factory.ForResource(gvr)
+	informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+		},
+	})
+	return informer
+}
+
+func initializeInformerWithEventHandler(
+	factory dynamicinformer.DynamicSharedInformerFactory,
+	gvr schema.GroupVersionResource,
+	handlerFuncs cache.ResourceEventHandlerFuncs,
+) informers.GenericInformer {
+	informer := factory.ForResource(gvr)
+	informer.Informer().AddEventHandler(handlerFuncs)
+	return informer
 }

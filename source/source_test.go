@@ -17,12 +17,23 @@ limitations under the License.
 package source
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic/dynamicinformer"
+	"k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/tools/cache"
 
+	"k8s.io/client-go/informers"
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
@@ -354,3 +365,106 @@ func TestGetProviderSpecificIdentifierAnnotations(t *testing.T) {
 		})
 	}
 }
+
+// func TestInitializeInformerWithEventHandler(t *testing.T) {
+// 	// Mock factory and GVR
+// 	mockFactory := &MockDynamicSharedInformerFactory{}
+// 	mockGVR := schema.GroupVersionResource{Group: "testGroup", Version: "v1", Resource: "testResource"}
+//
+// 	// Call the method
+// 	informer := initializeInformerWithEventHandler(mockFactory, mockGVR)
+//
+// 	// Assertions
+// 	assert.NotNil(t, informer, "Informer should not be nil")
+// 	assert.NotNil(t, informer.Informer(), "Informer object should not be nil")
+//
+// 	// Verify that the AddEventHandler was called
+// 	assert.True(t, mockFactory.HandlerAdded, "Event handler should have been added")
+// }
+
+// MockDynamicSharedInformerFactory is a mock implementation of DynamicSharedInformerFactory
+type MockDynamicSharedInformerFactory struct {
+	HandlerAdded bool
+}
+
+func (m *MockDynamicSharedInformerFactory) Start(stopCh <-chan struct{}) {
+	return
+}
+
+func (m *MockDynamicSharedInformerFactory) ForResource(gvr schema.GroupVersionResource) informers.GenericInformer {
+	return nil
+}
+
+func (m *MockDynamicSharedInformerFactory) WaitForCacheSync(stopCh <-chan struct{}) map[schema.GroupVersionResource]bool {
+	return nil
+}
+
+func (m *MockDynamicSharedInformerFactory) Shutdown() {
+}
+
+type MockGenericInformer struct {
+}
+
+func (m *MockGenericInformer) Informer() cache.SharedIndexInformer {
+	return nil
+}
+
+func (m *MockGenericInformer) Lister() cache.GenericLister {
+	return nil
+}
+
+// func TestInitializeInformerWithEventHandler1(t *testing.T) {
+// 	// Define GVR
+// 	gvr := schema.GroupVersionResource{
+// 		Group:    "apps",
+// 		Version:  "v1",
+// 		Resource: "deployments",
+// 	}
+
+// 	scheme := runtime.NewScheme()
+
+// 	// Create a fake dynamic client
+// 	client := fake.NewSimpleDynamicClient(scheme)
+
+// 	// Create dynamic shared informer factory
+// 	factory := dynamicinformer.NewDynamicSharedInformerFactory(client, 0)
+
+// 	called := make(chan struct{}, 1)
+
+// 	handler := cache.ResourceEventHandlerFuncs{
+// 		AddFunc: func(obj interface{}) {
+// 			called <- struct{}{}
+// 		},
+// 	}
+
+// 	initializeInformerWithEventHandler(factory, gvr, handler)
+
+// 	informer := initializeInformerWithEventHandler(factory, gvr, handler)
+
+// 	stopCh := make(chan struct{})
+// 	defer close(stopCh)
+
+// 	// Start the informer
+// 	go informer.Informer().Run(stopCh)
+
+// 	if !cache.WaitForCacheSync(stopCh, informer.Informer().HasSynced) {
+// 		t.Fatal("cache did not sync")
+// 	}
+
+// 	// Create a fake object
+// 	obj := &unstructured.Unstructured{}
+// 	obj.SetGroupVersionKind(gvr.GroupVersion().WithKind("Deployment"))
+// 	obj.SetName("test-deploy")
+// 	obj.SetNamespace("default")
+
+// 	_, err := client.Resource(gvr).Namespace("default").Create(context.TODO(), obj, metav1.CreateOptions{})
+// 	require.NoError(t, err)
+
+// 	// Wait for AddFunc to trigger
+// 	select {
+// 	case <-called:
+// 		// Success
+// 	case <-time.After(2 * time.Second):
+// 		t.Fatal("expected AddFunc to be called")
+// 	}
+// }
