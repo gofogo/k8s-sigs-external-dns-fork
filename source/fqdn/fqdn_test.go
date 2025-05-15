@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func TestParseTemplate(t *testing.T) {
@@ -96,6 +98,118 @@ func TestParseTemplate(t *testing.T) {
 		})
 	}
 }
+
+func TestExecTemplate(t *testing.T) {
+	tests := []struct {
+		name     string
+		tmpl     string
+		obj      kubeObject
+		want     []string
+		wantErr  bool
+		errorMsg string
+	}{
+		{
+			name: "simple template",
+			tmpl: "{{ .Name }}.example.com, {{ .Namespace }}.example.org",
+			obj: &testObject{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "default",
+				},
+			},
+			want: []string{"test.example.com", "default.example.org"},
+		},
+		{
+			name: "multiple hostnames",
+			tmpl: "{{.Name}}.example.com, {{.Name}}.example.org",
+			obj: &testObject{
+
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "default",
+				},
+			},
+			want: []string{"test.example.com", "test.example.org"},
+		},
+		{
+			name: "trim spaces and dots",
+			tmpl: "  {{.Name}}.example.com. , {{.Name}}.example.org.  ",
+			obj: &testObject{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+				},
+			},
+			want: []string{"test.example.com", "test.example.org"},
+		},
+		// TODO; how to annotations
+		{
+			name: "annotations hostnames",
+			tmpl: "{{.Name}}.example.com, {{.Name}}.example.org, {{.Labels.environment }}.example.com, {{ index .ObjectMeta.Annotations \"alb.ingress.kubernetes.io/scheme\" }}.{{ .Labels.environment }}.{{ index .ObjectMeta.Annotations \"dns.company.com/zone\" }}",
+			obj: &testObject{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"external-dns.alpha.kubernetes.io/hostname": "test.example.com, test.example.org",
+						"kubernetes.io/role/internal-elb":           "true",
+						"alb.ingress.kubernetes.io/scheme":          "internal",
+						"dns.company.com/zone":                      "company.org",
+					},
+					Labels: map[string]string{
+						"environment": "production",
+						"app":         "myapp",
+						"tier":        "backend",
+						"role":        "worker",
+						"version":     "1",
+					},
+				},
+			},
+			want: []string{"test.example.com", "test.example.org"},
+		},
+		// metadata.annotations["kubernetes.io/tls-acme"]
+		// TODO: how to handle labels
+		// TODO: if annotation not ext-dns, return something
+
+		// {
+		// 	name: "invalid template syntax",
+		// 	tmpl: "{{.InvalidField}",
+		// 	obj: &testObject{
+		// 		ObjectMeta: metav1.ObjectMeta{
+		// 			Name:      "test",
+		// 			Namespace: "default",
+		// 		},
+		// 	},
+		// 	wantErr:  true,
+		// 	errorMsg: "failed to apply template",
+		// },
+		// {
+		// 	name:     "nil object",
+		// 	tmpl:     "{{.Name}}.example.com",
+		// 	obj:      nil,
+		// 	wantErr:  true,
+		// 	errorMsg: "failed to apply template",
+		// },
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpl, err := ParseTemplate(tt.tmpl)
+			assert.NoError(t, err)
+
+			got, err := ExecTemplate(tmpl, tt.obj)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TODO: error cases
 
 func TestFqdnTemplate(t *testing.T) {
 	tests := []struct {
@@ -257,5 +371,17 @@ func TestIsIPv4String(t *testing.T) {
 			result := isIPv4String(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
+	}
+}
+
+// testObject implements kubeObject interface for testing
+type testObject struct {
+	metav1.ObjectMeta
+	runtime.Object
+}
+
+func (t *testObject) DeepCopyObject() runtime.Object {
+	return &testObject{
+		ObjectMeta: *t.ObjectMeta.DeepCopy(),
 	}
 }

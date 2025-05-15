@@ -65,12 +65,16 @@ The template uses the following data from the source object (e.g., a `Service` o
 
 <!-- TODO: generate from code -->
 
-| Function     | Description                                                                              |
-|:-------------|:-----------------------------------------------------------------------------------------|
-| `trimPrefix`  | Function from the `strings` package. Returns `string` without the provided leading prefix. |
-| `replace`     | Function that performs a simple replacement of all `old` string with `new` in the source string. |
-| `isIPv4`      | Function that checks if a string is a valid IPv4 address. |
-| `isIPv6`      | Function that checks if a string is a valid IPv6 address (including IPv4-mapped IPv6). |
+| Function     | Description                                                                                      |
+|:-------------|:-------------------------------------------------------------------------------------------------|
+| `contains`   | Function reports whether `substr` is within  `strings`                                           |
+| `toLower`    | Returns `string` with all Unicode letters mapped to their lower case                             |
+| `trim`       | Function from the `strings` package. Returns `string` without the provided leading prefix.       |
+| `trimPrefix` | Function ...TBD.                                                                                 |
+| `trimSuffix` | Function ...TBD.                                                                                 |
+| `replace`    | Function that performs a simple replacement of all `old` string with `new` in the source string. |
+| `isIPv4`     | Function that checks if a string is a valid IPv4 address.                                        |
+| `isIPv6`     | Function that checks if a string is a valid IPv6 address (including IPv4-mapped IPv6).           |
 
 ---
 
@@ -241,14 +245,14 @@ This is helpful in scenarios such as:
 
 ### Can I specify multiple global FQDN templates?
 
-Yes, you can. Pass in a comma separated list to --fqdn-template. Beware this will double (triple, etc) the amount of DNS entries based on how many services, ingresses and so on you have and will get you faster towards the API request limit of your DNS provider.
+Yes, you can. Pass in a comma separated list to --fqdn-template. Beware this will double (triple, etc) the amount of DNS entries based on how many services, ingresses, and so on you have and will get you faster towards the API request limit of your DNS provider.
 
 ### Where to find template syntax
 
 - [Go template syntax](https://pkg.go.dev/text/template)
 - [Go func builtins](https://github.com/golang/go/blob/master/src/text/template/funcs.go#L39-L63)
 
-### FQDN Templating, Helm and improper templating syntax
+### FQDN Templating, Helm, and improper templating syntax
 
 The user encountered errors due to improper templating syntax:
 
@@ -315,4 +319,4 @@ args:
   - --fqdn-template="{{range .Status.Addresses}}{{if and (eq .Type \"ExternalIP\") (isIPv4 .Address)}}{{.Address | replace \".\" \"-\"}}{{break}}{{end}}{{end}}.example.com
 ```
 
-This is a complex template that iternates through a list of a Node's Addresses and creates a FQDN with public IPv4 addresses.
+This is a complex template that iterates through a list of a Node's Addresses and creates a FQDN with public IPv4 addresses.
