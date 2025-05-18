@@ -37,33 +37,64 @@ import (
 
 type mockOvhClient struct {
 	mock.Mock
+	currentTest *testing.T
 }
 
-func (c *mockOvhClient) PostWithContext(ctx context.Context, endpoint string, input interface{}, output interface{}) error {
+func newMockOvhClient(t *testing.T) *mockOvhClient {
+	return &mockOvhClient{
+		currentTest: t,
+	}
+}
+
+func (c *mockOvhClient) PostWithContext(_ context.Context, endpoint string, input interface{}, output interface{}) error {
 	stub := c.Called(endpoint, input)
-	data, _ := json.Marshal(stub.Get(0))
-	json.Unmarshal(data, output)
+	data, err := json.Marshal(stub.Get(0))
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(data, output)
+	if err != nil {
+		return err
+	}
 	return stub.Error(1)
 }
 
-func (c *mockOvhClient) PutWithContext(ctx context.Context, endpoint string, input interface{}, output interface{}) error {
+func (c *mockOvhClient) PutWithContext(_ context.Context, endpoint string, input interface{}, output interface{}) error {
 	stub := c.Called(endpoint, input)
-	data, _ := json.Marshal(stub.Get(0))
-	json.Unmarshal(data, output)
+	data, err := json.Marshal(stub.Get(0))
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(data, output)
+	if err != nil {
+		return err
+	}
 	return stub.Error(1)
 }
 
-func (c *mockOvhClient) GetWithContext(ctx context.Context, endpoint string, output interface{}) error {
+func (c *mockOvhClient) GetWithContext(_ context.Context, endpoint string, output interface{}) error {
 	stub := c.Called(endpoint)
-	data, _ := json.Marshal(stub.Get(0))
-	json.Unmarshal(data, output)
+	data, err := json.Marshal(stub.Get(0))
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(data, output)
+	if err != nil {
+		return err
+	}
 	return stub.Error(1)
 }
 
-func (c *mockOvhClient) DeleteWithContext(ctx context.Context, endpoint string, output interface{}) error {
+func (c *mockOvhClient) DeleteWithContext(_ context.Context, endpoint string, output interface{}) error {
 	stub := c.Called(endpoint)
-	data, _ := json.Marshal(stub.Get(0))
-	json.Unmarshal(data, output)
+	data, err := json.Marshal(stub.Get(0))
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(data, output)
+	if err != nil {
+		return err
+	}
 	return stub.Error(1)
 }
 
@@ -82,7 +113,7 @@ func (c *mockDnsClient) ExchangeContext(ctx context.Context, m *dns.Msg, addr st
 
 func TestOvhZones(t *testing.T) {
 	assert := assert.New(t)
-	client := new(mockOvhClient)
+	client := newMockOvhClient(t)
 	provider := &OVHProvider{
 		client:         client,
 		apiRateLimiter: ratelimit.New(10),
@@ -109,7 +140,7 @@ func TestOvhZones(t *testing.T) {
 
 func TestOvhZoneRecords(t *testing.T) {
 	assert := assert.New(t)
-	client := new(mockOvhClient)
+	client := newMockOvhClient(t)
 	provider := &OVHProvider{client: client, apiRateLimiter: ratelimit.New(10), cacheInstance: cache.New(cache.NoExpiration, cache.NoExpiration), dnsClient: nil, UseCache: true}
 
 	// Basic zones records
@@ -171,7 +202,7 @@ func TestOvhZoneRecords(t *testing.T) {
 
 func TestOvhZoneRecordsCache(t *testing.T) {
 	assert := assert.New(t)
-	client := new(mockOvhClient)
+	client := newMockOvhClient(t)
 	dnsClient := new(mockDnsClient)
 	provider := &OVHProvider{client: client, apiRateLimiter: ratelimit.New(10), cacheInstance: cache.New(cache.NoExpiration, cache.NoExpiration), dnsClient: dnsClient, UseCache: true}
 
@@ -271,7 +302,7 @@ func TestOvhZoneRecordsCache(t *testing.T) {
 
 func TestOvhRecords(t *testing.T) {
 	assert := assert.New(t)
-	client := new(mockOvhClient)
+	client := newMockOvhClient(t)
 	provider := &OVHProvider{client: client, apiRateLimiter: ratelimit.New(10), cacheInstance: cache.New(cache.NoExpiration, cache.NoExpiration)}
 
 	// Basic zones records
@@ -284,9 +315,9 @@ func TestOvhRecords(t *testing.T) {
 	client.On("GetWithContext", "/domain/zone/example.net/record/42").Return(ovhRecord{ID: 42, Zone: "example.net", ovhRecordFields: ovhRecordFields{FieldType: "A", ovhRecordFieldUpdate: ovhRecordFieldUpdate{SubDomain: "ovh", TTL: 10, Target: "203.0.113.43"}}}, nil).Once()
 	endpoints, err := provider.Records(t.Context())
 	assert.NoError(err)
-	// Little fix for multi targets endpoint
-	for _, endpoint := range endpoints {
-		sort.Strings(endpoint.Targets)
+	// Little fix for multi-targets endpoint
+	for _, ep := range endpoints {
+		sort.Strings(ep.Targets)
 	}
 	assert.ElementsMatch(endpoints, []*endpoint.Endpoint{
 		{DNSName: "example.org", RecordType: "A", RecordTTL: 10, Labels: endpoint.NewLabels(), Targets: []string{"203.0.113.42"}},
@@ -349,12 +380,13 @@ func TestOvhComputeChanges(t *testing.T) {
 }
 
 func TestOvhRefresh(t *testing.T) {
-	client := new(mockOvhClient)
+	client := newMockOvhClient(t)
 	provider := &OVHProvider{client: client, apiRateLimiter: ratelimit.New(10), cacheInstance: cache.New(cache.NoExpiration, cache.NoExpiration)}
 
 	// Basic zone refresh
 	client.On("PostWithContext", "/domain/zone/example.net/refresh", nil).Return(nil, nil).Once()
-	provider.refresh(t.Context(), "example.net")
+	err := provider.refresh(t.Context(), "example.net")
+	assert.Error(t, err)
 	client.AssertExpectations(t)
 }
 
@@ -426,7 +458,7 @@ func TestOvhNewChange(t *testing.T) {
 }
 
 func TestOvhApplyChanges(t *testing.T) {
-	client := new(mockOvhClient)
+	client := newMockOvhClient(t)
 	provider := &OVHProvider{client: client, apiRateLimiter: ratelimit.New(10), cacheInstance: cache.New(cache.NoExpiration, cache.NoExpiration)}
 	changes := plan.Changes{
 		Create: []*endpoint.Endpoint{
@@ -575,7 +607,7 @@ func TestOvhApplyChanges(t *testing.T) {
 
 func TestOvhChange(t *testing.T) {
 	assert := assert.New(t)
-	client := new(mockOvhClient)
+	client := newMockOvhClient(t)
 	provider := &OVHProvider{client: client, apiRateLimiter: ratelimit.New(10), cacheInstance: cache.New(cache.NoExpiration, cache.NoExpiration)}
 
 	// Record creation

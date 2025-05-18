@@ -14,6 +14,7 @@ linters:
     - unconvert
     - unused
     - whitespace
+    - errchkjson # Checks types passed to the json encoding functions. ref: https://golangci-lint.run/usage/linters/#errchkjson
     - predeclared # Find code that shadows one of Go's predeclared identifiers
     - sloglint # Ensure consistent code style when using log/slog
     - asciicheck  # Checks that all code identifiers does not have non-ASCII symbols in the name

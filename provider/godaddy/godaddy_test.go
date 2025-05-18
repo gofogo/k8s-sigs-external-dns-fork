@@ -42,47 +42,57 @@ func newMockGoDaddyClient(t *testing.T) *mockGoDaddyClient {
 }
 
 var (
-	zoneNameExampleOrg string = "example.org"
-	zoneNameExampleNet string = "example.net"
+	zoneNameExampleOrg = "example.org"
+	zoneNameExampleNet = "example.net"
 )
 
 func (c *mockGoDaddyClient) Post(endpoint string, input interface{}, output interface{}) error {
-	log.Infof("POST: %s - %v", endpoint, input)
+	log.Debugf("POST: %s - %v", endpoint, input)
 	stub := c.Called(endpoint, input)
-	data, _ := json.Marshal(stub.Get(0))
-	json.Unmarshal(data, output)
+	data, err := json.Marshal(stub.Get(0))
+	assert.NoError(c.currentTest, err)
+	err = json.Unmarshal(data, output)
+	assert.NoError(c.currentTest, err)
 	return stub.Error(1)
 }
 
 func (c *mockGoDaddyClient) Patch(endpoint string, input interface{}, output interface{}) error {
-	log.Infof("PATCH: %s - %v", endpoint, input)
+	log.Debugf("PATCH: %s - %v", endpoint, input)
 	stub := c.Called(endpoint, input)
-	data, _ := json.Marshal(stub.Get(0))
-	json.Unmarshal(data, output)
+	data, err := json.Marshal(stub.Get(0))
+	assert.NoError(c.currentTest, err)
+	err = json.Unmarshal(data, output)
+	assert.NoError(c.currentTest, err)
 	return stub.Error(1)
 }
 
 func (c *mockGoDaddyClient) Put(endpoint string, input interface{}, output interface{}) error {
-	log.Infof("PUT: %s - %v", endpoint, input)
+	log.Debugf("PUT: %s - %v", endpoint, input)
 	stub := c.Called(endpoint, input)
-	data, _ := json.Marshal(stub.Get(0))
-	json.Unmarshal(data, output)
+	data, err := json.Marshal(stub.Get(0))
+	assert.NoError(c.currentTest, err)
+	err = json.Unmarshal(data, output)
+	assert.NoError(c.currentTest, err)
 	return stub.Error(1)
 }
 
 func (c *mockGoDaddyClient) Get(endpoint string, output interface{}) error {
-	log.Infof("GET: %s", endpoint)
+	log.Debugf("GET: %s", endpoint)
 	stub := c.Called(endpoint)
-	data, _ := json.Marshal(stub.Get(0))
-	json.Unmarshal(data, output)
+	data, err := json.Marshal(stub.Get(0))
+	assert.NoError(c.currentTest, err)
+	err = json.Unmarshal(data, output)
+	assert.NoError(c.currentTest, err)
 	return stub.Error(1)
 }
 
 func (c *mockGoDaddyClient) Delete(endpoint string, output interface{}) error {
-	log.Infof("DELETE: %s", endpoint)
+	log.Debugf("DELETE: %s", endpoint)
 	stub := c.Called(endpoint)
-	data, _ := json.Marshal(stub.Get(0))
-	json.Unmarshal(data, output)
+	data, err := json.Marshal(stub.Get(0))
+	assert.NoError(c.currentTest, err)
+	err = json.Unmarshal(data, output)
+	assert.NoError(c.currentTest, err)
 	return stub.Error(1)
 }
 
