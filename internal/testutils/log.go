@@ -68,6 +68,32 @@ func TestHelperLogContains(msg string, hook *test.Hook, t *testing.T) {
 	assert.True(t, isContains, "Expected log message not found: %s", msg)
 }
 
+// TestHelperLogContainsMsgWithFields verifies that a specific log message with fields
+//
+// Parameters:
+// - msg: The log message that should be found.
+// - fields: A map of fields that should be present in the log entry.
+// - hook: The test hook capturing log entries.
+// - t: The testing object used for assertions.
+func TestHelperLogContainsMsgWithFields(msg string, fields map[string]interface{}, hook *test.Hook, t *testing.T) {
+	t.Helper()
+	isContains := false
+
+	for _, entry := range hook.AllEntries() {
+		if strings.Contains(entry.Message, msg) {
+			isContains = true
+
+			for key, value := range fields {
+				if entry.Data[key] != value {
+					isContains = false
+					break
+				}
+			}
+		}
+	}
+	assert.True(t, isContains, "Expected log message not found: %s with fields %v", msg, fields)
+}
+
 // TestHelperLogNotContains verifies that a specific log message is not present
 // in the captured log entries. It asserts that the provided message `msg`
 // does not appear in any of the log entries recorded by the `hook`.
