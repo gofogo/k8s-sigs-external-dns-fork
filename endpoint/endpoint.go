@@ -256,6 +256,15 @@ func (e *Endpoint) WithSetIdentifier(setIdentifier string) *Endpoint {
 	return e
 }
 
+// WithLabel adds or updates a label for the Endpoint.
+func (e *Endpoint) WithLabel(key, value string) *Endpoint {
+	if e.Labels == nil {
+		e.Labels = NewLabels()
+	}
+	e.Labels[key] = value
+	return e
+}
+
 // WithProviderSpecific attaches a key/value pair to the Endpoint and returns the Endpoint.
 // This can be used to pass additional data through the stages of ExternalDNS's Endpoint processing.
 // The assumption is that most of the time this will be provider specific metadata that doesn't

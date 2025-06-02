@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,6 +43,7 @@ import (
 	cachetesting "k8s.io/client-go/tools/cache/testing"
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/internal/testutils"
 )
 
 type CRDSuite struct {
@@ -513,6 +515,10 @@ func testCRDSourceEndpoints(t *testing.T) {
 
 			// Validate received endpoints against expected endpoints.
 			validateEndpoints(t, receivedEndpoints, ti.endpoints)
+
+			for _, e := range receivedEndpoints {
+				fmt.Println(e.Labels)
+			}
 		})
 	}
 }
@@ -596,6 +602,36 @@ func TestCRDSource_AddEventHandler_Delete(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 }
 
+func TestCRDSource_AddEventHandler_Delete_WithLog(t *testing.T) {
+	ctx := t.Context()
+	watcher, cs := helperCreateWatcherWithInformer(t)
+
+	hook := testutils.LogsUnderTestWithLogLevel(log.DebugLevel, t)
+
+	var isTriggered atomic.Bool
+	cs.AddEventHandler(ctx, func() {
+		isTriggered.Store(true)
+	})
+
+	obj := &unstructured.Unstructured{}
+	obj.SetName("test")
+	obj.SetNamespace("default")
+	obj.SetKind("DNSEndpoint")
+	obj.SetAPIVersion("test.k8s.io/v1alpha1")
+
+	watcher.Delete(obj)
+
+	require.Eventually(t, func() bool {
+		return isTriggered.Load()
+	}, time.Second, 10*time.Millisecond)
+
+	testutils.TestHelperLogContainsMsgWithFields("received delete event", map[string]interface{}{
+		"kind":       obj.GetKind(),
+		"apiVersion": obj.GetAPIVersion(),
+		"name":       obj.GetName(),
+	}, hook, t)
+}
+
 func TestCRDSource_Watch(t *testing.T) {
 	scheme := runtime.NewScheme()
 	err := apiv1alpha1.AddToScheme(scheme)
@@ -674,7 +710,7 @@ func helperCreateWatcherWithInformer(t *testing.T) (*cachetesting.FakeController
 	}, time.Second, 10*time.Millisecond)
 
 	cs := &crdSource{
-		informer: &informer,
+		informer: informer,
 	}
 
 	return watcher, *cs

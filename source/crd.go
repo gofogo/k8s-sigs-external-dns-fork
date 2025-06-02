@@ -22,10 +22,10 @@ import (
 	"os"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
-
 	"sigs.k8s.io/external-dns/source/annotations"
 
 	log "github.com/sirupsen/logrus"
@@ -51,7 +51,7 @@ type crdSource struct {
 	codec            runtime.ParameterCodec
 	annotationFilter string
 	labelSelector    labels.Selector
-	informer         *cache.SharedInformer
+	informer         cache.SharedInformer
 }
 
 func addKnownTypes(scheme *runtime.Scheme, groupVersion schema.GroupVersion) error {
@@ -123,7 +123,7 @@ func NewCRDSource(crdClient rest.Interface, namespace, kind string, annotationFi
 	if startInformer {
 		// external-dns already runs its sync-handler periodically (controlled by `--interval` flag) to ensure any
 		// missed or dropped events are handled. specify resync period 0 to avoid unnecessary sync handler invocations.
-		informer := cache.NewSharedInformer(
+		sourceCrd.informer = cache.NewSharedInformer(
 			&cache.ListWatch{
 				ListWithContextFunc: func(ctx context.Context, lo metav1.ListOptions) (result runtime.Object, err error) {
 					return sourceCrd.List(ctx, &lo)
@@ -134,32 +134,35 @@ func NewCRDSource(crdClient rest.Interface, namespace, kind string, annotationFi
 			},
 			&apiv1alpha1.DNSEndpoint{},
 			0)
-		sourceCrd.informer = &informer
-		go informer.Run(wait.NeverStop)
+		go sourceCrd.informer.Run(wait.NeverStop)
 	}
 	return &sourceCrd, nil
 }
 
 func (cs *crdSource) AddEventHandler(_ context.Context, handler func()) {
-	if cs.informer != nil {
-		log.Debug("Adding event handler for CRD")
-		// Right now there is no way to remove event handler from informer, see:
-		// https://github.com/kubernetes/kubernetes/issues/79610
-		informer := *cs.informer
-		_, _ = informer.AddEventHandler(
-			cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					handler()
-				},
-				UpdateFunc: func(old interface{}, newI interface{}) {
-					handler()
-				},
-				DeleteFunc: func(obj interface{}) {
-					handler()
-				},
-			},
-		)
+	if cs.informer == nil {
+		return
 	}
+
+	log.Debug("Adding event handler for CRD")
+	// Right now there is no way to remove event handler from informer, see:
+	// https://github.com/kubernetes/kubernetes/issues/79610
+	_, _ = cs.informer.AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				logEvent(obj, "received add event")
+				handler()
+			},
+			UpdateFunc: func(old interface{}, newI interface{}) {
+				logEvent(newI, "received update event")
+				handler()
+			},
+			DeleteFunc: func(obj interface{}) {
+				logEvent(obj, "received delete event")
+				handler()
+			},
+		},
+	)
 }
 
 // Endpoints returns endpoint objects.
@@ -192,11 +195,9 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 
 			illegalTarget := false
 			for _, target := range ep.Targets {
-				if ep.RecordType != endpoint.RecordTypeNAPTR && strings.HasSuffix(target, ".") {
-					illegalTarget = true
-					break
-				}
-				if ep.RecordType == endpoint.RecordTypeNAPTR && !strings.HasSuffix(target, ".") {
+				isNAPTR := ep.RecordType == endpoint.RecordTypeNAPTR
+				hasDot := strings.HasSuffix(target, ".")
+				if (isNAPTR && !hasDot) || (!isNAPTR && hasDot) {
 					illegalTarget = true
 					break
 				}
@@ -206,14 +207,11 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 				continue
 			}
 
-			if ep.Labels == nil {
-				ep.Labels = endpoint.NewLabels()
-			}
+			ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("crd/%s/%s", dnsEndpoint.Namespace, dnsEndpoint.Name))
 
 			crdEndpoints = append(crdEndpoints, ep)
 		}
 
-		cs.setResourceLabel(&dnsEndpoint, crdEndpoints)
 		endpoints = append(endpoints, crdEndpoints...)
 
 		if dnsEndpoint.Status.ObservedGeneration == dnsEndpoint.Generation {
@@ -231,12 +229,6 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 	return endpoints, nil
 }
 
-func (cs *crdSource) setResourceLabel(crd *apiv1alpha1.DNSEndpoint, endpoints []*endpoint.Endpoint) {
-	for _, ep := range endpoints {
-		ep.Labels[endpoint.ResourceLabelKey] = fmt.Sprintf("crd/%s/%s", crd.Namespace, crd.Name)
-	}
-}
-
 func (cs *crdSource) watch(ctx context.Context, opts *metav1.ListOptions) (watch.Interface, error) {
 	opts.Watch = true
 	return cs.crdClient.Get().
@@ -246,20 +238,19 @@ func (cs *crdSource) watch(ctx context.Context, opts *metav1.ListOptions) (watch
 		Watch(ctx)
 }
 
-func (cs *crdSource) List(ctx context.Context, opts *metav1.ListOptions) (result *apiv1alpha1.DNSEndpointList, err error) {
-	result = &apiv1alpha1.DNSEndpointList{}
-	err = cs.crdClient.Get().
+func (cs *crdSource) List(ctx context.Context, opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error) {
+	result := &apiv1alpha1.DNSEndpointList{}
+	return result, cs.crdClient.Get().
 		Namespace(cs.namespace).
 		Resource(cs.crdResource).
 		VersionedParams(opts, cs.codec).
 		Do(ctx).
 		Into(result)
-	return
 }
 
-func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (result *apiv1alpha1.DNSEndpoint, err error) {
-	result = &apiv1alpha1.DNSEndpoint{}
-	err = cs.crdClient.Put().
+func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error) {
+	result := &apiv1alpha1.DNSEndpoint{}
+	return result, cs.crdClient.Put().
 		Namespace(dnsEndpoint.Namespace).
 		Resource(cs.crdResource).
 		Name(dnsEndpoint.Name).
@@ -267,7 +258,6 @@ func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.
 		Body(dnsEndpoint).
 		Do(ctx).
 		Into(result)
-	return
 }
 
 // filterByAnnotations filters a list of dnsendpoints by a given annotation selector.
@@ -291,4 +281,21 @@ func (cs *crdSource) filterByAnnotations(dnsendpoints *apiv1alpha1.DNSEndpointLi
 	}
 
 	return &filteredList, nil
+}
+
+// logEvent logs details about the given eve t at debug level and calls the provided handler.
+func logEvent(obj interface{}, msg string) {
+	if !log.IsLevelEnabled(log.DebugLevel) {
+		return
+	}
+	u, ok := obj.(*unstructured.Unstructured)
+	if !ok {
+		return
+	}
+	log.WithFields(log.Fields{
+		"apiVersion": u.GetAPIVersion(),
+		"kind":       u.GetKind(),
+		"name":       u.GetName(),
+		"namespace":  u.GetNamespace(),
+	}).Info(msg)
 }
