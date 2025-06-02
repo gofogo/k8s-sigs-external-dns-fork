@@ -112,6 +112,7 @@ func TestHelperLogNotContains(msg string, hook *test.Hook, t *testing.T) {
 	for _, entry := range hook.AllEntries() {
 		if strings.Contains(entry.Message, msg) {
 			isContains = true
+			break
 		}
 	}
 	assert.False(t, isContains, "Expected log message found when should not: %s", msg)
@@ -136,6 +137,7 @@ func TestHelperLogContainsWithLogLevel(msg string, level log.Level, hook *test.H
 	for _, entry := range hook.AllEntries() {
 		if strings.Contains(entry.Message, msg) && entry.Level == level {
 			isContains = true
+			break
 		}
 	}
 	assert.True(t, isContains, "Expected log message not found: %s with level %s", msg, level)
