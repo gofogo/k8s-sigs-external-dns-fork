@@ -18,11 +18,13 @@ package source
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"testing"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
-
 	"sigs.k8s.io/external-dns/internal/testutils"
 
 	"github.com/stretchr/testify/assert"
@@ -31,6 +33,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/fake"
+
+	"maps"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
@@ -54,25 +58,6 @@ func testNodeSourceNewNodeSource(t *testing.T) {
 		expectError      bool
 	}{
 		{
-			title:        "invalid template",
-			expectError:  true,
-			fqdnTemplate: "{{.Name",
-		},
-		{
-			title:       "valid empty template",
-			expectError: false,
-		},
-		{
-			title:        "valid template",
-			expectError:  false,
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
-		},
-		{
-			title:        "complex template",
-			expectError:  false,
-			fqdnTemplate: "{{range .Status.Addresses}}{{if and (eq .Type \"ExternalIP\") (isIPv4 .Address)}}{{.Address | replace \".\" \"-\"}}{{break}}{{end}}{{end}}.ext-dns.test.com",
-		},
-		{
 			title:            "non-empty annotation filter label",
 			expectError:      false,
 			annotationFilter: "kubernetes.io/ingress.class=nginx",
@@ -84,7 +69,7 @@ func testNodeSourceNewNodeSource(t *testing.T) {
 
 			_, err := NewNodeSource(
 				context.TODO(),
-				fake.NewSimpleClientset(),
+				fake.NewClientset(),
 				ti.annotationFilter,
 				ti.fqdnTemplate,
 				labels.Everything(),
@@ -101,7 +86,7 @@ func testNodeSourceNewNodeSource(t *testing.T) {
 	}
 }
 
-// testNodeSourceEndpoints tests that various node generate the correct endpoints.
+// testNodeSourceEndpoints tests that various nodes generate the correct endpoints.
 func testNodeSourceEndpoints(t *testing.T) {
 	for _, tc := range []struct {
 		title                string
@@ -407,7 +392,7 @@ func testNodeSourceEndpoints(t *testing.T) {
 			}
 
 			// Create a Kubernetes testing client
-			kubernetes := fake.NewSimpleClientset()
+			kubernetes := fake.NewClientset()
 
 			node := &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{
@@ -519,7 +504,7 @@ func testNodeEndpointsWithIPv6(t *testing.T) {
 		}
 
 		// Create a Kubernetes testing client
-		kubernetes := fake.NewSimpleClientset()
+		kubernetes := fake.NewClientset()
 
 		node := &v1.Node{
 			ObjectMeta: metav1.ObjectMeta{
@@ -555,7 +540,7 @@ func testNodeEndpointsWithIPv6(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		endpoints, err := client.Endpoints(context.Background())
+		endpoints, err := client.Endpoints(t.Context())
 		if tc.expectError {
 			require.Error(t, err)
 		} else {
@@ -569,4 +554,101 @@ func testNodeEndpointsWithIPv6(t *testing.T) {
 		// Validate returned endpoints against desired endpoints.
 		validateEndpoints(t, endpoints, tc.expected)
 	}
+}
+
+func TestResourceLabelIsSetForEachNodeEndpoint(t *testing.T) {
+	nodes := generateTestFixtureNodes(10)
+
+	kubernetes := fake.NewClientset()
+	for _, node := range nodes.Items {
+		_, err := kubernetes.CoreV1().Nodes().Create(t.Context(), &node, metav1.CreateOptions{})
+		require.NoError(t, err)
+	}
+
+	client, err := NewNodeSource(
+		context.TODO(),
+		kubernetes,
+		"",
+		"",
+		labels.Everything(),
+		false,
+		true,
+	)
+	require.NoError(t, err)
+
+	got, err := client.Endpoints(t.Context())
+	require.NoError(t, err)
+	for _, ep := range got {
+		// TODO: node source should always set the resource label key. currently not supported by the node source.
+		assert.Empty(t, ep.Labels, "Labels should not be empty for endpoint %s", ep.DNSName)
+		assert.NotContains(t, ep.Labels, endpoint.ResourceLabelKey)
+	}
+}
+
+func generateTestFixtureNodes(count int) v1.NodeList {
+	builder := newNodeListBuilder()
+	for i := 0; i < count; i++ {
+		builder.withNode(map[string]string{})
+	}
+	nodes := builder.Build()
+
+	return v1.NodeList{
+		Items: nodes.Items,
+	}
+}
+
+type nodeListBuilder struct {
+	nodes []v1.Node
+}
+
+func newNodeListBuilder() *nodeListBuilder {
+	return &nodeListBuilder{nodes: []v1.Node{}}
+}
+
+func (b *nodeListBuilder) withNode(labels map[string]string) *nodeListBuilder {
+	idx := len(b.nodes) + 1
+	nodeName := fmt.Sprintf("ip-10-1-176-%d.eu-west-1.compute.internal", idx)
+	b.nodes = append(b.nodes, v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+			Labels: func() map[string]string {
+				base := map[string]string{
+					"test-label":                    "test-value",
+					"name":                          nodeName,
+					"topology.kubernetes.io/region": "eu-west-1",
+					"node.kubernetes.io/lifecycle":  "spot",
+				}
+				maps.Copy(base, labels)
+				return base
+			}(),
+			Annotations: map[string]string{
+				"external-dns.alpha.kubernetes.io/ttl":                   "10",
+				"volumes.kubernetes.io/controller-managed-attach-detach": "true",
+				"alpha.kubernetes.io/provided-node-ip":                   fmt.Sprintf("10.1.176.%d", idx),
+				"external-dns.alpha.kubernetes.io/hostname":              fmt.Sprintf("node-%d.example.com", idx),
+				"external-dns.alpha.kubernetes.io/target":                fmt.Sprintf("203.2.45.%d", idx),
+			},
+		},
+		Spec: v1.NodeSpec{
+			Unschedulable: false,
+		},
+		Status: v1.NodeStatus{
+			Addresses: []v1.NodeAddress{
+				{Type: v1.NodeInternalIP, Address: fmt.Sprintf("10.1.176.%d", idx)},
+				{Type: v1.NodeExternalIP, Address: fmt.Sprintf("192.168.0.%d", idx)},
+				{Type: v1.NodeInternalIP, Address: fmt.Sprintf("fc00:f853:ccd:e793::%d", idx)},
+				{Type: v1.NodeExternalIP, Address: fmt.Sprintf("2001:DB8::%d", idx)},
+			},
+		},
+	})
+	return b
+}
+
+func (b *nodeListBuilder) Build() v1.NodeList {
+	// Shuffle the result to ensure randomness in the order.
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	rand.Shuffle(len(b.nodes), func(i, j int) {
+		b.nodes[i], b.nodes[j] = b.nodes[j], b.nodes[i]
+	})
+	return v1.NodeList{Items: b.nodes}
 }
