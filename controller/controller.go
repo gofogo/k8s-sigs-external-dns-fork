@@ -178,63 +178,63 @@ var (
 			Help:      fmt.Sprintf("Number of Registry %s records.", endpoint.RecordTypeNAPTR),
 		},
 	)
-	sourceARecords = metrics.NewGaugeWithOpts(
+	sourceARecords = metrics.NewGaugeWithTypeAndOpts(endpoint.RecordTypeA,
 		prometheus.GaugeOpts{
 			Namespace: "external_dns",
 			Subsystem: "source",
-			Name:      fmt.Sprintf("%s_records", strings.ToLower(endpoint.RecordTypeA)),
+			Name:      "records",
 			Help:      fmt.Sprintf("Number of Source %s records.", endpoint.RecordTypeA),
 		},
 	)
-	sourceAAAARecords = metrics.NewGaugeWithOpts(
+	sourceAAAARecords = metrics.NewGaugeWithTypeAndOpts(endpoint.RecordTypeAAAA,
 		prometheus.GaugeOpts{
 			Namespace: "external_dns",
 			Subsystem: "source",
-			Name:      fmt.Sprintf("%s_records", strings.ToLower(endpoint.RecordTypeAAAA)),
+			Name:      "records",
 			Help:      fmt.Sprintf("Number of Source %s records.", endpoint.RecordTypeAAAA),
 		},
 	)
-	sourceCnameRecords = metrics.NewGaugeWithOpts(
+	sourceCnameRecords = metrics.NewGaugeWithTypeAndOpts(endpoint.RecordTypeCNAME,
 		prometheus.GaugeOpts{
 			Namespace: "external_dns",
 			Subsystem: "source",
-			Name:      fmt.Sprintf("%s_records", strings.ToLower(endpoint.RecordTypeCNAME)),
+			Name:      "records",
 			Help:      fmt.Sprintf("Number of Source %s records.", endpoint.RecordTypeCNAME),
 		},
 	)
-	sourceTXTRecords = metrics.NewGaugeWithOpts(
+	sourceTXTRecords = metrics.NewGaugeWithTypeAndOpts(endpoint.RecordTypeTXT,
 		prometheus.GaugeOpts{
 			Namespace: "external_dns",
 			Subsystem: "source",
-			Name:      fmt.Sprintf("%s_records", strings.ToLower(endpoint.RecordTypeTXT)),
-			Help:      fmt.Sprintf("Number of Source %s records.", endpoint.RecordTypeTXT),
+			Name:      "records",
+			Help:      "Number of Source records.",
 		},
 	)
-	sourceSRVRecords = metrics.NewGaugeWithOpts(
+	sourceSRVRecords = metrics.NewGaugeWithTypeAndOpts(endpoint.RecordTypeSRV,
 		prometheus.GaugeOpts{
 			Namespace: "external_dns",
 			Subsystem: "source",
-			Name:      fmt.Sprintf("%s_records", strings.ToLower(endpoint.RecordTypeSRV)),
-			Help:      fmt.Sprintf("Number of Source %s records.", endpoint.RecordTypeSRV),
+			Name:      "records",
+			Help:      "Number of Source records.",
 		},
 	)
-	sourceNSRecords = metrics.NewGaugeWithOpts(
+	sourceNSRecords = metrics.NewGaugeWithTypeAndOpts(endpoint.RecordTypeNS,
 		prometheus.GaugeOpts{
 			Namespace: "external_dns",
 			Subsystem: "source",
-			Name:      fmt.Sprintf("%s_records", strings.ToLower(endpoint.RecordTypeNS)),
-			Help:      fmt.Sprintf("Number of Source %s records.", endpoint.RecordTypeNS),
+			Name:      "records",
+			Help:      "Number of Source records.",
 		},
 	)
-	sourcePTRRecords = metrics.NewGaugeWithOpts(
+	sourcePTRRecords = metrics.NewGaugeWithTypeAndOpts(endpoint.RecordTypePTR,
 		prometheus.GaugeOpts{
 			Namespace: "external_dns",
 			Subsystem: "source",
-			Name:      fmt.Sprintf("%s_records", strings.ToLower(endpoint.RecordTypePTR)),
-			Help:      fmt.Sprintf("Number of Source %s records.", endpoint.RecordTypePTR),
+			Name:      "records",
+			Help:      "Number of Source records.",
 		},
 	)
-	sourceMXRecords = metrics.NewGaugeWithOpts(
+	sourceMXRecords = metrics.NewGaugeWithTypeAndOpts(endpoint.RecordTypeMX,
 		prometheus.GaugeOpts{
 			Namespace: "external_dns",
 			Subsystem: "source",

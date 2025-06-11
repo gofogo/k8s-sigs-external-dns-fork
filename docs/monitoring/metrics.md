@@ -39,8 +39,6 @@ curl https://localhost:7979/metrics
 | ptr_records | Gauge | registry | Number of Registry PTR records. |
 | srv_records | Gauge | registry | Number of Registry SRV records. |
 | txt_records | Gauge | registry | Number of Registry TXT records. |
-| a_records | Gauge | source | Number of Source A records. |
-| aaaa_records | Gauge | source | Number of Source AAAA records. |
 | cname_records | Gauge | source | Number of Source CNAME records. |
 | endpoints_total | Gauge | source | Number of Endpoints in all sources |
 | errors_total | Counter | source | Number of Source errors. |
@@ -48,6 +46,7 @@ curl https://localhost:7979/metrics
 | naptr_records | Gauge | source | Number of Source NAPTR records. |
 | ns_records | Gauge | source | Number of Source NS records. |
 | ptr_records | Gauge | source | Number of Source PTR records. |
+| records | A | source | Number of Source A records. |
 | srv_records | Gauge | source | Number of Source SRV records. |
 | txt_records | Gauge | source | Number of Source TXT records. |
 | adjustendpoints_errors_total | Gauge | webhook_provider | Errors with AdjustEndpoints method |

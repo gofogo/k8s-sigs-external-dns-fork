@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -72,6 +73,20 @@ func NewGaugeWithOpts(opts prometheus.GaugeOpts) GaugeMetric {
 	return GaugeMetric{
 		Metric: Metric{
 			Type:      "gauge",
+			Name:      opts.Name,
+			FQDN:      fmt.Sprintf("%s_%s", opts.Subsystem, opts.Name),
+			Namespace: opts.Namespace,
+			Subsystem: opts.Subsystem,
+			Help:      opts.Help,
+		},
+		Gauge: prometheus.NewGauge(opts),
+	}
+}
+
+func NewGaugeWithTypeAndOpts(mtype string, opts prometheus.GaugeOpts) GaugeMetric {
+	return GaugeMetric{
+		Metric: Metric{
+			Type:      strings.ToLower(mtype),
 			Name:      opts.Name,
 			FQDN:      fmt.Sprintf("%s_%s", opts.Subsystem, opts.Name),
 			Namespace: opts.Namespace,
