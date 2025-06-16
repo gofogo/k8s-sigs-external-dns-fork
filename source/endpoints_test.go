@@ -15,13 +15,35 @@ package source
 
 import (
 	"context"
+	"math/rand"
+	"strconv"
+
+	// "crypto/sha256"
+	// "encoding/hex"
+	"fmt"
+
+	// "fmt"
+
+	// "fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	coreinformers "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/tools/cache"
+
+	// "k8s.io/apimachinery/pkg/fields"
+	// v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	// "k8s.io/kubernetes/staging/src/k8s.io/apiserver/pkg/registry/generic"
+	// "k8s.io/client-go/tools/cache"
+
+	// discoveryv1 "k8s.io/api/discovery/v1"
+
+	// "k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
@@ -152,6 +174,26 @@ func TestEndpointTargetsFromServices(t *testing.T) {
 						ExternalIPs: []string{"192.0.2.1", "158.123.32.23"},
 					},
 				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "svc2",
+						Namespace: "default",
+					},
+					Spec: corev1.ServiceSpec{
+						Selector:    map[string]string{"app": "nginx"},
+						ExternalIPs: []string{"192.0.2.1", "158.123.32.23"},
+					},
+				},
+				// {
+				// 	ObjectMeta: metav1.ObjectMeta{
+				// 		Name:      "svc3",
+				// 		Namespace: "default",
+				// 	},
+				// 	Spec: corev1.ServiceSpec{
+				// 		Selector:    map[string]string{"app": "nginx3"},
+				// 		ExternalIPs: []string{"192.0.2.1", "158.123.32.23"},
+				// 	},
+				// },
 			},
 			namespace: "default",
 			selector:  map[string]string{"app": "nginx"},
@@ -202,6 +244,38 @@ func TestEndpointTargetsFromServices(t *testing.T) {
 						},
 					},
 				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "svc4",
+						Namespace: "default",
+					},
+					Spec: corev1.ServiceSpec{
+						Selector: map[string]string{"app": "web"},
+					},
+					Status: corev1.ServiceStatus{
+						LoadBalancer: corev1.LoadBalancerStatus{
+							Ingress: []corev1.LoadBalancerIngress{
+								{Hostname: "lb.example.com"},
+							},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "svc5",
+						Namespace: "default",
+					},
+					Spec: corev1.ServiceSpec{
+						Selector: map[string]string{"app": "nginx"},
+					},
+					Status: corev1.ServiceStatus{
+						LoadBalancer: corev1.LoadBalancerStatus{
+							Ingress: []corev1.LoadBalancerIngress{
+								{Hostname: "lb.example.com"},
+							},
+						},
+					},
+				},
 			},
 			namespace: "default",
 			selector:  map[string]string{"app": "nginx"},
@@ -230,17 +304,53 @@ func TestEndpointTargetsFromServices(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := fake.NewSimpleClientset()
-			informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, 0,
-				kubeinformers.WithNamespace(tt.namespace))
+			client := fake.NewClientset()
+			informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, 0, kubeinformers.WithNamespace(tt.namespace))
+			// kubeinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			//					options.LabelSelector = metav1.FormatLabelSelector(metav1.SetAsLabelSelector(tt.selector))
+			//				})
 			serviceInformer := informerFactory.Core().V1().Services()
 
 			for _, svc := range tt.services {
 				_, err := client.CoreV1().Services(tt.namespace).Create(context.Background(), svc, metav1.CreateOptions{})
 				assert.NoError(t, err)
 
+				// err = serviceInformer.Informer().AddIndexers(cache.Indexers{
+				// 	"bySelector": func(obj any) ([]string, error) {
+				// 		fmt.Println("adding indexer for serviceID")
+				// 		svcSlice, ok := obj.(*corev1.Service)
+				// 		if !ok {
+				// 			return nil, nil
+				// 		}
+				// 		serviceName, ok := svcSlice.Labels[corev1.LabelMetadataName]
+				// 		if !ok {
+				// 			fmt.Println("hm not adding indexer for serviceID, no name label")
+				// 			return nil, nil
+				// 		}
+				// 		key := cache.ObjectName{Namespace: svcSlice.Namespace, Name: serviceName}.String()
+				// 		fmt.Println("adding indexer for serviceID:", key)
+				// 		return []string{key}, nil
+				// 	},
+				// })
+
+				// Register the index BEFORE the informer runs!
+				BySelectorIndex := "bySelector"
+				err = serviceInformer.Informer().AddIndexers(cache.Indexers{
+					BySelectorIndex: func(obj interface{}) ([]string, error) {
+						svc := obj.(*corev1.Service)
+						return []string{labels.Set(svc.Spec.Selector).String()}, nil
+					},
+				})
+				if err != nil {
+					panic(err)
+				}
+
 				err = serviceInformer.Informer().GetIndexer().Add(svc)
 				assert.NoError(t, err)
+
+				r, err := serviceInformer.Informer().GetIndexer().ByIndex(BySelectorIndex, "app=nginx")
+				assert.NoError(t, err)
+				fmt.Println("results:", len(r))
 			}
 
 			result, err := EndpointTargetsFromServices(serviceInformer, tt.namespace, tt.selector)
@@ -253,3 +363,190 @@ func TestEndpointTargetsFromServices(t *testing.T) {
 		})
 	}
 }
+
+const BySelectorIndex = "bySelector"
+
+func TestEndpointTargetsFromServicesPods(t *testing.T) {
+	client := fake.NewClientset()
+
+	services := []*corev1.Service{
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nginx-edge",
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "nginx", "env": "prod"},
+				ExternalIPs: []string{"192.0.2.3"},
+			},
+		},
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nginx-internal",
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "nginx"}},
+		},
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nginx-edge-secondary",
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "nginx", "env": "prod"}},
+		},
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nginx-edge-fail-over",
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "nginx", "env": "prod"}},
+		},
+	}
+
+	// ─── Informer with custom “bySelector” indexer ──────────────────────────────
+	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, 0, kubeinformers.WithNamespace("default"))
+	svcInformer := informerFactory.Core().V1().Services()
+
+	err := svcInformer.Informer().AddIndexers(cache.Indexers{
+		BySelectorIndex: func(obj interface{}) ([]string, error) {
+			svc := obj.(*corev1.Service)
+			return []string{labels.Set(svc.Spec.Selector).String()}, nil
+		},
+	})
+	fmt.Println("err:", err)
+
+	for _, svc := range services {
+		_, err := client.CoreV1().Services(svc.Namespace).Create(context.Background(), svc, metav1.CreateOptions{})
+		assert.NoError(t, err)
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	go informerFactory.Start(stopCh)
+	cache.WaitForCacheSync(stopCh, svcInformer.Informer().HasSynced)
+
+	// ─── Lookup all services that share selector app=nginx ─────────────────────
+	key := labels.Set(map[string]string{"app": "nginx", "env": "prod"}).String() // "app=nginx"
+	objs, _ := svcInformer.Informer().GetIndexer().ByIndex(BySelectorIndex, key)
+
+	fmt.Printf("Services with selector %q:\n", key)
+	for _, o := range objs {
+		fmt.Println("-", o.(*corev1.Service).Labels)
+	}
+}
+
+func populateWithServices(b *testing.B, client *fake.Clientset, correct, random int) coreinformers.ServiceInformer {
+	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, 0, kubeinformers.WithNamespace("default"))
+	svcInformer := informerFactory.Core().V1().Services()
+
+	err := svcInformer.Informer().AddIndexers(cache.Indexers{
+		BySelectorIndex: func(obj interface{}) ([]string, error) {
+			svc := obj.(*corev1.Service)
+			return []string{labels.Set(svc.Spec.Selector).String()}, nil
+		},
+	})
+	assert.NoError(b, err)
+
+	svc := generateServices(correct, random)
+	for _, svc := range svc {
+		_, err := client.CoreV1().Services(svc.Namespace).Create(context.Background(), svc, metav1.CreateOptions{})
+		assert.NoError(b, err)
+	}
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	go informerFactory.Start(stopCh)
+	cache.WaitForCacheSync(stopCh, svcInformer.Informer().HasSynced)
+	return svcInformer
+}
+
+func BenchmarkMyFunctionWithIndexing(b *testing.B) {
+	client := fake.NewClientset()
+
+	svcInformer := populateWithServices(b, client, 50, 40000)
+
+	key := labels.Set(map[string]string{"app": "nginx", "env": "prod"}).String()
+
+	for b.Loop() {
+		// Call the function you want to benchmark
+		svc, _ := svcInformer.Informer().GetIndexer().ByIndex(BySelectorIndex, key)
+		assert.Len(b, svc, 50)
+	}
+}
+
+func BenchmarkMyFunctionWithoutIndexing(b *testing.B) {
+	// Setup code might run multiple times
+	client := fake.NewClientset()
+	svcInformer := populateWithServices(b, client, 50, 40000)
+
+	sel := map[string]string{"app": "nginx", "env": "prod"}
+
+	for b.Loop() {
+		// Call the function you want to benchmark
+		svc, _ := svcInformer.Lister().Services("").List(labels.Everything())
+		count := 0
+		for _, svc := range svc {
+			if !MatchesServiceSelector(sel, svc.Spec.Selector) {
+				continue
+			}
+			count++
+			// Simulate some processing
+			_ = svc.Name // Just to use the service and avoid compiler optimization
+		}
+		assert.Equal(b, 50, count)
+	}
+}
+
+func TestGenerateServices(t *testing.T) {
+	services := generateServices(6, 44)
+
+	assert.Len(t, services, 50, "should generate 50 services")
+}
+
+func randomLabels() map[string]string {
+	return map[string]string{
+		fmt.Sprintf("key%d", rand.Intn(100)): fmt.Sprintf("value%d", rand.Intn(100)),
+	}
+}
+
+func generateServices(correct, random int) []*corev1.Service {
+	var services []*corev1.Service
+
+	// 5 services with specific labels
+	for i := 0; i < correct; i++ {
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nginx-svc-" + strconv.Itoa(i),
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: map[string]string{"app": "nginx", "env": "prod"},
+			},
+		}
+		services = append(services, svc)
+	}
+
+	for i := 0; i < random; i++ {
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "random-svc-" + strconv.Itoa(i),
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: randomLabels(),
+			},
+		}
+		services = append(services, svc)
+	}
+
+	// Shuffle the services to ensure randomness
+	for i := 0; i < 3; i++ {
+		rand.Shuffle(len(services), func(i, j int) {
+			services[i], services[j] = services[j], services[i]
+		})
+	}
+
+	return services
+}
+
+// 7408231982
+// 7373094914

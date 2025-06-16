@@ -465,6 +465,9 @@ func (sc *virtualServiceSource) targetsFromGateway(ctx context.Context, gateway 
 		return
 	}
 
+	selector := labels.SelectorFromSet(gateway.Spec.Selector)
+	fmt.Println("selector:", selector.String())
+	// labels.SelectorFromSet()
 	services, err := sc.serviceInformer.Lister().Services(sc.namespace).List(labels.Everything())
 	if err != nil {
 		log.Error(err)
@@ -472,8 +475,12 @@ func (sc *virtualServiceSource) targetsFromGateway(ctx context.Context, gateway 
 	}
 
 	for _, service := range services {
+		fmt.Println("GW selector:", service.Spec.Selector, "Service selector:", selector.String())
 		if !gatewaySelectorMatchesServiceSelector(gateway.Spec.Selector, service.Spec.Selector) {
+			fmt.Println("continue because selector does not match")
 			continue
+		} else {
+			fmt.Println("selector matches")
 		}
 
 		if len(service.Spec.ExternalIPs) > 0 {
