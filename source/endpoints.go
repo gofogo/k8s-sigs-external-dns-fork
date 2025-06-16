@@ -97,6 +97,12 @@ func EndpointTargetsFromServices(svcInformer coreinformers.ServiceInformer, name
 	sel, err := metav1.LabelSelectorAsSelector(sllc)
 	fmt.Println(sel, err)
 
+	key := labels.Set(map[string]string{"app": "nginx", "env": "prod"}).String()
+	_, err = svcInformer.Informer().GetIndexer().ByIndex(BySelectorIndex, key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get indexer by selector %q: %w", key, err)
+	}
+
 	services, err := svcInformer.Lister().Services(namespace).List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list labels for services in namespace %q: %w", namespace, err)

@@ -412,7 +412,7 @@ func TestEndpointTargetsFromServicesPods(t *testing.T) {
 			return []string{labels.Set(svc.Spec.Selector).String()}, nil
 		},
 	})
-	fmt.Println("err:", err)
+	assert.NoError(t, err)
 
 	for _, svc := range services {
 		_, err := client.CoreV1().Services(svc.Namespace).Create(context.Background(), svc, metav1.CreateOptions{})
@@ -438,7 +438,15 @@ func populateWithServices(b *testing.B, client *fake.Clientset, correct, random 
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, 0, kubeinformers.WithNamespace("default"))
 	svcInformer := informerFactory.Core().V1().Services()
 
-	err := svcInformer.Informer().AddIndexers(cache.Indexers{
+	_, err := svcInformer.Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+			},
+		},
+	)
+	assert.NoError(b, err)
+
+	err = svcInformer.Informer().AddIndexers(cache.Indexers{
 		BySelectorIndex: func(obj interface{}) ([]string, error) {
 			svc := obj.(*corev1.Service)
 			return []string{labels.Set(svc.Spec.Selector).String()}, nil
@@ -467,7 +475,6 @@ func BenchmarkMyFunctionWithIndexing(b *testing.B) {
 	key := labels.Set(map[string]string{"app": "nginx", "env": "prod"}).String()
 
 	for b.Loop() {
-		// Call the function you want to benchmark
 		svc, _ := svcInformer.Informer().GetIndexer().ByIndex(BySelectorIndex, key)
 		assert.Len(b, svc, 50)
 	}
@@ -481,7 +488,6 @@ func BenchmarkMyFunctionWithoutIndexing(b *testing.B) {
 	sel := map[string]string{"app": "nginx", "env": "prod"}
 
 	for b.Loop() {
-		// Call the function you want to benchmark
 		svc, _ := svcInformer.Lister().Services("").List(labels.Everything())
 		count := 0
 		for _, svc := range svc {
