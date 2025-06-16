@@ -18,9 +18,10 @@ import (
 
 	// v1 "k8s.io/api/apps/v1"
 	// corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	coreinformers "k8s.io/client-go/informers/core/v1"
+	"sigs.k8s.io/external-dns/source/informers"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
@@ -87,20 +88,10 @@ func endpointsForHostname(hostname string, targets endpoint.Targets, ttl endpoin
 func EndpointTargetsFromServices(svcInformer coreinformers.ServiceInformer, namespace string, selector map[string]string) (endpoint.Targets, error) {
 	targets := endpoint.Targets{}
 
-	slc := labels.SelectorFromSet(selector)
-	fmt.Println(slc)
-
-	sllc := &metav1.LabelSelector{
-		MatchLabels: selector,
-	}
-
-	sel, err := metav1.LabelSelectorAsSelector(sllc)
-	fmt.Println(sel, err)
-
-	key := labels.Set(map[string]string{"app": "nginx", "env": "prod"}).String()
-	_, err = svcInformer.Informer().GetIndexer().ByIndex(BySelectorIndex, key)
+	key := labels.Set(selector).String()
+	_, err := svcInformer.Informer().GetIndexer().ByIndex(informers.SpecSelectorIndex, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get indexer by selector %q: %w", key, err)
+		return nil, err
 	}
 
 	services, err := svcInformer.Lister().Services(namespace).List(labels.Everything())

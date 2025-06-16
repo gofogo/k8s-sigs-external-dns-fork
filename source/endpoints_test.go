@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"sigs.k8s.io/external-dns/source/informers"
 
 	// "k8s.io/apimachinery/pkg/fields"
 	// v1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -364,8 +365,6 @@ func TestEndpointTargetsFromServices(t *testing.T) {
 	}
 }
 
-const BySelectorIndex = "bySelector"
-
 func TestEndpointTargetsFromServicesPods(t *testing.T) {
 	client := fake.NewClientset()
 
@@ -407,7 +406,7 @@ func TestEndpointTargetsFromServicesPods(t *testing.T) {
 	svcInformer := informerFactory.Core().V1().Services()
 
 	err := svcInformer.Informer().AddIndexers(cache.Indexers{
-		BySelectorIndex: func(obj interface{}) ([]string, error) {
+		informers.SpecSelectorIndex: func(obj interface{}) ([]string, error) {
 			svc := obj.(*corev1.Service)
 			return []string{labels.Set(svc.Spec.Selector).String()}, nil
 		},
@@ -425,8 +424,11 @@ func TestEndpointTargetsFromServicesPods(t *testing.T) {
 	cache.WaitForCacheSync(stopCh, svcInformer.Informer().HasSynced)
 
 	// ─── Lookup all services that share selector app=nginx ─────────────────────
+	keys := svcInformer.Informer().GetIndexer().GetIndexers()
+	fmt.Println("keys:", keys)
+
 	key := labels.Set(map[string]string{"app": "nginx", "env": "prod"}).String() // "app=nginx"
-	objs, _ := svcInformer.Informer().GetIndexer().ByIndex(BySelectorIndex, key)
+	objs, _ := svcInformer.Informer().GetIndexer().ByIndex(informers.SpecSelectorIndex, key)
 
 	fmt.Printf("Services with selector %q:\n", key)
 	for _, o := range objs {
@@ -446,12 +448,7 @@ func populateWithServices(b *testing.B, client *fake.Clientset, correct, random 
 	)
 	assert.NoError(b, err)
 
-	err = svcInformer.Informer().AddIndexers(cache.Indexers{
-		BySelectorIndex: func(obj interface{}) ([]string, error) {
-			svc := obj.(*corev1.Service)
-			return []string{labels.Set(svc.Spec.Selector).String()}, nil
-		},
-	})
+	err = svcInformer.Informer().AddIndexers(informers.ServiceIndexers)
 	assert.NoError(b, err)
 
 	svc := generateServices(correct, random)
@@ -475,7 +472,7 @@ func BenchmarkMyFunctionWithIndexing(b *testing.B) {
 	key := labels.Set(map[string]string{"app": "nginx", "env": "prod"}).String()
 
 	for b.Loop() {
-		svc, _ := svcInformer.Informer().GetIndexer().ByIndex(BySelectorIndex, key)
+		svc, _ := svcInformer.Informer().GetIndexer().ByIndex(informers.SpecSelectorIndex, key)
 		assert.Len(b, svc, 50)
 	}
 }
