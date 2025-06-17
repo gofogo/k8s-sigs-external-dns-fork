@@ -12,8 +12,12 @@ const (
 
 var (
 	ServiceIndexers = cache.Indexers{
-		SpecSelectorIndex: func(obj interface{}) ([]string, error) {
-			svc := obj.(*corev1.Service)
+		SpecSelectorIndex: func(obj any) ([]string, error) {
+			svc, ok := obj.(*corev1.Service)
+			if !ok {
+				// not tested
+				return nil, nil
+			}
 			return []string{labels.Set(svc.Spec.Selector).String()}, nil
 		},
 	}
