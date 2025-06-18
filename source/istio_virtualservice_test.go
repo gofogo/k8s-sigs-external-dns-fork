@@ -138,7 +138,7 @@ func TestVirtualService(t *testing.T) {
 	suite.Run(t, new(VirtualServiceSuite))
 	t.Run("virtualServiceBindsToGateway", testVirtualServiceBindsToGateway)
 	t.Run("endpointsFromVirtualServiceConfig", testEndpointsFromVirtualServiceConfig)
-	t.Run("Endpoints", testVirtualServiceEndpoints)
+	t.Run("Endpoints", TestVirtualServiceEndpoints)
 	t.Run("gatewaySelectorMatchesService", testGatewaySelectorMatchesService)
 }
 
@@ -721,7 +721,7 @@ func testEndpointsFromVirtualServiceConfig(t *testing.T) {
 	}
 }
 
-func testVirtualServiceEndpoints(t *testing.T) {
+func TestVirtualServiceEndpoints(t *testing.T) {
 	t.Parallel()
 
 	namespace := "testing"

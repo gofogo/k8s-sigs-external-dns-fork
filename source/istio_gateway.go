@@ -326,7 +326,9 @@ func (sc *gatewaySource) hostNamesFromGateway(gateway *networkingv1alpha3.Gatewa
 
 func gatewaySelectorMatchesServiceSelector(gwSelector, svcSelector map[string]string) bool {
 	for k, v := range gwSelector {
+		fmt.Println("value of k:", k, "value of v:", v)
 		if lbl, ok := svcSelector[k]; !ok || lbl != v {
+			fmt.Println("value of lbl:", lbl)
 			return false
 		}
 	}

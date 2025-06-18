@@ -16,8 +16,12 @@ package source
 import (
 	"fmt"
 
+	// v1 "k8s.io/api/apps/v1"
+	// corev1 "k8s.io/api/core/v1"
+	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	coreinformers "k8s.io/client-go/informers/core/v1"
+	"sigs.k8s.io/external-dns/source/informers"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
@@ -84,10 +88,20 @@ func endpointsForHostname(hostname string, targets endpoint.Targets, ttl endpoin
 func EndpointTargetsFromServices(svcInformer coreinformers.ServiceInformer, namespace string, selector map[string]string) (endpoint.Targets, error) {
 	targets := endpoint.Targets{}
 
+	key := labels.Set(selector).String()
+	_, err := svcInformer.Informer().GetIndexer().ByIndex(informers.SpecSelectorIndex, key)
+	if err != nil {
+		return nil, err
+	}
+
 	services, err := svcInformer.Lister().Services(namespace).List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list labels for services in namespace %q: %w", namespace, err)
 	}
+
+	// metav1.LabelSelector{}
+
+	fmt.Println(len(services))
 
 	for _, service := range services {
 		if !MatchesServiceSelector(selector, service.Spec.Selector) {
