@@ -25,6 +25,9 @@ import (
 	"testing"
 
 	pgo "github.com/ffledgling/pdns-go"
+	"github.com/stretchr/testify/assert"
+
+	// "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	"sigs.k8s.io/external-dns/endpoint"
@@ -1160,4 +1163,89 @@ func (suite *NewPDNSProviderTestSuite) TestPDNSAdjustEndpoints() {
 
 func TestNewPDNSProviderTestSuite(t *testing.T) {
 	suite.Run(t, new(NewPDNSProviderTestSuite))
+}
+
+func TestPartitionZones(t *testing.T) {
+	tests := []struct {
+		name             string
+		domainFilter     *endpoint.DomainFilter
+		zones            []pgo.Zone
+		expectedFiltered []pgo.Zone
+		expectedResidual []pgo.Zone
+	}{
+		{
+			name:         "Domain filter matches some zones",
+			domainFilter: endpoint.NewDomainFilter([]string{"example.com"}),
+			zones: []pgo.Zone{
+				{Name: "example.com."},
+				{Name: "other.com."},
+			},
+			expectedFiltered: []pgo.Zone{
+				{Name: "example.com."},
+			},
+			expectedResidual: []pgo.Zone{
+				{Name: "other.com."},
+			},
+		},
+		{
+			name:         "Domain filter with regex matches some zones",
+			domainFilter: endpoint.NewRegexDomainFilter(regexp.MustCompile(`^[\w-]+(\.[\w-]+)*\.ourdomain\.(net|dev)$`), nil),
+			zones: []pgo.Zone{
+				{Name: "a-jobs.ourdomain.net."},
+				{Name: "a-prd01.cache.ourdomain.net."},
+				{Name: "jobs.ourdomain.net."},
+				{Name: "prd01.cache.ourdomain.net."},
+				{Name: "www.ourdomain.com"},
+				{Name: "preview.ourdomain.com"},
+			},
+			expectedFiltered: []pgo.Zone{
+				{Name: "a-jobs.ourdomain.net."},
+				{Name: "a-prd01.cache.ourdomain.net."},
+				{Name: "jobs.ourdomain.net."},
+				{Name: "prd01.cache.ourdomain.net."},
+			},
+			expectedResidual: []pgo.Zone{
+				{Name: "www.ourdomain.com"},
+				{Name: "preview.ourdomain.com"},
+			},
+		},
+		{
+			name:         "Domain filter matches no zones",
+			domainFilter: endpoint.NewDomainFilter([]string{"nonexistent.com"}),
+			zones: []pgo.Zone{
+				{Name: "example.com."},
+				{Name: "other.com."},
+			},
+			expectedFiltered: []pgo.Zone(nil),
+			expectedResidual: []pgo.Zone{
+				{Name: "example.com."},
+				{Name: "other.com."},
+			},
+		},
+		{
+			name:         "Domain filter not configured",
+			domainFilter: endpoint.NewDomainFilter([]string{}),
+			zones: []pgo.Zone{
+				{Name: "example.com."},
+				{Name: "other.com."},
+			},
+			expectedFiltered: []pgo.Zone{
+				{Name: "example.com."},
+				{Name: "other.com."},
+			},
+			expectedResidual: []pgo.Zone(nil),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &PDNSAPIClient{
+				domainFilter: tt.domainFilter,
+			}
+			filtered, residual := client.PartitionZones(tt.zones)
+
+			assert.Equal(t, tt.expectedFiltered, filtered)
+			assert.Equal(t, tt.expectedResidual, residual)
+		})
+	}
 }
