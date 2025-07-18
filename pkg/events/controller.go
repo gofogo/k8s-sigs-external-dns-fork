@@ -83,19 +83,6 @@ func (ec *controller) Run(ctx context.Context) {
 		return
 	}
 	go ec.run(ctx)
-	log.Info("event controller started")
-	defer log.Info("event controller terminated")
-	defer utilruntime.HandleCrash()
-	var waitGroup wait.Group
-	for i := 0; i < workers; i++ {
-		waitGroup.StartWithContext(ctx, func(ctx context.Context) {
-			for ec.processNextWorkItem(ctx) {
-			}
-		})
-	}
-	<-ctx.Done()
-	ec.queue.ShutDownWithDrain()
-	waitGroup.Wait()
 }
 
 func (ec *controller) run(ctx context.Context) {

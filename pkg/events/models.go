@@ -33,12 +33,13 @@ import (
 )
 
 const (
-	recordPrefix        = "ExternalDns"
-	ActionCreate Action = "resource created"
-	ActionUpdate Action = "resource modified"
-	ActionDelete Action = "resource deleted"
-	RecordReady  Reason = "RecordReady"
-	RecordError  Reason = "RecordError"
+	ActionCreate  Action = "Created"
+	ActionUpdate  Action = "Updated"
+	ActionDelete  Action = "Deleted"
+	ActionFailed  Action = "FailedSync"
+	RecordReady   Reason = "RecordReady"
+	RecordDeleted Reason = "RecordDeleted"
+	RecordError   Reason = "RecordError"
 )
 
 var (
@@ -165,9 +166,9 @@ func (i *Event) transpose() *eventsv1.Event {
 			UID:       i.involvedObject.UID,
 		},
 		ReportingInstance:   "external-dns-controller",
-		ReportingController: controllerName,
+		ReportingController: controllerName + "/source/" + i.involvedObject.Source,
 		Action:              string(i.action),
-		Reason:              recordPrefix + string(i.reason),
+		Reason:              string(i.reason),
 		Note:                message,
 		Type:                i.eType,
 	}
@@ -199,7 +200,7 @@ func WithEmitEvents(events []string) ConfigOption {
 			c.emitEvents = sets.New[string]()
 			for _, event := range events {
 				if slices.Contains([]string{string(RecordReady), string(RecordError)}, event) {
-					c.emitEvents.Insert(recordPrefix + event)
+					c.emitEvents.Insert(event)
 				}
 			}
 		}
