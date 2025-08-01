@@ -3,7 +3,50 @@
 The TXT registry is the default registry.
 It stores DNS record metadata in TXT records, using the same provider.
 
+If you plan to manage apex domains with external-dns whilst using a txt registry, you should ensure when using --txt-prefix that you specify the record type substitution and that it ends in a period (**.**). The record should be created under the same domain as the apex record being managed, i.e. --txt-prefix=someprefix-%{record_type}.
+
+> Note: `--txt-prefix` and `--txt-suffix` contribute to the 63-byte maximum record length. To avoid errors, use them only if absolutely required and keep them as short as possible.
+
 ## Record Format Options
+
+### For version `v0.18+`
+
+The TXT registry supports single format for storing DNS record metadata:
+
+- Creates a TXT record with record type information (e.g., 'a-' prefix for A records)
+
+The TXT registry would try to guarantee a consistency in between providers and sources, if provider supports the behaviour.
+
+If you are dealing with APEX domains, like `example.com` and TXT records are failing to be created for managed record types specified by `--managed-record-types`, consider following options:
+
+1. TXT record with prefix based on requirements. Example `--txt-prefix="%{record_type}-abc-"` or `--txt-prefix="%{record_type}.abc-"`
+2. TXT record with suffix based on requirements. Example `--txt-suffix="-abc-%{record_type}"` or `--txt-suffix="-abc.%{record_type}."`
+
+If configured `--txt-prefix="%{record_type}-abc-"` for apex domain `ex.com` the expected result is
+
+|              Name              |  TYPE   |
+|:------------------------------:|:-------:|
+| `cname-a-abc-nginx-v2.ex.com.` |  `TXT`  |
+|       `nginx-v2.ex.com.`       | `CNAME` |
+
+If configured `--txt-suffix="-abc.%{record_type}"` for apex domain `ex.com` the expected result is
+
+|              Name              |  TYPE   |
+|:------------------------------:|:-------:|
+| `cname-nginx-v2-abc.a.ex.com.` |  `TXT`  |
+|      `nginx-v3.ex.com.`       | `CNAME` |
+
+### Manually Cleanup Legacy TXT Records
+
+> While deleting registry TXT records won't cause downtime, a well-thought-out migration and cleanup plan is crucial.
+
+Occasionally, it may be necessary to remove outdated TXT records from your registry.
+
+An example script for AWS can be found in [scripts/aws-cleanup-legacy-txt-records.py](../../scripts/aws-cleanup-legacy-txt-records.py) with instructions on how to run it.
+The script performs targeted deletion of TXT records that include `ResourceRecords` matching the `heritage=external-dns,external-dns/owner=default` or similar pattern.
+In the event of unintended deletion of all TXT records managed by `external-dns`, `external-dns` will initiate a full DNS record regeneration, along with`TXT` and `non-TXT` records. Just be aware, this operation's duration is directly proportional to the DNS estate size."
+
+### For version `v0.16.0 & v0.16.1`
 
 The TXT registry supports two formats for storing DNS record metadata:
 
@@ -31,13 +74,13 @@ The `--txt-new-format-only` flag should be used in addition to your existing ext
 
 ### Migration to New Format Only
 
+> Note: `external-dns` will not automatically remove legacy format records when switching to new-format-only mode. You'll need to clean up the old records manually if desired.
+
 When transitioning from dual-format to new-format-only records:
 
 - Ensure all your `external-dns` instances support the new format
 - Enable the `--txt-new-format-only` flag on your external-dns instances
 Manually clean up any existing legacy format TXT records from your DNS provider
-
-Note: `external-dns` will not automatically remove legacy format records when switching to new-format-only mode. You'll need to clean up the old records manually if desired.
 
 ## Prefixes and Suffixes
 
@@ -75,19 +118,19 @@ Note that the key used for encryption should be a secure key and properly manage
 Python
 
 ```python
-python -c 'import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+python -c 'import os,base64; print(base64.standard_b64encode(os.urandom(32)).decode())'
 ```
 
 Bash
 
 ```shell
-dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d -- '\n' | tr -- '+/' '-_'; echo
+dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64; echo
 ```
 
 OpenSSL
 
 ```shell
-openssl rand -base64 32 | tr -- '+/' '-_'
+openssl rand -base64 32
 ```
 
 PowerShell
@@ -95,7 +138,7 @@ PowerShell
 ```powershell
 # Add System.Web assembly to session, just in case
 Add-Type -AssemblyName System.Web
-[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes([System.Web.Security.Membership]::GeneratePassword(32,4))).Replace("+","-").Replace("/","_")
+[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes([System.Web.Security.Membership]::GeneratePassword(32,4)))
 ```
 
 Terraform
@@ -103,7 +146,6 @@ Terraform
 ```hcl
 resource "random_password" "txt_key" {
   length           = 32
-  override_special = "-_"
 }
 ```
 

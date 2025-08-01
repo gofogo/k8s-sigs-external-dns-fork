@@ -815,3 +815,156 @@ func TestPDNScheckEndpoint(t *testing.T) {
 		assert.Equal(t, tt.expected, actual)
 	}
 }
+
+func TestNewMXTarget(t *testing.T) {
+	tests := []struct {
+		description string
+		target      string
+		expected    *MXTarget
+		expectError bool
+	}{
+		{
+			description: "Valid MX record",
+			target:      "10 example.com",
+			expected:    &MXTarget{priority: 10, host: "example.com"},
+			expectError: false,
+		},
+		{
+			description: "Invalid MX record with missing priority",
+			target:      "example.com",
+			expectError: true,
+		},
+		{
+			description: "Invalid MX record with non-integer priority",
+			target:      "abc example.com",
+			expectError: true,
+		},
+		{
+			description: "Invalid MX record with too many parts",
+			target:      "10 example.com extra",
+			expectError: true,
+		},
+		{
+			description: "Missing host",
+			target:      "10 ",
+			expected:    nil,
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			actual, err := NewMXRecord(tt.target)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, actual)
+			}
+		})
+	}
+}
+
+func TestCheckEndpoint(t *testing.T) {
+	tests := []struct {
+		description string
+		endpoint    Endpoint
+		expected    bool
+	}{
+		{
+			description: "Valid MX record target",
+			endpoint: Endpoint{
+				DNSName:    "example.com",
+				RecordType: RecordTypeMX,
+				Targets:    Targets{"10 example.com"},
+			},
+			expected: true,
+		},
+		{
+			description: "Invalid MX record target",
+			endpoint: Endpoint{
+				DNSName:    "example.com",
+				RecordType: RecordTypeMX,
+				Targets:    Targets{"example.com"},
+			},
+			expected: false,
+		},
+		{
+			description: "Valid SRV record target",
+			endpoint: Endpoint{
+				DNSName:    "_service._tcp.example.com",
+				RecordType: RecordTypeSRV,
+				Targets:    Targets{"10 5 5060 example.com"},
+			},
+			expected: true,
+		},
+		{
+			description: "Invalid SRV record target",
+			endpoint: Endpoint{
+				DNSName:    "_service._tcp.example.com",
+				RecordType: RecordTypeSRV,
+				Targets:    Targets{"10 5 example.com"},
+			},
+			expected: false,
+		},
+		{
+			description: "Non-MX/SRV record type",
+			endpoint: Endpoint{
+				DNSName:    "example.com",
+				RecordType: RecordTypeA,
+				Targets:    Targets{"192.168.1.1"},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			actual := tt.endpoint.CheckEndpoint()
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+}
+
+func TestEndpoint_UniqueOrderedTargets(t *testing.T) {
+	tests := []struct {
+		name     string
+		targets  []string
+		expected Targets
+		want     bool
+	}{
+		{
+			name:     "no duplicates",
+			targets:  []string{"b.example.com", "a.example.com"},
+			expected: Targets{"a.example.com", "b.example.com"},
+		},
+		{
+			name:     "with duplicates",
+			targets:  []string{"a.example.com", "b.example.com", "a.example.com"},
+			expected: Targets{"a.example.com", "b.example.com"},
+		},
+		{
+			name:     "already sorted",
+			targets:  []string{"a.example.com", "b.example.com"},
+			expected: Targets{"a.example.com", "b.example.com"},
+		},
+		{
+			name:     "all duplicates",
+			targets:  []string{"a.example.com", "a.example.com", "a.example.com"},
+			expected: Targets{"a.example.com"},
+		},
+		{
+			name:     "empty",
+			targets:  []string{},
+			expected: Targets{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ep := &Endpoint{Targets: tt.targets}
+			ep.UniqueOrderedTargets()
+			assert.Equal(t, tt.expected, ep.Targets)
+		})
+	}
+}

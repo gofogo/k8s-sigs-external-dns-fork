@@ -14,39 +14,55 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package source
+package wrappers
 
 import (
 	"context"
+	"strings"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/source"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // multiSource is a Source that merges the endpoints of its nested Sources.
 type multiSource struct {
-	children       []Source
-	defaultTargets []string
+	children            []source.Source
+	defaultTargets      []string
+	forceDefaultTargets bool
 }
 
 // Endpoints collects endpoints of all nested Sources and returns them in a single slice.
 func (ms *multiSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error) {
 	result := []*endpoint.Endpoint{}
+	hasDefaultTargets := len(ms.defaultTargets) > 0
 
 	for _, s := range ms.children {
 		endpoints, err := s.Endpoints(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if len(ms.defaultTargets) > 0 {
-			for i := range endpoints {
-				eps := endpointsForHostname(endpoints[i].DNSName, ms.defaultTargets, endpoints[i].RecordTTL, endpoints[i].ProviderSpecific, endpoints[i].SetIdentifier, "")
-				for _, ep := range eps {
-					ep.Labels = endpoints[i].Labels
+
+		if !hasDefaultTargets {
+			result = append(result, endpoints...)
+			continue
+		}
+
+		for _, ep := range endpoints {
+			hasSourceTargets := len(ep.Targets) > 0
+
+			if ms.forceDefaultTargets || !hasSourceTargets {
+				eps := source.EndpointsForHostname(ep.DNSName, ms.defaultTargets, ep.RecordTTL, ep.ProviderSpecific, ep.SetIdentifier, "")
+				for _, e := range eps {
+					e.Labels = ep.Labels
 				}
 				result = append(result, eps...)
+				continue
 			}
-		} else {
-			result = append(result, endpoints...)
+
+			log.Warnf("Source provided targets for %q (%s), ignoring default targets [%s] due to new behavior. Use --force-default-targets to revert to old behavior.", ep.DNSName, ep.RecordType, strings.Join(ms.defaultTargets, ", "))
+			result = append(result, ep)
 		}
 	}
 
@@ -60,6 +76,6 @@ func (ms *multiSource) AddEventHandler(ctx context.Context, handler func()) {
 }
 
 // NewMultiSource creates a new multiSource.
-func NewMultiSource(children []Source, defaultTargets []string) Source {
-	return &multiSource{children: children, defaultTargets: defaultTargets}
+func NewMultiSource(children []source.Source, defaultTargets []string, forceDefaultTargets bool) source.Source {
+	return &multiSource{children: children, defaultTargets: defaultTargets, forceDefaultTargets: forceDefaultTargets}
 }

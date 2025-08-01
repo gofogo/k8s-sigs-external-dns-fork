@@ -16,16 +16,14 @@ package source
 import (
 	"fmt"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	coreinformers "k8s.io/client-go/informers/core/v1"
-	"sigs.k8s.io/external-dns/source/informers"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
-// endpointsForHostname returns the endpoint objects for each host-target combination.
-func endpointsForHostname(hostname string, targets endpoint.Targets, ttl endpoint.TTL, providerSpecific endpoint.ProviderSpecific, setIdentifier string, resource string) []*endpoint.Endpoint {
+// EndpointsForHostname returns the endpoint objects for each host-target combination.
+func EndpointsForHostname(hostname string, targets endpoint.Targets, ttl endpoint.TTL, providerSpecific endpoint.ProviderSpecific, setIdentifier string, resource string) []*endpoint.Endpoint {
 	var (
 		endpoints    []*endpoint.Endpoint
 		aTargets     endpoint.Targets
@@ -86,24 +84,16 @@ func endpointsForHostname(hostname string, targets endpoint.Targets, ttl endpoin
 func EndpointTargetsFromServices(svcInformer coreinformers.ServiceInformer, namespace string, selector map[string]string) (endpoint.Targets, error) {
 	targets := endpoint.Targets{}
 
-	// services, err := svcInformer.Lister().Services(namespace).List(labels.Everything())
-
-	// Make it generic
-	services, err := svcInformer.Informer().GetIndexer().ByIndex(informers.SpecSelectorIndex, labels.Set(selector).String())
+	services, err := svcInformer.Lister().Services(namespace).List(labels.Everything())
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to list labels for services in namespace %q: %w", namespace, err)
 	}
 
-	for _, svc := range services {
-		service, ok := svc.(*corev1.Service)
-		if !ok {
+	for _, service := range services {
+		if !MatchesServiceSelector(selector, service.Spec.Selector) {
 			continue
 		}
-
-		// if !MatchesServiceSelector(selector, service.Spec.Selector) {
-		// 	continue
-		// }
 
 		if len(service.Spec.ExternalIPs) > 0 {
 			targets = append(targets, service.Spec.ExternalIPs...)

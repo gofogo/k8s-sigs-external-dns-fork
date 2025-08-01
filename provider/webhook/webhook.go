@@ -43,7 +43,6 @@ const (
 var (
 	recordsErrorsGauge = metrics.NewGaugeWithOpts(
 		prometheus.GaugeOpts{
-			Namespace: "external_dns",
 			Subsystem: "webhook_provider",
 			Name:      "records_errors_total",
 			Help:      "Errors with Records method",
@@ -51,7 +50,6 @@ var (
 	)
 	recordsRequestsGauge = metrics.NewGaugeWithOpts(
 		prometheus.GaugeOpts{
-			Namespace: "external_dns",
 			Subsystem: "webhook_provider",
 			Name:      "records_requests_total",
 			Help:      "Requests with Records method",
@@ -59,7 +57,6 @@ var (
 	)
 	applyChangesErrorsGauge = metrics.NewGaugeWithOpts(
 		prometheus.GaugeOpts{
-			Namespace: "external_dns",
 			Subsystem: "webhook_provider",
 			Name:      "applychanges_errors_total",
 			Help:      "Errors with ApplyChanges method",
@@ -67,7 +64,6 @@ var (
 	)
 	applyChangesRequestsGauge = metrics.NewGaugeWithOpts(
 		prometheus.GaugeOpts{
-			Namespace: "external_dns",
 			Subsystem: "webhook_provider",
 			Name:      "applychanges_requests_total",
 			Help:      "Requests with ApplyChanges method",
@@ -75,7 +71,6 @@ var (
 	)
 	adjustEndpointsErrorsGauge = metrics.NewGaugeWithOpts(
 		prometheus.GaugeOpts{
-			Namespace: "external_dns",
 			Subsystem: "webhook_provider",
 			Name:      "adjustendpoints_errors_total",
 			Help:      "Errors with AdjustEndpoints method",
@@ -83,7 +78,6 @@ var (
 	)
 	adjustEndpointsRequestsGauge = metrics.NewGaugeWithOpts(
 		prometheus.GaugeOpts{
-			Namespace: "external_dns",
 			Subsystem: "webhook_provider",
 			Name:      "adjustendpoints_requests_total",
 			Help:      "Requests with AdjustEndpoints method",
@@ -94,7 +88,7 @@ var (
 type WebhookProvider struct {
 	client          *http.Client
 	remoteServerURL *url.URL
-	DomainFilter    endpoint.DomainFilter
+	DomainFilter    *endpoint.DomainFilter
 }
 
 func init() {
@@ -132,8 +126,8 @@ func NewWebhookProvider(u string) (*WebhookProvider, error) {
 		return nil, fmt.Errorf("wrong content type returned from server: %s", ct)
 	}
 
-	df := endpoint.DomainFilter{}
-	if err := json.NewDecoder(resp.Body).Decode(&df); err != nil {
+	df := &endpoint.DomainFilter{}
+	if err := json.NewDecoder(resp.Body).Decode(df); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response body of DomainFilter: %w", err)
 	}
 

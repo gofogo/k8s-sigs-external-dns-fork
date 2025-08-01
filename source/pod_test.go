@@ -23,9 +23,13 @@ import (
 	"testing"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1lister "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/internal/testutils"
@@ -302,8 +306,8 @@ func TestPodSource(t *testing.T) {
 			true,
 			"",
 			[]*endpoint.Endpoint{
-				{DNSName: "a.foo.example.org", Targets: endpoint.Targets{"54.10.11.1"}, RecordType: endpoint.RecordTypeA},
-				{DNSName: "a.foo.example.org", Targets: endpoint.Targets{"2001:DB8::1"}, RecordType: endpoint.RecordTypeAAAA},
+				{DNSName: "a.foo.example.org", Targets: endpoint.Targets{"54.10.11.1"}, RecordType: endpoint.RecordTypeA, RecordTTL: endpoint.TTL(5400)},
+				{DNSName: "a.foo.example.org", Targets: endpoint.Targets{"2001:DB8::1"}, RecordType: endpoint.RecordTypeAAAA, RecordTTL: endpoint.TTL(5400)},
 				{DNSName: "b.foo.example.org", Targets: endpoint.Targets{"54.10.11.2"}, RecordType: endpoint.RecordTypeA},
 			},
 			false,
@@ -339,6 +343,7 @@ func TestPodSource(t *testing.T) {
 						Namespace: "kube-system",
 						Annotations: map[string]string{
 							hostnameAnnotationKey: "a.foo.example.org",
+							ttlAnnotationKey:      "1h30m",
 						},
 					},
 					Spec: corev1.PodSpec{
@@ -374,8 +379,8 @@ func TestPodSource(t *testing.T) {
 			true,
 			"",
 			[]*endpoint.Endpoint{
-				{DNSName: "a.foo.example.org", Targets: endpoint.Targets{"54.10.11.1"}, RecordType: endpoint.RecordTypeA},
-				{DNSName: "internal.a.foo.example.org", Targets: endpoint.Targets{"10.0.1.1"}, RecordType: endpoint.RecordTypeA},
+				{DNSName: "a.foo.example.org", Targets: endpoint.Targets{"54.10.11.1"}, RecordType: endpoint.RecordTypeA, RecordTTL: endpoint.TTL(1)},
+				{DNSName: "internal.a.foo.example.org", Targets: endpoint.Targets{"10.0.1.1"}, RecordType: endpoint.RecordTypeA, RecordTTL: endpoint.TTL(1)},
 			},
 			false,
 			nodesFixturesIPv4(),
@@ -387,6 +392,7 @@ func TestPodSource(t *testing.T) {
 						Annotations: map[string]string{
 							internalHostnameAnnotationKey: "internal.a.foo.example.org",
 							hostnameAnnotationKey:         "a.foo.example.org",
+							ttlAnnotationKey:              "1s",
 						},
 					},
 					Spec: corev1.PodSpec{
@@ -453,6 +459,7 @@ func TestPodSource(t *testing.T) {
 						Annotations: map[string]string{
 							internalHostnameAnnotationKey: "internal.a.foo.example.org",
 							hostnameAnnotationKey:         "a.foo.example.org",
+							ttlAnnotationKey:              "1s",
 						},
 					},
 					Spec: corev1.PodSpec{
@@ -514,7 +521,7 @@ func TestPodSource(t *testing.T) {
 			false,
 			"example.org",
 			[]*endpoint.Endpoint{
-				{DNSName: "my-pod1.example.org", Targets: endpoint.Targets{"192.168.1.1"}, RecordType: endpoint.RecordTypeA},
+				{DNSName: "my-pod1.example.org", Targets: endpoint.Targets{"192.168.1.1"}, RecordType: endpoint.RecordTypeA, RecordTTL: endpoint.TTL(60)},
 				{DNSName: "my-pod2.example.org", Targets: endpoint.Targets{"192.168.1.2"}, RecordType: endpoint.RecordTypeA},
 			},
 			false,
@@ -522,9 +529,11 @@ func TestPodSource(t *testing.T) {
 			[]*corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pod1",
-						Namespace:   "kube-system",
-						Annotations: map[string]string{},
+						Name:      "my-pod1",
+						Namespace: "kube-system",
+						Annotations: map[string]string{
+							ttlAnnotationKey: "1m",
+						},
 					},
 					Spec: corev1.PodSpec{
 						HostNetwork: false,
@@ -652,7 +661,7 @@ func TestPodSource(t *testing.T) {
 				}
 			}
 
-			client, err := NewPodSource(ctx, kubernetes, tc.targetNamespace, tc.compatibility, tc.ignoreNonHostNetworkPods, tc.PodSourceDomain, "", false)
+			client, err := NewPodSource(ctx, kubernetes, tc.targetNamespace, tc.compatibility, tc.ignoreNonHostNetworkPods, tc.PodSourceDomain, "", false, "", nil)
 			require.NoError(t, err)
 
 			endpoints, err := client.Endpoints(ctx)
@@ -880,7 +889,7 @@ func TestPodSourceLogs(t *testing.T) {
 				}
 			}
 
-			client, err := NewPodSource(ctx, kubernetes, "", "", tc.ignoreNonHostNetworkPods, "", "", false)
+			client, err := NewPodSource(ctx, kubernetes, "", "", tc.ignoreNonHostNetworkPods, "", "", false, "", nil)
 			require.NoError(t, err)
 
 			hook := testutils.LogsUnderTestWithLogLevel(log.DebugLevel, t)
@@ -902,6 +911,39 @@ func TestPodSourceLogs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPodSource_AddEventHandler(t *testing.T) {
+	fakeInformer := new(fakePodInformer)
+	inf := testInformer{}
+	fakeInformer.On("Informer").Return(&inf)
+
+	pSource := &podSource{
+		podInformer: fakeInformer,
+	}
+
+	handlerCalled := false
+	handler := func() { handlerCalled = true }
+
+	pSource.AddEventHandler(t.Context(), handler)
+
+	fakeInformer.AssertNumberOfCalls(t, "Informer", 1)
+	assert.False(t, handlerCalled)
+	assert.Equal(t, 1, inf.times)
+}
+
+type fakePodInformer struct {
+	mock.Mock
+	informer cache.SharedIndexInformer
+}
+
+func (f *fakePodInformer) Informer() cache.SharedIndexInformer {
+	args := f.Called()
+	return args.Get(0).(cache.SharedIndexInformer)
+}
+
+func (f *fakePodInformer) Lister() corev1lister.PodLister {
+	return corev1lister.NewPodLister(f.Informer().GetIndexer())
 }
 
 func nodesFixturesIPv6() []*corev1.Node {

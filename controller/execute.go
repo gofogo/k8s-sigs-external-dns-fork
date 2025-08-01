@@ -33,6 +33,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"k8s.io/klog/v2"
 
+	"sigs.k8s.io/external-dns/source/wrappers"
+
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns/validation"
@@ -145,7 +147,7 @@ func Execute() {
 func buildProvider(
 	ctx context.Context,
 	cfg *externaldns.Config,
-	domainFilter endpoint.DomainFilter,
+	domainFilter *endpoint.DomainFilter,
 ) (provider.Provider, error) {
 	var p provider.Provider
 	var err error
@@ -215,7 +217,10 @@ func buildProvider(
 			zoneIDFilter,
 			cfg.CloudflareProxied,
 			cfg.DryRun,
-			cfg.CloudflareRegionKey,
+			cloudflare.RegionalServicesConfig{
+				Enabled:   cfg.CloudflareRegionalServices,
+				RegionKey: cfg.CloudflareRegionKey,
+			},
 			cloudflare.CustomHostnamesConfig{
 				Enabled:              cfg.CloudflareCustomHostnames,
 				MinTLSVersion:        cfg.CloudflareCustomHostnamesMinTLSVersion,
@@ -339,7 +344,7 @@ func buildProvider(
 	return p, err
 }
 
-func buildController(cfg *externaldns.Config, src source.Source, p provider.Provider, filter endpoint.DomainFilter) (*Controller, error) {
+func buildController(cfg *externaldns.Config, src source.Source, p provider.Provider, filter *endpoint.DomainFilter) (*Controller, error) {
 	policy, ok := plan.Policies[cfg.Policy]
 	if !ok {
 		return nil, fmt.Errorf("unknown policy: %s", cfg.Policy)
@@ -392,7 +397,7 @@ func selectRegistry(cfg *externaldns.Config, p provider.Provider) (registry.Regi
 	case "noop":
 		r, err = registry.NewNoopRegistry(p)
 	case "txt":
-		r, err = registry.NewTXTRegistry(p, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTOwnerID, cfg.TXTCacheInterval, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, cfg.TXTEncryptEnabled, []byte(cfg.TXTEncryptAESKey), cfg.TXTNewFormatOnly)
+		r, err = registry.NewTXTRegistry(p, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTOwnerID, cfg.TXTCacheInterval, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, cfg.TXTEncryptEnabled, []byte(cfg.TXTEncryptAESKey))
 	case "aws-sd":
 		r, err = registry.NewAWSSDRegistry(p, cfg.TXTOwnerID)
 	default:
@@ -420,16 +425,16 @@ func buildSource(ctx context.Context, cfg *externaldns.Config) (source.Source, e
 		return nil, err
 	}
 	// Combine multiple sources into a single, deduplicated source.
-	combinedSource := source.NewDedupSource(source.NewMultiSource(sources, sourceCfg.DefaultTargets))
+	combinedSource := wrappers.NewDedupSource(wrappers.NewMultiSource(sources, sourceCfg.DefaultTargets, sourceCfg.ForceDefaultTargets))
 	// Filter targets
 	targetFilter := endpoint.NewTargetNetFilterWithExclusions(cfg.TargetNetFilter, cfg.ExcludeTargetNets)
-	combinedSource = source.NewNAT64Source(combinedSource, cfg.NAT64Networks)
-	combinedSource = source.NewTargetFilterSource(combinedSource, targetFilter)
+	combinedSource = wrappers.NewNAT64Source(combinedSource, cfg.NAT64Networks)
+	combinedSource = wrappers.NewTargetFilterSource(combinedSource, targetFilter)
 	return combinedSource, nil
 }
 
 // RegexDomainFilter overrides DomainFilter
-func createDomainFilter(cfg *externaldns.Config) endpoint.DomainFilter {
+func createDomainFilter(cfg *externaldns.Config) *endpoint.DomainFilter {
 	if cfg.RegexDomainFilter != nil && cfg.RegexDomainFilter.String() != "" {
 		return endpoint.NewRegexDomainFilter(cfg.RegexDomainFilter, cfg.RegexDomainExclusion)
 	} else {

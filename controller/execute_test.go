@@ -83,7 +83,6 @@ func TestSelectRegistry(t *testing.T) {
 				TXTWildcardReplacement: "wildcard",
 				ManagedDNSRecordTypes:  []string{"A", "CNAME"},
 				ExcludeDNSRecordTypes:  []string{"TXT"},
-				TXTNewFormatOnly:       true,
 			},
 			provider: &MockProvider{},
 			wantErr:  false,
@@ -134,7 +133,7 @@ func TestCreateDomainFilter(t *testing.T) {
 	tests := []struct {
 		name                 string
 		cfg                  *externaldns.Config
-		expectedDomainFilter endpoint.DomainFilter
+		expectedDomainFilter *endpoint.DomainFilter
 		isConfigured         bool
 	}{
 		{

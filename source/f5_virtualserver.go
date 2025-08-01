@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -150,8 +149,8 @@ func (vs *f5VirtualServerSource) endpointsFromVirtualServers(virtualServers []*f
 	var endpoints []*endpoint.Endpoint
 
 	for _, virtualServer := range virtualServers {
-		if !isVirtualServerReady(virtualServer) {
-			log.Warnf("F5 VirtualServer %s/%s is not ready or is missing an IP address, skipping endpoint creation.",
+		if !hasValidVirtualServerIP(virtualServer) {
+			log.Warnf("F5 VirtualServer %s/%s is missing a valid IP address, skipping endpoint creation.",
 				virtualServer.Namespace, virtualServer.Name)
 			continue
 		}
@@ -169,7 +168,7 @@ func (vs *f5VirtualServerSource) endpointsFromVirtualServers(virtualServers []*f
 			targets = append(targets, virtualServer.Status.VSAddress)
 		}
 
-		endpoints = append(endpoints, endpointsForHostname(virtualServer.Spec.Host, targets, ttl, nil, "", resource)...)
+		endpoints = append(endpoints, EndpointsForHostname(virtualServer.Spec.Host, targets, ttl, nil, "", resource)...)
 	}
 
 	return endpoints, nil
@@ -192,12 +191,7 @@ func newVSUnstructuredConverter() (*unstructuredConverter, error) {
 
 // filterByAnnotations filters a list of VirtualServers by a given annotation selector.
 func (vs *f5VirtualServerSource) filterByAnnotations(virtualServers []*f5.VirtualServer) ([]*f5.VirtualServer, error) {
-	labelSelector, err := metav1.ParseToLabelSelector(vs.annotationFilter)
-	if err != nil {
-		return nil, err
-	}
-
-	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
+	selector, err := annotations.ParseFilter(vs.annotationFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -219,11 +213,7 @@ func (vs *f5VirtualServerSource) filterByAnnotations(virtualServers []*f5.Virtua
 	return filteredList, nil
 }
 
-func isVirtualServerReady(vs *f5.VirtualServer) bool {
-	if strings.ToLower(vs.Status.Status) != "ok" {
-		return false
-	}
-
+func hasValidVirtualServerIP(vs *f5.VirtualServer) bool {
 	normalizedAddress := strings.ToLower(vs.Status.VSAddress)
 	return normalizedAddress != "none" && normalizedAddress != ""
 }

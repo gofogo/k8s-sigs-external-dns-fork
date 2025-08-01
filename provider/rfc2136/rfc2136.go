@@ -68,7 +68,7 @@ type rfc2136Provider struct {
 	krb5Realm    string
 
 	// only consider hosted zones managing domains ending in this suffix
-	domainFilter endpoint.DomainFilter
+	domainFilter *endpoint.DomainFilter
 	dryRun       bool
 	actions      rfc2136Actions
 
@@ -110,7 +110,7 @@ type rfc2136Actions interface {
 }
 
 // NewRfc2136Provider is a factory function for OpenStack rfc2136 providers
-func NewRfc2136Provider(hosts []string, port int, zoneNames []string, insecure bool, keyName string, secret string, secretAlg string, axfr bool, domainFilter endpoint.DomainFilter, dryRun bool, minTTL time.Duration, createPTR bool, gssTsig bool, krb5Username string, krb5Password string, krb5Realm string, batchChangeSize int, tlsConfig TLSConfig, loadBalancingStrategy string, actions rfc2136Actions) (provider.Provider, error) {
+func NewRfc2136Provider(hosts []string, port int, zoneNames []string, insecure bool, keyName string, secret string, secretAlg string, axfr bool, domainFilter *endpoint.DomainFilter, dryRun bool, minTTL time.Duration, createPTR bool, gssTsig bool, krb5Username string, krb5Password string, krb5Realm string, batchChangeSize int, tlsConfig TLSConfig, loadBalancingStrategy string, actions rfc2136Actions) (provider.Provider, error) {
 	secretAlgChecked, ok := tsigAlgs[secretAlg]
 	if !ok && !insecure && !gssTsig {
 		return nil, fmt.Errorf("%s is not supported TSIG algorithm", secretAlg)
@@ -169,13 +169,13 @@ func NewRfc2136Provider(hosts []string, port int, zoneNames []string, insecure b
 }
 
 // KeyData will return TKEY name and TSIG handle to use for followon actions with a secure connection
-func (r *rfc2136Provider) KeyData(nameserver string) (keyName string, handle *gss.Client, err error) {
-	handle, err = gss.NewClient(new(dns.Client))
+func (r *rfc2136Provider) KeyData(nameserver string) (string, *gss.Client, error) {
+	handle, err := gss.NewClient(new(dns.Client))
 	if err != nil {
-		return keyName, handle, err
+		return "", handle, err
 	}
 
-	keyName, _, err = handle.NegotiateContextWithCredentials(nameserver, r.krb5Realm, r.krb5Username, r.krb5Password)
+	keyName, _, err := handle.NegotiateContextWithCredentials(nameserver, r.krb5Realm, r.krb5Username, r.krb5Password)
 	if err != nil {
 		return keyName, handle, err
 	}
@@ -247,7 +247,7 @@ OuterLoop:
 	return eps, nil
 }
 
-func (r *rfc2136Provider) IncomeTransfer(m *dns.Msg, nameserver string) (env chan *dns.Envelope, err error) {
+func (r *rfc2136Provider) IncomeTransfer(m *dns.Msg, nameserver string) (chan *dns.Envelope, error) {
 	t := new(dns.Transfer)
 	if !r.insecure && !r.gssTsig {
 		t.TsigSecret = map[string]string{r.tsigKeyName: r.tsigSecret}
@@ -408,9 +408,11 @@ func (r *rfc2136Provider) ApplyChanges(ctx context.Context, changes *plan.Change
 			zone := findMsgZone(ep, r.zoneNames)
 			m[zone].SetUpdate(zone)
 
-			r.UpdateRecord(m[zone], changes.UpdateOld[i], ep)
+			// calculate corresponding index in the unsplitted UpdateOld for current endpoint ep in chunk
+			j := (c * r.batchChangeSize) + i
+			r.UpdateRecord(m[zone], changes.UpdateOld[j], ep)
 			if r.createPTR && (ep.RecordType == "A" || ep.RecordType == "AAAA") {
-				r.RemoveReverseRecord(changes.UpdateOld[i].Targets[0], ep.DNSName)
+				r.RemoveReverseRecord(changes.UpdateOld[j].Targets[0], ep.DNSName)
 				r.AddReverseRecord(ep.Targets[0], ep.DNSName)
 			}
 		}
