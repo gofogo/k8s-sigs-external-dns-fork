@@ -27,6 +27,12 @@ import (
 	"sigs.k8s.io/external-dns/source"
 )
 
+func WrapWithNat64(prefixes []string) func(source.Source) (source.Source, error) {
+	return func(s source.Source) (source.Source, error) {
+		return NewNAT64Source(s, prefixes)
+	}
+}
+
 // nat64Source is a Source that adds A endpoints for AAAA records including an NAT64 address.
 type nat64Source struct {
 	source        source.Source

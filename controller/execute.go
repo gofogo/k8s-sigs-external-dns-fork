@@ -446,6 +446,10 @@ func buildSource(ctx context.Context, cfg *externaldns.Config) (source.Source, e
 	if err != nil {
 		return nil, err
 	}
+	cmb, err := wrappers.ChaninedWrapper(sources)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chained wrapper: %w", err)
+	}
 	// Combine multiple sources into a single, deduplicated source.
 	combinedSource := wrappers.NewDedupSource(wrappers.NewMultiSource(sources, sourceCfg.DefaultTargets, sourceCfg.ForceDefaultTargets))
 	cfg.AddSourceWrapper("dedup")
