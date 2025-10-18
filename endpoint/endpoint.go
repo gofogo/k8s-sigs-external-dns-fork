@@ -346,6 +346,10 @@ func (e *Endpoint) DeleteProviderSpecificProperty(key string) {
 	}
 }
 
+func (e *Endpoint) DeleteProviderSpecificPropertyHashMap(key string) {
+	delete(e.providerSpecificHashMap, key)
+}
+
 // WithLabel adds or updates a label for the Endpoint.
 //
 // Example usage:

@@ -312,6 +312,8 @@ type AWSProvider struct {
 	zonesCache      *zonesListCache
 	// queue for collecting changes to submit them in the next iteration, but after all other changes
 	failedChangesQueue map[string]Route53Changes
+
+	useHashMap bool
 }
 
 // AWSConfig contains configuration to create a new AWS provider.
@@ -829,25 +831,41 @@ func (p *AWSProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoi
 	for _, ep := range endpoints {
 		alias := false
 
-		if aliasString, ok := ep.GetProviderSpecificProperty(providerSpecificAlias); ok {
+		if aliasString, ok := ep.GetProviderSpecificPropertyHashMap(providerSpecificAlias); ok {
 			alias = aliasString == "true"
 			if alias {
 				if !slices.Contains([]string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME}, ep.RecordType) {
-					ep.DeleteProviderSpecificProperty(providerSpecificAlias)
+					if p.useHashMap {
+						ep.DeleteProviderSpecificPropertyHashMap(providerSpecificAlias)
+					} else {
+						ep.DeleteProviderSpecificProperty(providerSpecificAlias)
+					}
 				}
 			} else {
 				if ep.RecordType == endpoint.RecordTypeCNAME {
 					if aliasString != "false" {
-						ep.SetProviderSpecificProperty(providerSpecificAlias, "false")
+						if p.useHashMap {
+							ep.SetProviderSpecificPropertyHashMap(providerSpecificAlias, "false")
+						} else {
+							ep.SetProviderSpecificProperty(providerSpecificAlias, "false")
+						}
 					}
 				} else {
-					ep.DeleteProviderSpecificProperty(providerSpecificAlias)
+					if p.useHashMap {
+						ep.DeleteProviderSpecificPropertyHashMap(providerSpecificAlias)
+					} else {
+						ep.DeleteProviderSpecificProperty(providerSpecificAlias)
+					}
 				}
 			}
 		} else if ep.RecordType == endpoint.RecordTypeCNAME {
 			alias = useAlias(ep, p.preferCNAME)
 			log.Debugf("Modifying endpoint: %v, setting %s=%v", ep, providerSpecificAlias, alias)
-			ep.SetProviderSpecificProperty(providerSpecificAlias, strconv.FormatBool(alias))
+			if p.useHashMap {
+				ep.SetProviderSpecificPropertyHashMap(providerSpecificAlias, strconv.FormatBool(alias))
+			} else {
+				ep.SetProviderSpecificProperty(providerSpecificAlias, strconv.FormatBool(alias))
+			}
 		}
 
 		if alias {
@@ -857,10 +875,18 @@ func (p *AWSProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoi
 			}
 			if prop, ok := ep.GetProviderSpecificProperty(providerSpecificEvaluateTargetHealth); ok {
 				if prop != "true" && prop != "false" {
-					ep.SetProviderSpecificProperty(providerSpecificEvaluateTargetHealth, "false")
+					if p.useHashMap {
+						ep.SetProviderSpecificPropertyHashMap(providerSpecificEvaluateTargetHealth, "false")
+					} else {
+						ep.SetProviderSpecificProperty(providerSpecificEvaluateTargetHealth, "false")
+					}
 				}
 			} else {
-				ep.SetProviderSpecificProperty(providerSpecificEvaluateTargetHealth, strconv.FormatBool(p.evaluateTargetHealth))
+				if p.useHashMap {
+					ep.SetProviderSpecificPropertyHashMap(providerSpecificEvaluateTargetHealth, strconv.FormatBool(p.evaluateTargetHealth))
+				} else {
+					ep.SetProviderSpecificProperty(providerSpecificEvaluateTargetHealth, strconv.FormatBool(p.evaluateTargetHealth))
+				}
 			}
 
 			if ep.RecordType == endpoint.RecordTypeCNAME {
@@ -878,10 +904,14 @@ func (p *AWSProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoi
 				ep.RecordType = endpoint.RecordTypeA
 			}
 		} else {
-			ep.DeleteProviderSpecificProperty(providerSpecificEvaluateTargetHealth)
+			if p.useHashMap {
+				ep.DeleteProviderSpecificPropertyHashMap(providerSpecificEvaluateTargetHealth)
+			} else {
+				ep.DeleteProviderSpecificProperty(providerSpecificEvaluateTargetHealth)
+			}
 		}
 
-		adjustGeoProximityLocationEndpoint(ep)
+		adjustGeoProximityLocationEndpoint(ep, p.useHashMap)
 	}
 
 	endpoints = append(endpoints, aliasCnameAaaaEndpoints...)
@@ -890,18 +920,31 @@ func (p *AWSProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoi
 
 // if the endpoint is using geoproximity, set the bias to 0 if not set
 // this is needed to avoid unnecessary Upserts if the desired endpoint doesn't specify a bias
-func adjustGeoProximityLocationEndpoint(ep *endpoint.Endpoint) {
+func adjustGeoProximityLocationEndpoint(ep *endpoint.Endpoint, useHashMap bool) {
 	if ep.SetIdentifier == "" {
 		return
 	}
-	_, ok1 := ep.GetProviderSpecificProperty(providerSpecificGeoProximityLocationAWSRegion)
-	_, ok2 := ep.GetProviderSpecificProperty(providerSpecificGeoProximityLocationLocalZoneGroup)
-	_, ok3 := ep.GetProviderSpecificProperty(providerSpecificGeoProximityLocationCoordinates)
+	var ok1, ok2, ok3 bool
+	if useHashMap {
+		_, ok1 = ep.GetProviderSpecificPropertyHashMap(providerSpecificGeoProximityLocationAWSRegion)
+		_, ok2 = ep.GetProviderSpecificPropertyHashMap(providerSpecificGeoProximityLocationLocalZoneGroup)
+		_, ok3 = ep.GetProviderSpecificPropertyHashMap(providerSpecificGeoProximityLocationCoordinates)
+	} else {
+		_, ok1 = ep.GetProviderSpecificProperty(providerSpecificGeoProximityLocationAWSRegion)
+		_, ok2 = ep.GetProviderSpecificProperty(providerSpecificGeoProximityLocationLocalZoneGroup)
+		_, ok3 = ep.GetProviderSpecificProperty(providerSpecificGeoProximityLocationCoordinates)
+	}
 
 	if ok1 || ok2 || ok3 {
 		// check if ep has bias property and if not, set it to 0
-		if _, ok := ep.GetProviderSpecificProperty(providerSpecificGeoProximityLocationBias); !ok {
-			ep.SetProviderSpecificProperty(providerSpecificGeoProximityLocationBias, "0")
+		if useHashMap {
+			if _, ok := ep.GetProviderSpecificPropertyHashMap(providerSpecificGeoProximityLocationBias); !ok {
+				ep.SetProviderSpecificPropertyHashMap(providerSpecificGeoProximityLocationBias, "0")
+			}
+		} else {
+			if _, ok := ep.GetProviderSpecificProperty(providerSpecificGeoProximityLocationBias); !ok {
+				ep.SetProviderSpecificProperty(providerSpecificGeoProximityLocationBias, "0")
+			}
 		}
 	}
 }
