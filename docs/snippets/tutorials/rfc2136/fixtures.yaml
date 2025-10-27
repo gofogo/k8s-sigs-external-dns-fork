@@ -1,0 +1,21 @@
+# kubectl apply -f docs/snippets/tutorials/rfc2136/fixtures.yaml
+# kubectl delete -f docs/snippets/tutorials/rfc2136/fixtures.yaml
+# kubectl get svc -l svc=test-svc-rfc2136
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: a-svc-rfc2136
+  labels:
+    svc: test-svc-rfc2136
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: test.example.org
+  namespace: default
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    name: http
+    targetPort: 80
+  selector:
+    app: test-app
