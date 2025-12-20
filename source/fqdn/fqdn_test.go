@@ -219,6 +219,25 @@ func TestExecTemplateEmptyObject(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestExecTemplateExecutionError(t *testing.T) {
+	tmpl, err := ParseTemplate("{{ call .Name }}")
+	require.NoError(t, err)
+
+	obj := &metav1.PartialObjectMetadata{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "TestKind",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-name",
+			Namespace: "default",
+		},
+	}
+
+	_, err = ExecTemplate(tmpl, obj)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to apply template on TestKind default/test-name")
+}
+
 func TestFqdnTemplate(t *testing.T) {
 	tests := []struct {
 		name          string
