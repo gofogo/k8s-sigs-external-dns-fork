@@ -189,47 +189,71 @@ func TestNewNAT64Source(t *testing.T) {
 	}
 }
 
-func TestNat64SourceEndpoints_SourceError(t *testing.T) {
-	mockSource := new(testutils.MockSource)
-	mockSource.On("Endpoints").Return(nil, assert.AnError)
+func TestNat64SourceEndpoints_VariousCases(t *testing.T) {
+	tests := []struct {
+		name       string
+		mockReturn []*endpoint.Endpoint
+		mockError  error
+		asserts    func([]*endpoint.Endpoint, error)
+	}{
+		{
+			name:      "expect source error propagation",
+			mockError: assert.AnError,
+			asserts: func(eps []*endpoint.Endpoint, err error) {
+				assert.Nil(t, eps)
+				require.Error(t, err)
+				require.ErrorIs(t, err, assert.AnError)
+			},
+		},
+		{
+			name: "skip nat64 processing for non-AAAA records",
+			mockReturn: []*endpoint.Endpoint{
+				{DNSName: "foo.example.org", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"10.10.10.11"}},
+			},
+			asserts: func(eps []*endpoint.Endpoint, err error) {
+				assert.NotNil(t, eps)
+				assert.Len(t, eps, 1)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name: "target is not a valid IPv6 address",
+			mockReturn: []*endpoint.Endpoint{
+				{DNSName: "foo.example.org", RecordType: endpoint.RecordTypeAAAA, Targets: endpoint.Targets{"not-an-ip"}},
+			},
+			asserts: func(eps []*endpoint.Endpoint, err error) {
+				assert.Nil(t, eps)
+				require.Error(t, err)
+				assert.EqualError(t, err, "ParseAddr(\"not-an-ip\"): unable to parse IP")
+			},
+		},
+		{
+			name: "target is IPv4 address",
+			mockReturn: []*endpoint.Endpoint{
+				{DNSName: "foo.example.org", RecordType: endpoint.RecordTypeAAAA, Targets: endpoint.Targets{"192.0.2.42"}},
+			},
+			asserts: func(eps []*endpoint.Endpoint, err error) {
+				assert.Nil(t, eps)
+				require.Error(t, err)
+				assert.EqualError(t, err, "expected 16-byte IPv6 address, got 4 bytes")
+			},
+		},
+	}
 
-	src, err := NewNAT64Source(mockSource, []string{"2001:db8::/96"})
-	require.NoError(t, err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSource := new(testutils.MockSource)
+			mockSource.On("Endpoints").Return(tc.mockReturn, tc.mockError)
 
-	_, err = src.Endpoints(context.Background())
-	assert.ErrorIs(t, err, assert.AnError)
+			src, err := NewNAT64Source(mockSource, []string{"2001:db8::/96"})
+			require.NoError(t, err)
 
-	mockSource.AssertExpectations(t)
-}
+			eps, err := src.Endpoints(context.Background())
+			tc.asserts(eps, err)
 
-func TestNat64SourceEndpoints_InvalidTarget(t *testing.T) {
-	mockSource := new(testutils.MockSource)
-	mockSource.On("Endpoints").Return([]*endpoint.Endpoint{
-		{DNSName: "foo.example.org", RecordType: endpoint.RecordTypeAAAA, Targets: endpoint.Targets{"not-an-ip"}},
-	}, nil)
-
-	src, err := NewNAT64Source(mockSource, []string{"2001:db8::/96"})
-	require.NoError(t, err)
-
-	_, err = src.Endpoints(context.Background())
-	assert.Error(t, err)
-
-	mockSource.AssertExpectations(t)
-}
-
-func TestNat64SourceEndpoints_InvalidV4Addr(t *testing.T) {
-	mockSource := new(testutils.MockSource)
-	mockSource.On("Endpoints").Return([]*endpoint.Endpoint{
-		{DNSName: "foo.example.org", RecordType: endpoint.RecordTypeAAAA, Targets: endpoint.Targets{"192.0.2.42"}},
-	}, nil)
-
-	src, err := NewNAT64Source(mockSource, []string{"2001:db8::/96"})
-	require.NoError(t, err)
-
-	_, err = src.Endpoints(context.Background())
-	assert.EqualError(t, err, "expected 16-byte IPv6 address, got 4 bytes")
-
-	mockSource.AssertExpectations(t)
+			mockSource.AssertExpectations(t)
+		})
+	}
 }
 
 func TestNat64SourceEndpoints_V4AddrFromSliceError(t *testing.T) {
