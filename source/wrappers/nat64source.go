@@ -19,6 +19,7 @@ package wrappers
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/netip"
 
 	log "github.com/sirupsen/logrus"
@@ -114,8 +115,8 @@ func (s *nat64Source) AddEventHandler(ctx context.Context, handler func()) {
 }
 
 func v4AddrFromSlice(ipBytes []byte) (netip.Addr, error) {
-	if len(ipBytes) != netip.IPv6AddressSize {
-		return netip.Addr{}, fmt.Errorf("expected %d-byte IPv6 address, got %d bytes", netip.IPv6AddressSize, len(ipBytes))
+	if len(ipBytes) != net.IPv6len {
+		return netip.Addr{}, fmt.Errorf("expected %d-byte IPv6 address, got %d bytes", net.IPv6len, len(ipBytes))
 	}
 	v4AddrBytes := ipBytes[12:16]
 	v4Addr, isOk := netip.AddrFromSlice(v4AddrBytes)
