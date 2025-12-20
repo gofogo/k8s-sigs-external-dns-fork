@@ -27,8 +27,6 @@ import (
 	"sigs.k8s.io/external-dns/source"
 )
 
-var addrFromSlice = netip.AddrFromSlice
-
 // nat64Source is a Source that adds A endpoints for AAAA records including an NAT64 address.
 type nat64Source struct {
 	source        source.Source
@@ -92,9 +90,9 @@ func (s *nat64Source) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, erro
 			ipBytes := ip.As16()
 			v4AddrBytes := ipBytes[12:16]
 
-			v4Addr, isOk := addrFromSlice(v4AddrBytes)
-			if !isOk {
-				return nil, fmt.Errorf("could not parse %v to IPv4 address", v4AddrBytes)
+			v4Addr, err := v4AddrFromSlice(v4AddrBytes)
+			if err != nil {
+				return nil, err
 			}
 
 			v4Targets = append(v4Targets, v4Addr.String())
@@ -116,4 +114,12 @@ func (s *nat64Source) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, erro
 func (s *nat64Source) AddEventHandler(ctx context.Context, handler func()) {
 	log.Debug("nat64Source: adding event handler")
 	s.source.AddEventHandler(ctx, handler)
+}
+
+func v4AddrFromSlice(v4AddrBytes []byte) (netip.Addr, error) {
+	v4Addr, isOk := netip.AddrFromSlice(v4AddrBytes)
+	if !isOk {
+		return netip.Addr{}, fmt.Errorf("could not parse %v to IPv4 address", v4AddrBytes)
+	}
+	return v4Addr, nil
 }

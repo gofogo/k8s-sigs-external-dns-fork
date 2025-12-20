@@ -218,24 +218,6 @@ func TestNat64SourceEndpoints_InvalidTarget(t *testing.T) {
 }
 
 func TestNat64SourceEndpoints_InvalidV4Addr(t *testing.T) {
-	mockSource := new(testutils.MockSource)
-	mockSource.On("Endpoints").Return([]*endpoint.Endpoint{
-		{DNSName: "foo.example.org", RecordType: endpoint.RecordTypeAAAA, Targets: endpoint.Targets{"2001:db8::192.0.2.42"}},
-	}, nil)
-
-	originalAddrFromSlice := addrFromSlice
-	addrFromSlice = func([]byte) (netip.Addr, bool) {
-		return netip.Addr{}, false
-	}
-	t.Cleanup(func() {
-		addrFromSlice = originalAddrFromSlice
-	})
-
-	src, err := NewNAT64Source(mockSource, []string{"2001:db8::/96"})
-	require.NoError(t, err)
-
-	_, err = src.Endpoints(context.Background())
-	assert.EqualError(t, err, "could not parse [192 0 2 42] to IPv4 address")
-
-	mockSource.AssertExpectations(t)
+	_, err := v4AddrFromSlice([]byte{192, 0, 2})
+	assert.EqualError(t, err, "could not parse [192 0 2] to IPv4 address")
 }
