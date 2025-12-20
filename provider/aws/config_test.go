@@ -103,6 +103,19 @@ func Test_newV2Config(t *testing.T) {
 		require.NotNil(t, cfg.Credentials)
 		assert.Contains(t, fmt.Sprintf("%T", cfg.Credentials), "CredentialsCache")
 	})
+
+	t.Run("returns error when config cannot be loaded", func(t *testing.T) {
+		// setup
+		os.Setenv("AWS_CA_BUNDLE", "missing-ca.pem")
+		defer os.Unsetenv("AWS_CA_BUNDLE")
+
+		// when
+		_, err := newV2Config(AWSSessionConfig{})
+
+		// then
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "instantiating AWS config")
+	})
 }
 
 func prepareCredentialsFile(t *testing.T) (*os.File, error) {
