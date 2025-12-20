@@ -17,14 +17,15 @@ limitations under the License.
 package registry
 
 import (
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	log "github.com/sirupsen/logrus"
+	"fmt"
+
+	sdkdynamodb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 	"sigs.k8s.io/external-dns/provider"
 	"sigs.k8s.io/external-dns/provider/aws"
 	"sigs.k8s.io/external-dns/registry/aws_sd"
-	"sigs.k8s.io/external-dns/registry/dynamodb"
+	registrydynamodb "sigs.k8s.io/external-dns/registry/dynamodb"
 	"sigs.k8s.io/external-dns/registry/noop"
 	"sigs.k8s.io/external-dns/registry/txt"
 )
@@ -33,27 +34,47 @@ import (
 // It initializes and returns a registry along with any error encountered during setup.
 // Supported registry types include: dynamodb, noop, txt, and aws-sd.
 func SelectRegistry(cfg *externaldns.Config, p provider.Provider) (Registry, error) {
-	var r Registry
-	var err error
-	switch cfg.Registry {
-	case "dynamodb":
-		var dynamodbOpts []func(*dynamodb.Options)
-		if cfg.AWSDynamoDBRegion != "" {
-			dynamodbOpts = []func(*dynamodb.Options){
-				func(opts *dynamodb.Options) {
-					opts.Region = cfg.AWSDynamoDBRegion
-				},
-			}
-		}
-		r, err = dynamodb.NewDynamoDBRegistry(p, cfg.TXTOwnerID, dynamodb.NewFromConfig(aws.CreateDefaultV2Config(cfg), dynamodbOpts...), cfg.AWSDynamoDBTable, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, []byte(cfg.TXTEncryptAESKey), cfg.TXTCacheInterval)
-	case "noop":
-		r, err = noop.NewNoopRegistry(p)
-	case "txt":
-		r, err = txt.NewTXTRegistry(p, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTOwnerID, cfg.TXTCacheInterval, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, cfg.TXTEncryptEnabled, []byte(cfg.TXTEncryptAESKey), cfg.TXTOwnerOld)
-	case "aws-sd":
-		r, err = aws_sd.NewAWSSDRegistry(p, cfg.TXTOwnerID)
-	default:
-		log.Fatalf("unknown registry: %s", cfg.Registry)
+	factory, ok := registryFactories[cfg.Registry]
+	if !ok {
+		return nil, fmt.Errorf("unknown registry: %s", cfg.Registry)
 	}
-	return r, err
+	return factory(cfg, p)
+}
+
+type registryFactory func(cfg *externaldns.Config, p provider.Provider) (Registry, error)
+
+var registryFactories = map[string]registryFactory{
+	"dynamodb": selectDynamoDBRegistry,
+	"noop":     selectNoopRegistry,
+	"txt":      selectTXTRegistry,
+	"aws-sd":   selectAWSSDRegistry,
+}
+
+var dynamodbClientFactory = func(cfg *externaldns.Config, opts ...func(*sdkdynamodb.Options)) registrydynamodb.DynamoDBAPI {
+	return sdkdynamodb.NewFromConfig(aws.CreateDefaultV2Config(cfg), opts...)
+}
+
+func selectDynamoDBRegistry(cfg *externaldns.Config, p provider.Provider) (Registry, error) {
+	var dynamodbOpts []func(*sdkdynamodb.Options)
+	if cfg.AWSDynamoDBRegion != "" {
+		dynamodbOpts = []func(*sdkdynamodb.Options){
+			func(opts *sdkdynamodb.Options) {
+				opts.Region = cfg.AWSDynamoDBRegion
+			},
+		}
+	}
+	client := dynamodbClientFactory(cfg, dynamodbOpts...)
+	return registrydynamodb.NewDynamoDBRegistry(p, cfg.TXTOwnerID, client, cfg.AWSDynamoDBTable, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, []byte(cfg.TXTEncryptAESKey), cfg.TXTCacheInterval)
+}
+
+func selectNoopRegistry(_ *externaldns.Config, p provider.Provider) (Registry, error) {
+	return noop.NewNoopRegistry(p)
+}
+
+func selectTXTRegistry(cfg *externaldns.Config, p provider.Provider) (Registry, error) {
+	return txt.NewTXTRegistry(p, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTOwnerID, cfg.TXTCacheInterval, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, cfg.TXTEncryptEnabled, []byte(cfg.TXTEncryptAESKey), cfg.TXTOwnerOld)
+}
+
+func selectAWSSDRegistry(cfg *externaldns.Config, p provider.Provider) (Registry, error) {
+	return aws_sd.NewAWSSDRegistry(p, cfg.TXTOwnerID)
 }
