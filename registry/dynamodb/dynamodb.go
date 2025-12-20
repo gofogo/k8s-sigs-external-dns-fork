@@ -31,11 +31,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	"sigs.k8s.io/external-dns/registry/common"
-
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
+	"sigs.k8s.io/external-dns/registry"
 )
 
 // DynamoDBAPI is the subset of the AWS DynamoDB API that we actually use.  Add methods as required. Signatures must match exactly.
@@ -54,7 +53,7 @@ type DynamoDBRegistry struct {
 	table       string
 
 	// For migration from TXT registry
-	mapper              common.NameMapper
+	mapper              registry.NameMapper
 	wildcardReplacement string
 	managedRecordTypes  []string
 	excludeRecordTypes  []string
@@ -96,7 +95,7 @@ func NewDynamoDBRegistry(provider provider.Provider, ownerID string, dynamodbAPI
 		return nil, errors.New("txt-prefix and txt-suffix are mutually exclusive")
 	}
 
-	mapper := common.NewAffixNameMapper(txtPrefix, txtSuffix, txtWildcardReplacement)
+	mapper := registry.NewAffixNameMapper(txtPrefix, txtSuffix, txtWildcardReplacement)
 
 	return &DynamoDBRegistry{
 		provider:            provider,

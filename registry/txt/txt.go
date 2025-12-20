@@ -27,11 +27,10 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"sigs.k8s.io/external-dns/registry/common"
-
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
+	"sigs.k8s.io/external-dns/registry"
 )
 
 const (
@@ -42,7 +41,7 @@ const (
 type TXTRegistry struct {
 	provider provider.Provider
 	ownerID  string // refers to the owner id of the current instance
-	mapper   common.NameMapper
+	mapper   registry.NameMapper
 
 	// cache the records in memory and update on an interval instead.
 	recordsCache            []*endpoint.Endpoint
@@ -141,7 +140,7 @@ func NewTXTRegistry(provider provider.Provider, txtPrefix, txtSuffix, ownerID st
 		return nil, errors.New("txt-prefix and txt-suffix are mutual exclusive")
 	}
 
-	mapper := common.NewAffixNameMapper(txtPrefix, txtSuffix, txtWildcardReplacement)
+	mapper := registry.NewAffixNameMapper(txtPrefix, txtSuffix, txtWildcardReplacement)
 
 	return &TXTRegistry{
 		provider:            provider,
