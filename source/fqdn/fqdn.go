@@ -63,6 +63,9 @@ func ExecTemplate(tmpl *template.Template, obj kubeObject) ([]string, error) {
 	for _, name := range strings.Split(buf.String(), ",") {
 		name = strings.TrimFunc(name, unicode.IsSpace)
 		name = strings.TrimSuffix(name, ".")
+		if name == "" {
+			continue
+		}
 		hostnames = append(hostnames, name)
 	}
 	return hostnames, nil
