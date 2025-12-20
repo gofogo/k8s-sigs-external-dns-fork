@@ -68,6 +68,10 @@ import (
 	"sigs.k8s.io/external-dns/provider/webhook"
 	webhookapi "sigs.k8s.io/external-dns/provider/webhook/api"
 	"sigs.k8s.io/external-dns/registry"
+	"sigs.k8s.io/external-dns/registry/aws_sd"
+	dynamodbregistry "sigs.k8s.io/external-dns/registry/dynamodb"
+	"sigs.k8s.io/external-dns/registry/noop"
+	"sigs.k8s.io/external-dns/registry/txt"
 	"sigs.k8s.io/external-dns/source"
 	"sigs.k8s.io/external-dns/source/annotations"
 	"sigs.k8s.io/external-dns/source/wrappers"
@@ -422,13 +426,13 @@ func selectRegistry(cfg *externaldns.Config, p provider.Provider) (registry.Regi
 				},
 			}
 		}
-		r, err = registry.NewDynamoDBRegistry(p, cfg.TXTOwnerID, dynamodb.NewFromConfig(aws.CreateDefaultV2Config(cfg), dynamodbOpts...), cfg.AWSDynamoDBTable, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, []byte(cfg.TXTEncryptAESKey), cfg.TXTCacheInterval)
+		r, err = dynamodbregistry.NewDynamoDBRegistry(p, cfg.TXTOwnerID, dynamodb.NewFromConfig(aws.CreateDefaultV2Config(cfg), dynamodbOpts...), cfg.AWSDynamoDBTable, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, []byte(cfg.TXTEncryptAESKey), cfg.TXTCacheInterval)
 	case "noop":
-		r, err = registry.NewNoopRegistry(p)
+		r, err = noop.NewNoopRegistry(p)
 	case "txt":
-		r, err = registry.NewTXTRegistry(p, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTOwnerID, cfg.TXTCacheInterval, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, cfg.TXTEncryptEnabled, []byte(cfg.TXTEncryptAESKey), cfg.TXTOwnerOld)
+		r, err = txt.NewTXTRegistry(p, cfg.TXTPrefix, cfg.TXTSuffix, cfg.TXTOwnerID, cfg.TXTCacheInterval, cfg.TXTWildcardReplacement, cfg.ManagedDNSRecordTypes, cfg.ExcludeDNSRecordTypes, cfg.TXTEncryptEnabled, []byte(cfg.TXTEncryptAESKey), cfg.TXTOwnerOld)
 	case "aws-sd":
-		r, err = registry.NewAWSSDRegistry(p, cfg.TXTOwnerID)
+		r, err = aws_sd.NewAWSSDRegistry(p, cfg.TXTOwnerID)
 	default:
 		log.Fatalf("unknown registry: %s", cfg.Registry)
 	}

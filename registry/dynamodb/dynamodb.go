@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package registry
+package dynamodb
 
 import (
 	"context"
@@ -30,6 +30,8 @@ import (
 	dynamodbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
+
+	"sigs.k8s.io/external-dns/registry/common"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
@@ -52,7 +54,7 @@ type DynamoDBRegistry struct {
 	table       string
 
 	// For migration from TXT registry
-	mapper              nameMapper
+	mapper              common.NameMapper
 	wildcardReplacement string
 	managedRecordTypes  []string
 	excludeRecordTypes  []string
@@ -94,7 +96,7 @@ func NewDynamoDBRegistry(provider provider.Provider, ownerID string, dynamodbAPI
 		return nil, errors.New("txt-prefix and txt-suffix are mutually exclusive")
 	}
 
-	mapper := newaffixNameMapper(txtPrefix, txtSuffix, txtWildcardReplacement)
+	mapper := common.NewAffixNameMapper(txtPrefix, txtSuffix, txtWildcardReplacement)
 
 	return &DynamoDBRegistry{
 		provider:            provider,
@@ -153,7 +155,7 @@ func (im *DynamoDBRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, 
 			if record.RecordType == endpoint.RecordTypeTXT {
 				// We simply assume that TXT records for the TXT registry will always have only one target.
 				if labels, err := endpoint.NewLabelsFromString(record.Targets[0], im.txtEncryptAESKey); err == nil {
-					endpointName, recordType := im.mapper.toEndpointName(record.DNSName)
+					endpointName, recordType := im.mapper.ToEndpointName(record.DNSName)
 					key := endpoint.EndpointKey{
 						DNSName:       endpointName,
 						SetIdentifier: record.SetIdentifier,
