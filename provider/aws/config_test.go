@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"sigs.k8s.io/external-dns/internal/testutils"
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 )
 
@@ -102,6 +103,31 @@ func Test_newV2Config(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, cfg.Credentials)
 		assert.Contains(t, fmt.Sprintf("%T", cfg.Credentials), "CredentialsCache")
+	})
+
+	t.Run("should log assume role without external ID", func(t *testing.T) {
+		// setup
+		os.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+		os.Setenv("AWS_SECRET_ACCESS_KEY", "topsecret")
+		defer os.Unsetenv("AWS_ACCESS_KEY_ID")
+		defer os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+
+		hook := testutils.LogsUnderTestWithLogLevel(logrus.InfoLevel, t)
+		defer hook.Reset()
+
+		// when
+		_, err := newV2Config(AWSSessionConfig{
+			AssumeRole: "arn:aws:iam::123456789012:role/example",
+		})
+
+		// then
+		require.NoError(t, err)
+		testutils.TestHelperLogContainsWithLogLevel(
+			"Assuming role: arn:aws:iam::123456789012:role/example",
+			logrus.InfoLevel,
+			hook,
+			t,
+		)
 	})
 
 	t.Run("returns error when config cannot be loaded", func(t *testing.T) {
@@ -195,7 +221,7 @@ func TestCreateConfigFatalOnError(t *testing.T) {
 		defer os.Unsetenv("AWS_CA_BUNDLE")
 
 		exitCode := 0
-		restore := withLogrusExitFunc(func(code int) {
+		restore := testutils.WithLogrusExitFunc(func(code int) {
 			exitCode = code
 			panic("exit")
 		})
@@ -212,7 +238,7 @@ func TestCreateConfigFatalOnError(t *testing.T) {
 		defer os.Unsetenv("AWS_CA_BUNDLE")
 
 		exitCode := 0
-		restore := withLogrusExitFunc(func(code int) {
+		restore := testutils.WithLogrusExitFunc(func(code int) {
 			exitCode = code
 			panic("exit")
 		})
@@ -223,13 +249,4 @@ func TestCreateConfigFatalOnError(t *testing.T) {
 		})
 		assert.Equal(t, 1, exitCode)
 	})
-}
-
-func withLogrusExitFunc(exitFunc func(int)) func() {
-	logger := logrus.StandardLogger()
-	previousExitFunc := logger.ExitFunc
-	logger.ExitFunc = exitFunc
-	return func() {
-		logger.ExitFunc = previousExitFunc
-	}
 }
