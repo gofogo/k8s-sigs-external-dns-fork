@@ -87,10 +87,7 @@ func (s *nat64Source) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, erro
 				continue
 			}
 
-			ipBytes := ip.As16()
-			v4AddrBytes := ipBytes[12:16]
-
-			v4Addr, err := v4AddrFromSlice(v4AddrBytes)
+			v4Addr, err := v4AddrFromSlice(ip.AsSlice())
 			if err != nil {
 				return nil, err
 			}
@@ -116,7 +113,11 @@ func (s *nat64Source) AddEventHandler(ctx context.Context, handler func()) {
 	s.source.AddEventHandler(ctx, handler)
 }
 
-func v4AddrFromSlice(v4AddrBytes []byte) (netip.Addr, error) {
+func v4AddrFromSlice(ipBytes []byte) (netip.Addr, error) {
+	if len(ipBytes) != netip.IPv6AddressSize {
+		return netip.Addr{}, fmt.Errorf("expected %d-byte IPv6 address, got %d bytes", netip.IPv6AddressSize, len(ipBytes))
+	}
+	v4AddrBytes := ipBytes[12:16]
 	v4Addr, isOk := netip.AddrFromSlice(v4AddrBytes)
 	if !isOk {
 		return netip.Addr{}, fmt.Errorf("could not parse %v to IPv4 address", v4AddrBytes)
