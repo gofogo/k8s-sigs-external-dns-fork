@@ -31,18 +31,19 @@ import (
 )
 
 func Test_newV2Config(t *testing.T) {
-	os.Setenv("AWS_REGION", "us-east-1")
-	os.Setenv("AWS_EC2_METADATA_DISABLED", "true")
-	defer os.Unsetenv("AWS_REGION")
-	defer os.Unsetenv("AWS_EC2_METADATA_DISABLED")
+	testutils.TestHelperEnvSetter(t, map[string]string{
+		"AWS_REGION":                "us-east-1",
+		"AWS_EC2_METADATA_DISABLED": "true",
+	})
 
 	t.Run("should use profile from credentials file", func(t *testing.T) {
 		// setup
 		credsFile, err := prepareCredentialsFile(t)
 		defer os.Remove(credsFile.Name())
 		require.NoError(t, err)
-		os.Setenv("AWS_SHARED_CREDENTIALS_FILE", credsFile.Name())
-		defer os.Unsetenv("AWS_SHARED_CREDENTIALS_FILE")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_SHARED_CREDENTIALS_FILE": credsFile.Name(),
+		})
 
 		// when
 		cfg, err := newV2Config(AWSSessionConfig{Profile: "profile2"})
@@ -57,10 +58,10 @@ func Test_newV2Config(t *testing.T) {
 
 	t.Run("should respect env variables without profile", func(t *testing.T) {
 		// setup
-		os.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-		os.Setenv("AWS_SECRET_ACCESS_KEY", "topsecret")
-		defer os.Unsetenv("AWS_ACCESS_KEY_ID")
-		defer os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_ACCESS_KEY_ID":     "AKIAIOSFODNN7EXAMPLE",
+			"AWS_SECRET_ACCESS_KEY": "topsecret",
+		})
 
 		// when
 		cfg, err := newV2Config(AWSSessionConfig{})
@@ -75,8 +76,9 @@ func Test_newV2Config(t *testing.T) {
 
 	t.Run("should not error when AWS_CA_BUNDLE set", func(t *testing.T) {
 		// setup
-		os.Setenv("AWS_CA_BUNDLE", "../../internal/testresources/ca.pem")
-		defer os.Unsetenv("AWS_CA_BUNDLE")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_CA_BUNDLE": "../../internal/testresources/ca.pem",
+		})
 
 		// when
 		_, err := newV2Config(AWSSessionConfig{})
@@ -88,10 +90,10 @@ func Test_newV2Config(t *testing.T) {
 
 	t.Run("should configure assume role credentials", func(t *testing.T) {
 		// setup
-		os.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-		os.Setenv("AWS_SECRET_ACCESS_KEY", "topsecret")
-		defer os.Unsetenv("AWS_ACCESS_KEY_ID")
-		defer os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_ACCESS_KEY_ID":     "AKIAIOSFODNN7EXAMPLE",
+			"AWS_SECRET_ACCESS_KEY": "topsecret",
+		})
 
 		// when
 		cfg, err := newV2Config(AWSSessionConfig{
@@ -107,10 +109,10 @@ func Test_newV2Config(t *testing.T) {
 
 	t.Run("should log assume role without external ID", func(t *testing.T) {
 		// setup
-		os.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-		os.Setenv("AWS_SECRET_ACCESS_KEY", "topsecret")
-		defer os.Unsetenv("AWS_ACCESS_KEY_ID")
-		defer os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_ACCESS_KEY_ID":     "AKIAIOSFODNN7EXAMPLE",
+			"AWS_SECRET_ACCESS_KEY": "topsecret",
+		})
 
 		hook := testutils.LogsUnderTestWithLogLevel(logrus.InfoLevel, t)
 		defer hook.Reset()
@@ -132,11 +134,12 @@ func Test_newV2Config(t *testing.T) {
 
 	t.Run("returns error when config cannot be loaded", func(t *testing.T) {
 		// setup
-		os.Setenv("AWS_CA_BUNDLE", "missing-ca.pem")
-		defer os.Unsetenv("AWS_CA_BUNDLE")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_SHARED_CREDENTIALS_FILE": "missing-ca.pem",
+		})
 
 		// when
-		_, err := newV2Config(AWSSessionConfig{})
+		_, err := newV2Config(AWSSessionConfig{Profile: "profile1"})
 
 		// then
 		require.Error(t, err)
@@ -155,17 +158,17 @@ func prepareCredentialsFile(t *testing.T) (*os.File, error) {
 }
 
 func TestCreateV2Configs(t *testing.T) {
-	os.Setenv("AWS_REGION", "us-east-1")
-	os.Setenv("AWS_EC2_METADATA_DISABLED", "true")
-	defer os.Unsetenv("AWS_REGION")
-	defer os.Unsetenv("AWS_EC2_METADATA_DISABLED")
+	testutils.TestHelperEnvSetter(t, map[string]string{
+		"AWS_REGION":                "us-east-1",
+		"AWS_EC2_METADATA_DISABLED": "true",
+	})
 
 	t.Run("returns default profile when none configured", func(t *testing.T) {
 		// setup
-		os.Setenv("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-		os.Setenv("AWS_SECRET_ACCESS_KEY", "topsecret")
-		defer os.Unsetenv("AWS_ACCESS_KEY_ID")
-		defer os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_ACCESS_KEY_ID":     "AKIAIOSFODNN7EXAMPLE",
+			"AWS_SECRET_ACCESS_KEY": "topsecret",
+		})
 
 		cfg := &externaldns.Config{
 			AWSAPIRetries: 3,
@@ -185,8 +188,9 @@ func TestCreateV2Configs(t *testing.T) {
 		credsFile, err := prepareCredentialsFile(t)
 		defer os.Remove(credsFile.Name())
 		require.NoError(t, err)
-		os.Setenv("AWS_SHARED_CREDENTIALS_FILE", credsFile.Name())
-		defer os.Unsetenv("AWS_SHARED_CREDENTIALS_FILE")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_SHARED_CREDENTIALS_FILE": credsFile.Name(),
+		})
 
 		cfg := &externaldns.Config{
 			AWSProfiles:   []string{"profile1", "profile2"},
@@ -211,14 +215,16 @@ func TestCreateV2Configs(t *testing.T) {
 }
 
 func TestCreateConfigFatalOnError(t *testing.T) {
-	os.Setenv("AWS_REGION", "us-east-1")
-	os.Setenv("AWS_EC2_METADATA_DISABLED", "true")
-	defer os.Unsetenv("AWS_REGION")
-	defer os.Unsetenv("AWS_EC2_METADATA_DISABLED")
+	testutils.TestHelperEnvSetter(t, map[string]string{
+		"AWS_REGION":                "us-east-1",
+		"AWS_EC2_METADATA_DISABLED": "true",
+	})
 
 	t.Run("CreateDefaultV2Config exits on load error", func(t *testing.T) {
-		os.Setenv("AWS_CA_BUNDLE", "missing-ca.pem")
-		defer os.Unsetenv("AWS_CA_BUNDLE")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_PROFILE":                 "profile1",
+			"AWS_SHARED_CREDENTIALS_FILE": "missing-ca.pem",
+		})
 
 		exitCode := 0
 		restore := testutils.WithLogrusExitFunc(func(code int) {
@@ -234,8 +240,9 @@ func TestCreateConfigFatalOnError(t *testing.T) {
 	})
 
 	t.Run("CreateV2Configs exits on load error", func(t *testing.T) {
-		os.Setenv("AWS_CA_BUNDLE", "missing-ca.pem")
-		defer os.Unsetenv("AWS_CA_BUNDLE")
+		testutils.TestHelperEnvSetter(t, map[string]string{
+			"AWS_SHARED_CREDENTIALS_FILE": "missing-ca.pem",
+		})
 
 		exitCode := 0
 		restore := testutils.WithLogrusExitFunc(func(code int) {
