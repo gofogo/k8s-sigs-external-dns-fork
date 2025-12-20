@@ -648,7 +648,7 @@ func (p *AWSSDProvider) serviceTypeFromEndpoint(ep *endpoint.Endpoint) sdtypes.R
 	case endpoint.RecordTypeCNAME:
 		// FIXME service type is derived from the first target only. Theoretically this may be problem.
 		// But I don't see a scenario where one endpoint contains targets of different types.
-		if p.isAWSLoadBalancer(ep.Targets[0]) {
+		if len(ep.Targets) > 0 && p.isAWSLoadBalancer(ep.Targets[0]) {
 			// ALIAS target uses DNS record of type A
 			return sdtypes.RecordTypeA
 		}

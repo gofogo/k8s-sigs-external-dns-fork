@@ -1042,3 +1042,13 @@ func TestAWSSDProvider_awsTags(t *testing.T) {
 		require.ElementsMatch(t, test.Expectation, awsTags(test.Input))
 	}
 }
+
+func TestAWSSDProvider_serviceTypeFromEndpointEmptyTargets(t *testing.T) {
+	provider := &AWSSDProvider{}
+
+	srvType := provider.serviceTypeFromEndpoint(&endpoint.Endpoint{
+		RecordType: endpoint.RecordTypeCNAME,
+	})
+
+	assert.Equal(t, sdtypes.RecordTypeCname, srvType)
+}
