@@ -376,9 +376,15 @@ func filterRecordsForPlan(records []*endpoint.Endpoint, domainFilter endpoint.Ma
 // normalizeDNSName converts a DNS name to a canonical form, so that we can use string equality
 // it: removes space, get ASCII version of dnsName complient with Section 5 of RFC 5891, ensures there is a trailing dot
 func normalizeDNSName(dnsName string) string {
-	s, err := idna.Profile.ToASCII(strings.TrimSpace(dnsName))
-	if err != nil {
-		log.Warnf(`Got error while parsing DNSName %s: %v`, dnsName, err)
+	trimmed := strings.TrimSpace(dnsName)
+	s, err := idna.Profile.ToASCII(trimmed)
+	if err != nil || s == "" || strings.HasPrefix(s, ".") || strings.Contains(s, "..") {
+		if err != nil {
+			log.Warnf(`Got error while parsing DNSName %s: %v`, dnsName, err)
+		} else {
+			log.Warnf("Got invalid DNSName %s after IDNA normalization: %q", dnsName, s)
+		}
+		s = strings.ToLower(trimmed)
 	}
 	if !strings.HasSuffix(s, ".") {
 		s += "."

@@ -1143,6 +1143,14 @@ func TestNormalizeDNSName(tt *testing.T) {
 			"*.example.com",
 			"*.example.com.",
 		},
+		{
+			"xn--.com",
+			"xn--.com.",
+		},
+		{
+			"xn--",
+			"xn--.",
+		},
 	}
 	for _, r := range records {
 		tt.Run(r.dnsName, func(t *testing.T) {
