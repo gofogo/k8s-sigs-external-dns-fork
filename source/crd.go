@@ -67,7 +67,8 @@ func addKnownTypes(scheme *runtime.Scheme, groupVersion schema.GroupVersion) err
 	return nil
 }
 
-// NewCRDClientForAPIVersionKind return rest client for the given apiVersion and kind of the CRD
+// NewCRDClientForAPIVersionKind returns a REST client for the given apiVersion and kind of the CRD.
+// It uses discovery-backed RESTMapper lookups to resolve resource names and scope.
 func NewCRDClientForAPIVersionKind(client kubernetes.Interface, kubeConfig, apiServerURL, apiVersion, kind string) (rest.Interface, *runtime.Scheme, string, bool, error) {
 	if kubeConfig == "" {
 		if _, err := os.Stat(clientcmd.RecommendedHomeFile); err == nil {
