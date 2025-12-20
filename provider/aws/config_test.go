@@ -22,6 +22,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -168,4 +169,54 @@ func TestCreateV2Configs(t *testing.T) {
 		assert.Equal(t, "AKID2345", creds.AccessKeyID)
 		assert.Equal(t, "SECRET2", creds.SecretAccessKey)
 	})
+}
+
+func TestCreateConfigFatalOnError(t *testing.T) {
+	os.Setenv("AWS_REGION", "us-east-1")
+	os.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	defer os.Unsetenv("AWS_REGION")
+	defer os.Unsetenv("AWS_EC2_METADATA_DISABLED")
+
+	t.Run("CreateDefaultV2Config exits on load error", func(t *testing.T) {
+		os.Setenv("AWS_CA_BUNDLE", "missing-ca.pem")
+		defer os.Unsetenv("AWS_CA_BUNDLE")
+
+		exitCode := 0
+		restore := withLogrusExitFunc(func(code int) {
+			exitCode = code
+			panic("exit")
+		})
+		defer restore()
+
+		assert.Panics(t, func() {
+			CreateDefaultV2Config(&externaldns.Config{})
+		})
+		assert.Equal(t, 1, exitCode)
+	})
+
+	t.Run("CreateV2Configs exits on load error", func(t *testing.T) {
+		os.Setenv("AWS_CA_BUNDLE", "missing-ca.pem")
+		defer os.Unsetenv("AWS_CA_BUNDLE")
+
+		exitCode := 0
+		restore := withLogrusExitFunc(func(code int) {
+			exitCode = code
+			panic("exit")
+		})
+		defer restore()
+
+		assert.Panics(t, func() {
+			CreateV2Configs(&externaldns.Config{AWSProfiles: []string{"profile1"}})
+		})
+		assert.Equal(t, 1, exitCode)
+	})
+}
+
+func withLogrusExitFunc(exitFunc func(int)) func() {
+	logger := logrus.StandardLogger()
+	previousExitFunc := logger.ExitFunc
+	logger.ExitFunc = exitFunc
+	return func() {
+		logger.ExitFunc = previousExitFunc
+	}
 }
