@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/external-dns/pkg/events/fake"
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
-	"sigs.k8s.io/external-dns/registry"
+	"sigs.k8s.io/external-dns/registry/noop"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -219,7 +219,7 @@ func TestRunOnce(t *testing.T) {
 
 	emitter := fake.NewFakeEventEmitter()
 
-	r, err := registry.NewNoopRegistry(provider)
+	r, err := noop.NewNoopRegistry(provider)
 	require.NoError(t, err)
 
 	// Run our controller once to trigger the validation.
@@ -249,7 +249,7 @@ func TestRun(t *testing.T) {
 	cfg := getTestConfig()
 	provider := getTestProvider()
 
-	r, err := registry.NewNoopRegistry(provider)
+	r, err := noop.NewNoopRegistry(provider)
 	require.NoError(t, err)
 
 	// Run our controller once to trigger the validation.
@@ -346,7 +346,7 @@ func testControllerFiltersDomains(t *testing.T, configuredEndpoints []*endpoint.
 	provider := &filteredMockProvider{
 		RecordsStore: providerEndpoints,
 	}
-	r, err := registry.NewNoopRegistry(provider)
+	r, err := noop.NewNoopRegistry(provider)
 
 	require.NoError(t, err)
 
@@ -491,7 +491,7 @@ func TestWhenMultipleControllerConsidersAllFilteredComain(t *testing.T) {
 }
 
 type toggleRegistry struct {
-	registry.NoopRegistry
+	noop.NoopRegistry
 	failCount   int
 	failCountMu sync.Mutex // protects failCount
 }

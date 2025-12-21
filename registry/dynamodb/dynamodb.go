@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package registry
+package dynamodb
 
 import (
 	"context"
@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
+	"sigs.k8s.io/external-dns/registry"
 )
 
 // DynamoDBAPI is the subset of the AWS DynamoDB API that we actually use.  Add methods as required. Signatures must match exactly.
@@ -52,7 +53,7 @@ type DynamoDBRegistry struct {
 	table       string
 
 	// For migration from TXT registry
-	mapper              nameMapper
+	mapper              registry.NameMapper
 	wildcardReplacement string
 	managedRecordTypes  []string
 	excludeRecordTypes  []string
@@ -94,7 +95,7 @@ func NewDynamoDBRegistry(provider provider.Provider, ownerID string, dynamodbAPI
 		return nil, errors.New("txt-prefix and txt-suffix are mutually exclusive")
 	}
 
-	mapper := newaffixNameMapper(txtPrefix, txtSuffix, txtWildcardReplacement)
+	mapper := registry.NewAffixNameMapper(txtPrefix, txtSuffix, txtWildcardReplacement)
 
 	return &DynamoDBRegistry{
 		provider:            provider,
@@ -153,7 +154,7 @@ func (im *DynamoDBRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, 
 			if record.RecordType == endpoint.RecordTypeTXT {
 				// We simply assume that TXT records for the TXT registry will always have only one target.
 				if labels, err := endpoint.NewLabelsFromString(record.Targets[0], im.txtEncryptAESKey); err == nil {
-					endpointName, recordType := im.mapper.toEndpointName(record.DNSName)
+					endpointName, recordType := im.mapper.ToEndpointName(record.DNSName)
 					key := endpoint.EndpointKey{
 						DNSName:       endpointName,
 						SetIdentifier: record.SetIdentifier,

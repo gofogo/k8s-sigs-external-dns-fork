@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/external-dns/internal/testutils"
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 	"sigs.k8s.io/external-dns/plan"
-	"sigs.k8s.io/external-dns/registry"
+	"sigs.k8s.io/external-dns/registry/noop"
 )
 
 func TestRecordKnownEndpointType(t *testing.T) {
@@ -350,7 +350,7 @@ func TestGaugeMetricsWithMixedRecords(t *testing.T) {
 	provider := &filteredMockProvider{
 		RecordsStore: providerEndpoints,
 	}
-	r, err := registry.NewNoopRegistry(provider)
+	r, err := noop.NewNoopRegistry(provider)
 
 	require.NoError(t, err)
 

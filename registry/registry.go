@@ -34,3 +34,6 @@ type Registry interface {
 	GetDomainFilter() endpoint.DomainFilterInterface
 	OwnerID() string
 }
+
+// SelectRegistry constructs a registry implementation based on runtime configuration.
+// Supported registry types include: dynamodb, noop, txt, and aws-sd.

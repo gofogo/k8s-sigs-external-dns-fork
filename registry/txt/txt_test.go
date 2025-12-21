@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package registry
+package txt
 
 import (
 	"context"
@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
 	"sigs.k8s.io/external-dns/provider/inmemory"
+	"sigs.k8s.io/external-dns/registry"
 )
 
 const (
@@ -65,7 +66,7 @@ func testTXTRegistryNew(t *testing.T) {
 	_, err = NewTXTRegistry(p, "txt", "txt", "owner", time.Hour, "", []string{}, []string{}, false, nil, "")
 	require.Error(t, err)
 
-	_, ok := r.mapper.(affixNameMapper)
+	_, ok := r.mapper.(registry.AffixNameMapper)
 	require.True(t, ok)
 	assert.Equal(t, "owner", r.ownerID)
 	assert.Equal(t, p, r.provider)
@@ -83,7 +84,7 @@ func testTXTRegistryNew(t *testing.T) {
 	r, err = NewTXTRegistry(p, "", "", "owner", time.Hour, "", []string{}, []string{}, true, aesKey, "")
 	require.NoError(t, err)
 
-	_, ok = r.mapper.(affixNameMapper)
+	_, ok = r.mapper.(registry.AffixNameMapper)
 	assert.True(t, ok)
 }
 
@@ -1326,7 +1327,7 @@ func TestCacheMethods(t *testing.T) {
 }
 
 func TestDropPrefix(t *testing.T) {
-	mapper := newaffixNameMapper("foo-%{record_type}-", "", "")
+	mapper := registry.NewAffixNameMapper("foo-%{record_type}-", "", "")
 	expectedOutput := "test.example.com"
 
 	tests := []string{
@@ -1344,7 +1345,7 @@ func TestDropPrefix(t *testing.T) {
 }
 
 func TestDropSuffix(t *testing.T) {
-	mapper := newaffixNameMapper("", "-%{record_type}-foo", "")
+	mapper := registry.NewAffixNameMapper("", "-%{record_type}-foo", "")
 	expectedOutput := "test.example.com"
 
 	tests := []string{
@@ -1402,112 +1403,112 @@ func TestExtractRecordTypeDefaultPosition(t *testing.T) {
 func TestToEndpointNameNewTXT(t *testing.T) {
 	tests := []struct {
 		name       string
-		mapper     affixNameMapper
+		mapper     registry.AffixNameMapper
 		domain     string
 		txtDomain  string
 		recordType string
 	}{
 		{
 			name:       "prefix",
-			mapper:     newaffixNameMapper("foo", "", ""),
+			mapper:     registry.NewAffixNameMapper("foo", "", ""),
 			domain:     "example.com",
 			recordType: "A",
 			txtDomain:  "fooa-example.com",
 		},
 		{
 			name:       "suffix",
-			mapper:     newaffixNameMapper("", "foo", ""),
+			mapper:     registry.NewAffixNameMapper("", "foo", ""),
 			domain:     "example",
 			recordType: "AAAA",
 			txtDomain:  "aaaa-examplefoo",
 		},
 		{
 			name:       "suffix",
-			mapper:     newaffixNameMapper("", "foo", ""),
+			mapper:     registry.NewAffixNameMapper("", "foo", ""),
 			domain:     "example.com",
 			recordType: "AAAA",
 			txtDomain:  "aaaa-examplefoo.com",
 		},
 		{
 			name:       "prefix with dash",
-			mapper:     newaffixNameMapper("foo-", "", ""),
+			mapper:     registry.NewAffixNameMapper("foo-", "", ""),
 			domain:     "example.com",
 			recordType: "A",
 			txtDomain:  "foo-a-example.com",
 		},
 		{
 			name:       "suffix with dash",
-			mapper:     newaffixNameMapper("", "-foo", ""),
+			mapper:     registry.NewAffixNameMapper("", "-foo", ""),
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "cname-example-foo.com",
 		},
 		{
 			name:       "prefix with dot",
-			mapper:     newaffixNameMapper("foo.", "", ""),
+			mapper:     registry.NewAffixNameMapper("foo.", "", ""),
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "foo.cname-example.com",
 		},
 		{
 			name:       "suffix with dot",
-			mapper:     newaffixNameMapper("", ".foo", ""),
+			mapper:     registry.NewAffixNameMapper("", ".foo", ""),
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "cname-example.foo.com",
 		},
 		{
 			name:       "prefix with multiple dots",
-			mapper:     newaffixNameMapper("foo.bar.", "", ""),
+			mapper:     registry.NewAffixNameMapper("foo.bar.", "", ""),
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "foo.bar.cname-example.com",
 		},
 		{
 			name:       "suffix with multiple dots",
-			mapper:     newaffixNameMapper("", ".foo.bar.test", ""),
+			mapper:     registry.NewAffixNameMapper("", ".foo.bar.test", ""),
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "cname-example.foo.bar.test.com",
 		},
 		{
 			name:       "templated prefix",
-			mapper:     newaffixNameMapper("%{record_type}-foo", "", ""),
+			mapper:     registry.NewAffixNameMapper("%{record_type}-foo", "", ""),
 			domain:     "example.com",
 			recordType: "A",
 			txtDomain:  "a-fooexample.com",
 		},
 		{
 			name:       "templated suffix",
-			mapper:     newaffixNameMapper("", "foo-%{record_type}", ""),
+			mapper:     registry.NewAffixNameMapper("", "foo-%{record_type}", ""),
 			domain:     "example.com",
 			recordType: "A",
 			txtDomain:  "examplefoo-a.com",
 		},
 		{
 			name:       "templated prefix with dot",
-			mapper:     newaffixNameMapper("%{record_type}foo.", "", ""),
+			mapper:     registry.NewAffixNameMapper("%{record_type}foo.", "", ""),
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "cnamefoo.example.com",
 		},
 		{
 			name:       "templated suffix with dot",
-			mapper:     newaffixNameMapper("", ".foo%{record_type}", ""),
+			mapper:     registry.NewAffixNameMapper("", ".foo%{record_type}", ""),
 			domain:     "example.com",
 			recordType: "A",
 			txtDomain:  "example.fooa.com",
 		},
 		{
 			name:       "templated prefix with multiple dots",
-			mapper:     newaffixNameMapper("bar.%{record_type}.foo.", "", ""),
+			mapper:     registry.NewAffixNameMapper("bar.%{record_type}.foo.", "", ""),
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "bar.cname.foo.example.com",
 		},
 		{
 			name:       "templated suffix with multiple dots",
-			mapper:     newaffixNameMapper("", ".foo%{record_type}.bar", ""),
+			mapper:     registry.NewAffixNameMapper("", ".foo%{record_type}.bar", ""),
 			domain:     "example.com",
 			recordType: "A",
 			txtDomain:  "example.fooa.bar.com",
@@ -1516,10 +1517,10 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			txtDomain := tc.mapper.toTXTName(tc.domain, tc.recordType)
+			txtDomain := tc.mapper.ToTXTName(tc.domain, tc.recordType)
 			assert.Equal(t, tc.txtDomain, txtDomain)
 
-			domain, _ := tc.mapper.toEndpointName(txtDomain)
+			domain, _ := tc.mapper.ToEndpointName(txtDomain)
 			assert.Equal(t, tc.domain, domain)
 		})
 	}
