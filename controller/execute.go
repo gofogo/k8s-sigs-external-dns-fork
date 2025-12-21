@@ -465,7 +465,8 @@ func buildSource(ctx context.Context, cfg *externaldns.Config) (source.Source, e
 
 // RegexDomainFilter overrides DomainFilter
 func createDomainFilter(cfg *externaldns.Config) *endpoint.DomainFilter {
-	if cfg.RegexDomainFilter != nil && cfg.RegexDomainFilter.String() != "" {
+	if (cfg.RegexDomainFilter != nil && cfg.RegexDomainFilter.String() != "") ||
+		(cfg.RegexDomainExclusion != nil && cfg.RegexDomainExclusion.String() != "") {
 		return endpoint.NewRegexDomainFilter(cfg.RegexDomainFilter, cfg.RegexDomainExclusion)
 	} else {
 		return endpoint.NewDomainFilterWithExclusions(cfg.DomainFilter, cfg.ExcludeDomains)

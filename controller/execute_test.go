@@ -362,10 +362,10 @@ func TestCreateDomainFilter(t *testing.T) {
 			cfg: &externaldns.Config{
 				RegexDomainExclusion: regexp.MustCompile(`test-v1\.3\.example-test\.in`),
 			},
-			expectedDomainFilter: endpoint.NewDomainFilterWithExclusions([]string{}, []string{}),
-			isConfigured:         false,
+			expectedDomainFilter: endpoint.NewRegexDomainFilter(nil, regexp.MustCompile(`test-v1\.3\.example-test\.in`)),
+			isConfigured:         true,
 			matchDomain:          "test-v1.3.example-test.in",
-			expectMatch:          true,
+			expectMatch:          false,
 		},
 		{
 			name: "DomainFilterWithExclusions",
