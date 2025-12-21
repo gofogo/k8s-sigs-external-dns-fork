@@ -337,6 +337,8 @@ func TestCreateDomainFilter(t *testing.T) {
 		cfg                  *externaldns.Config
 		expectedDomainFilter *endpoint.DomainFilter
 		isConfigured         bool
+		matchDomain          string
+		expectMatch          bool
 	}{
 		{
 			name: "RegexDomainFilter",
@@ -354,6 +356,16 @@ func TestCreateDomainFilter(t *testing.T) {
 			},
 			expectedDomainFilter: endpoint.NewRegexDomainFilter(regexp.MustCompile(`example\.com`), nil),
 			isConfigured:         true,
+		},
+		{
+			name: "RegexDomainExclusionWithoutRegexFilter",
+			cfg: &externaldns.Config{
+				RegexDomainExclusion: regexp.MustCompile(`test-v1\.3\.example-test\.in`),
+			},
+			expectedDomainFilter: endpoint.NewDomainFilterWithExclusions([]string{}, []string{}),
+			isConfigured:         false,
+			matchDomain:          "test-v1.3.example-test.in",
+			expectMatch:          true,
 		},
 		{
 			name: "DomainFilterWithExclusions",
@@ -388,6 +400,9 @@ func TestCreateDomainFilter(t *testing.T) {
 			filter := createDomainFilter(tt.cfg)
 			assert.Equal(t, tt.isConfigured, filter.IsConfigured())
 			assert.Equal(t, tt.expectedDomainFilter, filter)
+			if tt.matchDomain != "" {
+				assert.Equal(t, tt.expectMatch, filter.Match(tt.matchDomain))
+			}
 		})
 	}
 }
