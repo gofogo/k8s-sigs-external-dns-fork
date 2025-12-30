@@ -40,6 +40,13 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
 	"sigs.k8s.io/external-dns/source/informers"
+
+	glooclient "github.com/solo-io/gloo/projects/gateway/pkg/api/v1/kube/client/clientset/versioned"
+	glooproxyv1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	gatewayv1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1/kube/apis/gateway.solo.io/v1"
+	glooinformers "github.com/solo-io/gloo/projects/gateway/pkg/api/v1/kube/client/informers/externalversions"
+	gatewayv1informer "github.com/solo-io/gloo/projects/gateway/pkg/api/v1/kube/client/informers/externalversions/gateway.solo.io/v1"
+)
 )
 
 var (
@@ -135,7 +142,11 @@ type glooSource struct {
 }
 
 // NewGlooSource creates a new glooSource with the given config
-func NewGlooSource(ctx context.Context, dynamicKubeClient dynamic.Interface, kubeClient kubernetes.Interface,
+func NewGlooSource(
+	ctx context.Context,
+	dynamicKubeClient dynamic.Interface,
+	kubeClient kubernetes.Interface,
+	glooClient glooclient.Interface,
 	glooNamespaces []string) (Source, error) {
 	informerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, 0)
 	serviceInformer := informerFactory.Core().V1().Services()
@@ -144,22 +155,26 @@ func NewGlooSource(ctx context.Context, dynamicKubeClient dynamic.Interface, kub
 	_, _ = serviceInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 	_, _ = ingressInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 
-	dynamicInformerFactory := dynamicinformer.NewDynamicSharedInformerFactory(dynamicKubeClient, 0)
 
-	proxyInformer := dynamicInformerFactory.ForResource(proxyGVR)
-	virtualServiceInformer := dynamicInformerFactory.ForResource(virtualServiceGVR)
-	gatewayInformer := dynamicInformerFactory.ForResource(gatewayGVR)
+	glooInformerFactory := glooinformers.NewSharedInformerFactory(glooClient, 0)
+	proxyInformer, err := glooInformerFactory.ForResource(glooproxyv1.ProxyGVK.GroupVersion().WithResource("proxies"))
+	if err != nil {
+		return nil, err
+	}
+	virtualServiceInformer := glooInformerFactory.Gateway().V1().VirtualServices()
+	gatewayInformer := glooInformerFactory.Gateway().V1().Gateways()
+
 
 	_, _ = proxyInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 	_, _ = virtualServiceInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 	_, _ = gatewayInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 
 	informerFactory.Start(ctx.Done())
-	dynamicInformerFactory.Start(ctx.Done())
+	glooInformerFactory.Start(ctx.Done())
 	if err := informers.WaitForCacheSync(ctx, informerFactory); err != nil {
 		return nil, err
 	}
-	if err := informers.WaitForDynamicCacheSync(ctx, dynamicInformerFactory); err != nil {
+	if err := informers.WaitForDynamicCacheSync(ctx, glooInformerFactory); err != nil {
 		return nil, err
 	}
 
