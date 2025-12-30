@@ -537,7 +537,8 @@ func testCRDSourceEndpoints(t *testing.T) {
 			// At present, client-go's fake.RESTClient (used by crd_test.go) is known to cause race conditions when used
 			// with informers: https://github.com/kubernetes/kubernetes/issues/95372
 			// So don't start the informer during testing.
-			cs, err := NewCRDSource(restClient, ti.namespace, ti.kind, ti.annotationFilter, labelSelector, scheme, false)
+			crdResource := strings.ToLower(ti.kind) + "s"
+			cs, err := NewCRDSource(restClient, ti.namespace, crdResource, true, ti.annotationFilter, labelSelector, scheme, false)
 			require.NoError(t, err)
 
 			receivedEndpoints, err := cs.Endpoints(t.Context())
@@ -682,6 +683,7 @@ func TestCRDSource_Watch(t *testing.T) {
 		namespace:   "test-ns",
 		crdResource: "dnsendpoints",
 		codec:       runtime.NewParameterCodec(scheme),
+		namespaced:  true,
 	}
 
 	opts := &metav1.ListOptions{}
@@ -690,6 +692,102 @@ func TestCRDSource_Watch(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, watchCalled)
 	require.True(t, opts.Watch)
+}
+
+func TestCRDSource_Watch_ClusterScoped(t *testing.T) {
+	scheme := runtime.NewScheme()
+	err := apiv1alpha1.AddToScheme(scheme)
+	require.NoError(t, err)
+
+	var watchCalled bool
+
+	codecFactory := serializer.WithoutConversionCodecFactory{
+		CodecFactory: serializer.NewCodecFactory(scheme),
+	}
+
+	versionApiPath := fmt.Sprintf("/apis/%s", apiv1alpha1.GroupVersion.String())
+
+	client := &fake.RESTClient{
+		GroupVersion:         apiv1alpha1.GroupVersion,
+		VersionedAPIPath:     versionApiPath,
+		NegotiatedSerializer: codecFactory,
+		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path == fmt.Sprintf("%s/dnsendpoints", versionApiPath) &&
+				req.URL.Query().Get("watch") == "true" {
+				watchCalled = true
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+				}, nil
+			}
+			t.Errorf("unexpected request: %v", req.URL)
+			return nil, fmt.Errorf("unexpected request: %v", req.URL)
+		}),
+	}
+
+	cs := &crdSource{
+		crdClient:   client,
+		namespace:   "test-ns",
+		crdResource: "dnsendpoints",
+		codec:       runtime.NewParameterCodec(scheme),
+		namespaced:  false,
+	}
+
+	opts := &metav1.ListOptions{}
+
+	_, err = cs.watch(t.Context(), opts)
+	require.NoError(t, err)
+	require.True(t, watchCalled)
+	require.True(t, opts.Watch)
+}
+
+func TestCRDSource_UpdateStatus_ClusterScoped(t *testing.T) {
+	scheme := runtime.NewScheme()
+	err := apiv1alpha1.AddToScheme(scheme)
+	require.NoError(t, err)
+
+	var updateCalled bool
+
+	codecFactory := serializer.WithoutConversionCodecFactory{
+		CodecFactory: serializer.NewCodecFactory(scheme),
+	}
+
+	versionApiPath := fmt.Sprintf("/apis/%s", apiv1alpha1.GroupVersion.String())
+
+	client := &fake.RESTClient{
+		GroupVersion:         apiv1alpha1.GroupVersion,
+		VersionedAPIPath:     versionApiPath,
+		NegotiatedSerializer: codecFactory,
+		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path == fmt.Sprintf("%s/dnsendpoints/test/status", versionApiPath) &&
+				req.Method == http.MethodPut {
+				updateCalled = true
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     defaultHeader(),
+					Body:       objBody(codecFactory.LegacyCodec(apiv1alpha1.GroupVersion), &apiv1alpha1.DNSEndpoint{}),
+				}, nil
+			}
+			t.Errorf("unexpected request: %v", req.URL)
+			return nil, fmt.Errorf("unexpected request: %v", req.URL)
+		}),
+	}
+
+	cs := &crdSource{
+		crdClient:   client,
+		namespace:   "test-ns",
+		crdResource: "dnsendpoints",
+		codec:       runtime.NewParameterCodec(scheme),
+		namespaced:  false,
+	}
+
+	_, err = cs.UpdateStatus(t.Context(), &apiv1alpha1.DNSEndpoint{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test",
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, updateCalled)
 }
 
 func validateCRDResource(t *testing.T, src Source, expectError bool) {
@@ -754,6 +852,7 @@ func TestDNSEndpointsWithSetResourceLabels(t *testing.T) {
 		crdResource:   "dnsendpoints",
 		codec:         runtime.NewParameterCodec(scheme),
 		labelSelector: labels.Everything(),
+		namespaced:    true,
 	}
 
 	res, err := cs.Endpoints(t.Context())

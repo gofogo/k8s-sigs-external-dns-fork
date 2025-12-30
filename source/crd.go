@@ -22,6 +22,7 @@ import (
 	"os"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
@@ -34,8 +35,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
@@ -52,6 +55,7 @@ type crdSource struct {
 	annotationFilter string
 	labelSelector    labels.Selector
 	informer         cache.SharedInformer
+	namespaced       bool
 }
 
 func addKnownTypes(scheme *runtime.Scheme, groupVersion schema.GroupVersion) error {
@@ -63,8 +67,9 @@ func addKnownTypes(scheme *runtime.Scheme, groupVersion schema.GroupVersion) err
 	return nil
 }
 
-// NewCRDClientForAPIVersionKind return rest client for the given apiVersion and kind of the CRD
-func NewCRDClientForAPIVersionKind(client kubernetes.Interface, kubeConfig, apiServerURL, apiVersion, kind string) (*rest.RESTClient, *runtime.Scheme, error) {
+// NewCRDClientForAPIVersionKind returns a REST client for the given apiVersion and kind of the CRD.
+// It uses discovery-backed RESTMapper lookups to resolve resource names and scope.
+func NewCRDClientForAPIVersionKind(client kubernetes.Interface, kubeConfig, apiServerURL, apiVersion, kind string) (rest.Interface, *runtime.Scheme, string, bool, error) {
 	if kubeConfig == "" {
 		if _, err := os.Stat(clientcmd.RecommendedHomeFile); err == nil {
 			kubeConfig = clientcmd.RecommendedHomeFile
@@ -73,52 +78,40 @@ func NewCRDClientForAPIVersionKind(client kubernetes.Interface, kubeConfig, apiS
 
 	config, err := clientcmd.BuildConfigFromFlags(apiServerURL, kubeConfig)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", false, err
 	}
 
-	groupVersion, err := schema.ParseGroupVersion(apiVersion)
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(client.Discovery()))
+	gvk := schema.FromAPIVersionAndKind(apiVersion, kind)
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
-		return nil, nil, err
-	}
-	apiResourceList, err := client.Discovery().ServerResourcesForGroupVersion(groupVersion.String())
-	if err != nil {
-		return nil, nil, fmt.Errorf("error listing resources in GroupVersion %q: %w", groupVersion.String(), err)
-	}
-
-	var crdAPIResource *metav1.APIResource
-	for _, apiResource := range apiResourceList.APIResources {
-		if apiResource.Kind == kind {
-			crdAPIResource = &apiResource
-			break
-		}
-	}
-	if crdAPIResource == nil {
-		return nil, nil, fmt.Errorf("unable to find Resource Kind %q in GroupVersion %q", kind, apiVersion)
+		return nil, nil, "", false, fmt.Errorf("unable to find CRD mapping for %s: %w", gvk.String(), err)
 	}
 
 	scheme := runtime.NewScheme()
-	_ = addKnownTypes(scheme, groupVersion)
+	_ = addKnownTypes(scheme, mapping.GroupVersionKind.GroupVersion())
 
-	config.GroupVersion = &groupVersion
+	config.GroupVersion = &mapping.GroupVersionKind.GroupVersion()
 	config.APIPath = "/apis"
 	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
 
-	crdClient, err := rest.UnversionedRESTClientFor(config)
+	crdClient, err := rest.RESTClientFor(config)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", false, err
 	}
-	return crdClient, scheme, nil
+	return crdClient, scheme, mapping.Resource.Resource, mapping.Scope.Name() == meta.RESTScopeNameNamespace, nil
 }
 
 // NewCRDSource creates a new crdSource with the given config.
-func NewCRDSource(crdClient rest.Interface, namespace, kind string, annotationFilter string, labelSelector labels.Selector, scheme *runtime.Scheme, startInformer bool) (Source, error) {
+func NewCRDSource(crdClient rest.Interface, namespace, crdResource string, namespaced bool, annotationFilter string, labelSelector labels.Selector, scheme *runtime.Scheme, startInformer bool) (Source, error) {
 	sourceCrd := crdSource{
-		crdResource:      strings.ToLower(kind) + "s",
+		crdResource:      crdResource,
 		namespace:        namespace,
 		annotationFilter: annotationFilter,
 		labelSelector:    labelSelector,
 		crdClient:        crdClient,
 		codec:            runtime.NewParameterCodec(scheme),
+		namespaced:       namespaced,
 	}
 	if startInformer {
 		// external-dns already runs its sync-handler periodically (controlled by `--interval` flag) to ensure any
@@ -226,7 +219,7 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 func (cs *crdSource) watch(ctx context.Context, opts *metav1.ListOptions) (watch.Interface, error) {
 	opts.Watch = true
 	return cs.crdClient.Get().
-		Namespace(cs.namespace).
+		NamespaceIfScoped(cs.namespace, cs.namespaced && cs.namespace != "").
 		Resource(cs.crdResource).
 		VersionedParams(opts, cs.codec).
 		Watch(ctx)
@@ -235,7 +228,7 @@ func (cs *crdSource) watch(ctx context.Context, opts *metav1.ListOptions) (watch
 func (cs *crdSource) List(ctx context.Context, opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error) {
 	result := &apiv1alpha1.DNSEndpointList{}
 	return result, cs.crdClient.Get().
-		Namespace(cs.namespace).
+		NamespaceIfScoped(cs.namespace, cs.namespaced && cs.namespace != "").
 		Resource(cs.crdResource).
 		VersionedParams(opts, cs.codec).
 		Do(ctx).
@@ -245,7 +238,7 @@ func (cs *crdSource) List(ctx context.Context, opts *metav1.ListOptions) (*apiv1
 func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error) {
 	result := &apiv1alpha1.DNSEndpoint{}
 	return result, cs.crdClient.Put().
-		Namespace(dnsEndpoint.Namespace).
+		NamespaceIfScoped(dnsEndpoint.Namespace, cs.namespaced && dnsEndpoint.Namespace != "").
 		Resource(cs.crdResource).
 		Name(dnsEndpoint.Name).
 		SubResource("status").
