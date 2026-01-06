@@ -29,7 +29,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	kubeinformers "k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -135,14 +134,14 @@ func newGatewayRouteSource(
 
 	informerFactory := newGatewayInformerFactory(client, config.GatewayNamespace, gwLabels)
 	gwInformer := informerFactory.Gateway().V1beta1().Gateways() // TODO: Gateway informer should be shared across gateway sources.
-	gwInformer.Informer()                                        // Register with factory before starting.
+	_, _ = gwInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 
 	rtInformerFactory := informerFactory
 	if config.Namespace != config.GatewayNamespace || !selectorsEqual(rtLabels, gwLabels) {
 		rtInformerFactory = newGatewayInformerFactory(client, config.Namespace, rtLabels)
 	}
 	rtInformer := newInformerFn(rtInformerFactory)
-	rtInformer.Informer() // Register with factory before starting.
+	_, _ = rtInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 
 	kubeClient, err := clients.KubeClient()
 	if err != nil {
@@ -151,12 +150,13 @@ func newGatewayRouteSource(
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, 0)
 	nsInformer := kubeInformerFactory.Core().V1().Namespaces() // TODO: Namespace informer should be shared across gateway sources.
-	nsInformer.Informer()                                      // Register with factory before starting.
+	_, _ = nsInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 
-	informerFactory.Start(wait.NeverStop)
-	kubeInformerFactory.Start(wait.NeverStop)
+	stopCh := ctx.Done()
+	informerFactory.Start(stopCh)
+	kubeInformerFactory.Start(stopCh)
 	if rtInformerFactory != informerFactory {
-		rtInformerFactory.Start(wait.NeverStop)
+		rtInformerFactory.Start(stopCh)
 
 		if err := informers.WaitForCacheSync(ctx, rtInformerFactory); err != nil {
 			return nil, err
