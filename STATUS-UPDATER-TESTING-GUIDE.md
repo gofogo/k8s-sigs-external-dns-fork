@@ -2,29 +2,45 @@
 
 ## Overview
 
-Two implementations of DNSEndpoint status updates are available for testing and comparison:
+**2x2 Testing Matrix**: Four combinations are available for testing and comparison:
 
+### Dimension 1: Status Updater Location
 - **Option 1 (Recommended - Default)**: `StatusUpdater` in `pkg/crd` package
 - **Option 2**: `DNSEndpointStatusManager` in `controller` package
 
-Both implementations are **fully functional** and can be switched using an environment variable.
+### Dimension 2: Client Implementation
+- **REST (Default)**: Manual REST client via `k8s.io/client-go`
+- **Controller-Runtime**: Modern client via `sigs.k8s.io/controller-runtime`
+
+All **four combinations** are fully functional and can be switched using environment variables.
 
 **Note**: The legacy implementation (`crdSource.UpdateDNSEndpointStatus()`) has been **removed** because it violated Single Responsibility Principle and created dual crdSource instances.
 
 ## Quick Start
 
-### Testing Each Option
+### Testing Matrix
 
-Set the `STATUS_UPDATER_IMPL` environment variable before running external-dns:
+Use two environment variables to select the implementation:
 
 ```bash
-# Test Option 1 (Recommended - Default)
-# No environment variable needed, or explicitly set:
-export STATUS_UPDATER_IMPL=pkg-crd
+# Combination 1 (DEFAULT): Option 1 + REST client
+export STATUS_UPDATER_IMPL=pkg-crd  # or unset
+export CLIENT_IMPL=rest              # or unset
 ./external-dns --source=crd ...
 
-# Test Option 2
+# Combination 2: Option 1 + Controller-Runtime client
+export STATUS_UPDATER_IMPL=pkg-crd
+export CLIENT_IMPL=controller-runtime
+./external-dns --source=crd ...
+
+# Combination 3: Option 2 + REST client
 export STATUS_UPDATER_IMPL=controller
+export CLIENT_IMPL=rest  # or unset
+./external-dns --source=crd ...
+
+# Combination 4: Option 2 + Controller-Runtime client
+export STATUS_UPDATER_IMPL=controller
+export CLIENT_IMPL=controller-runtime
 ./external-dns --source=crd ...
 ```
 
@@ -33,16 +49,21 @@ export STATUS_UPDATER_IMPL=controller
 Look for the implementation being used:
 
 ```bash
-# You should see one of these log lines:
+# Status updater implementation:
 INFO Using status updater implementation: pkg-crd
 INFO Using status updater implementation: controller
-```
 
-And one of these:
+# Client type for each option:
+INFO Option 1: Using controller-runtime backed DNSEndpointClient
+INFO Option 1: Using REST client DNSEndpointClient
+INFO Option 2: Using direct controller-runtime client
+INFO Option 2: Using REST client via DNSEndpointClient interface
 
-```bash
-INFO Registered DNSEndpoint status update callback (Option 1: pkg/crd)
-INFO Registered DNSEndpoint status update callback (Option 2: controller)
+# Registration confirmation:
+INFO Registered DNSEndpoint status update callback (Option 1: pkg/crd, client: rest)
+INFO Registered DNSEndpoint status update callback (Option 1: pkg/crd, client: controller-runtime)
+INFO Registered DNSEndpoint status update callback (Option 2: controller, client: rest)
+INFO Registered DNSEndpoint status update callback (Option 2: controller, client: controller-runtime)
 ```
 
 ## Detailed Testing Instructions
@@ -180,7 +201,7 @@ time (export STATUS_UPDATER_IMPL=controller; ./external-dns --source=crd --provi
 
 ### Functionality ✓
 
-All three implementations should:
+All four combinations should:
 
 - ✓ Update status on successful sync
 - ✓ Update status on failed sync
@@ -188,9 +209,9 @@ All three implementations should:
 - ✓ Set Programmed condition after sync
 - ✓ Update observedGeneration correctly
 
-### Code Quality
+### Status Updater Location Comparison
 
-| Aspect | Option 1 (pkg-crd) | Option 2 (controller) |
+| Aspect | Option 1 (pkg/crd) | Option 2 (controller) |
 |--------|--------------------|-----------------------|
 | **Separation of Concerns** | ✅ Excellent | ✅ Good |
 | **Reusability** | ✅ Highly reusable | ⚠️ Controller-specific |
@@ -198,30 +219,61 @@ All three implementations should:
 | **Package Dependencies** | ✅ Clean | ⚠️ Controller depends on crd |
 | **Code Simplicity** | ✅ Direct usage | ✅ Direct usage |
 
+### Client Implementation Comparison
+
+| Aspect | REST Client | Controller-Runtime |
+|--------|-------------|-------------------|
+| **Code Complexity** | ⚠️ Manual setup | ✅ Simple |
+| **API Discovery** | ⚠️ Manual | ✅ Automatic |
+| **Serializer Setup** | ⚠️ Manual | ✅ Automatic |
+| **Status Updates** | ⚠️ Verbose `.SubResource()` | ✅ Clean `.Status().Update()` |
+| **Industry Standard** | ⚠️ Low-level | ✅ Modern operators |
+| **Watch Support** | ✅ Full support | ⚠️ Not implemented (uses informer) |
+| **Dependencies** | ✅ Already included | ✅ Already included (v0.22.4) |
+
 ### Performance
 
-Expected: **Both options should have identical performance**
+Expected: **All four combinations should have identical performance**
 
-- Same underlying operations (Get + UpdateStatus)
-- Same number of API calls
-- Negligible difference in object creation overhead
+- Same underlying Kubernetes API calls (Get + UpdateStatus)
+- Same number of API round-trips
+- Negligible difference in client overhead
+- Controller-runtime client may have slight overhead for type safety
 
 ## Making the Final Decision
 
-### Choose Option 1 (pkg-crd) if
+### Two-Step Decision Process
 
-✅ You want clean separation of concerns
-✅ You value reusability
-✅ You follow repository/service pattern
-✅ You want to avoid dual crdSource instances
-✅ You plan to use status updates from multiple places
+You need to make two decisions:
 
-### Choose Option 2 (controller) if
+#### Decision 1: Choose Status Updater Location
 
-✅ You want simpler package structure
-✅ You prefer controller-owned status logic
-✅ You don't need status updates outside controller
-✅ You want fewer abstractions
+**Choose Option 1 (pkg/crd) if:**
+- ✅ You want clean separation of concerns
+- ✅ You value reusability
+- ✅ You follow repository/service pattern
+- ✅ You plan to use status updates from multiple places
+
+**Choose Option 2 (controller) if:**
+- ✅ You want simpler package structure
+- ✅ You prefer controller-owned status logic
+- ✅ You don't need status updates outside controller
+- ✅ You want fewer abstractions
+
+#### Decision 2: Choose Client Implementation
+
+**Choose REST client if:**
+- ✅ You want explicit control over API discovery
+- ✅ You need full Watch() support (not just informer)
+- ✅ You prefer familiar k8s.io/client-go patterns
+- ✅ You want minimal dependencies
+
+**Choose Controller-Runtime if:**
+- ✅ You want simpler, more modern code
+- ✅ You prefer industry-standard operator patterns
+- ✅ You value automatic scheme/serializer setup
+- ✅ You like cleaner `.Status().Update()` syntax
+- ✅ Informer-based watching is sufficient (Watch() not needed)
 
 ## Removing Unused Options
 
