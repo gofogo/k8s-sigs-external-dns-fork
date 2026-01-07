@@ -34,6 +34,7 @@ type dnsEndpointStatusUpdater interface {
 
 // updateDNSEndpointStatus updates the status of DNSEndpoint CRDs based on sync results
 func (c *Controller) updateDNSEndpointStatus(ctx context.Context, changes *plan.Changes, success bool, message string) {
+	fmt.Println("DEBUG: updateDNSEndpointStatus called") // Debug line
 	// Quick skip if status updates are disabled
 	if !c.UpdateDNSEndpointStatus {
 		return
@@ -45,6 +46,7 @@ func (c *Controller) updateDNSEndpointStatus(ctx context.Context, changes *plan.
 		// Source doesn't support status updates, skip
 		return
 	}
+	fmt.Println("DEBUG: updateDNSEndpointStatus statusUpdater ok") // Debug line
 
 	// Collect unique DNSEndpoint references from all endpoints in the plan
 	dnsEndpoints := make(map[string]struct {
@@ -53,12 +55,12 @@ func (c *Controller) updateDNSEndpointStatus(ctx context.Context, changes *plan.
 		uid       string
 	})
 
+	// TODO: review
 	// Check all endpoints in Creates, UpdateOld, UpdateNew, and Delete
 	allEndpoints := append(append(append(
 		changes.Create,
 		changes.UpdateOld...),
-		changes.UpdateNew...),
-		changes.Delete...)
+		changes.UpdateNew...))
 
 	for _, ep := range allEndpoints {
 		ref := ep.RefObject()
@@ -99,8 +101,6 @@ func updateSingleDNSEndpointStatus(ctx context.Context, statusUpdater dnsEndpoin
 	} else {
 		apiv1alpha1.SetSyncFailed(&dnsEndpoint.Status, message, dnsEndpoint.Generation)
 	}
-
-	dnsEndpoint.Status.ObservedGeneration = dnsEndpoint.Generation
 
 	// Update the status
 	_, err = statusUpdater.UpdateStatus(ctx, dnsEndpoint)

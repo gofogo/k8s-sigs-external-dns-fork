@@ -39,18 +39,18 @@ func TestSetCondition(t *testing.T) {
 		{
 			name:               "add new condition to empty list",
 			existingConditions: []metav1.Condition{},
-			conditionType:      DNSEndpointReady,
+			conditionType:      string(DNSEndpointProgrammed),
 			status:             metav1.ConditionTrue,
-			reason:             ReasonSyncSuccessful,
-			message:            "Successfully synced",
+			reason:             string(ReasonProgrammed),
+			message:            "Successfully programmed",
 			observedGeneration: 1,
 			wantConditionCount: 1,
 			validateFunc: func(t *testing.T, status *DNSEndpointStatus) {
-				cond := GetCondition(status, DNSEndpointReady)
+				cond := GetCondition(status, string(DNSEndpointProgrammed))
 				assert.NotNil(t, cond, "condition should be found")
 				assert.Equal(t, metav1.ConditionTrue, cond.Status)
-				assert.Equal(t, ReasonSyncSuccessful, cond.Reason)
-				assert.Equal(t, "Successfully synced", cond.Message)
+				assert.Equal(t, string(ReasonProgrammed), cond.Reason)
+				assert.Equal(t, "Successfully programmed", cond.Message)
 				assert.Equal(t, int64(1), cond.ObservedGeneration)
 			},
 		},
@@ -58,22 +58,22 @@ func TestSetCondition(t *testing.T) {
 			name: "update existing condition with same status preserves LastTransitionTime",
 			existingConditions: []metav1.Condition{
 				{
-					Type:               DNSEndpointReady,
+					Type:               string(DNSEndpointProgrammed),
 					Status:             metav1.ConditionTrue,
-					Reason:             ReasonSyncSuccessful,
+					Reason:             string(ReasonProgrammed),
 					Message:            "Old message",
 					ObservedGeneration: 1,
 					LastTransitionTime: metav1.NewTime(time.Now().Add(-1 * time.Hour)),
 				},
 			},
-			conditionType:      DNSEndpointReady,
+			conditionType:      string(DNSEndpointProgrammed),
 			status:             metav1.ConditionTrue,
-			reason:             ReasonSyncSuccessful,
+			reason:             string(ReasonProgrammed),
 			message:            "New message",
 			observedGeneration: 2,
 			wantConditionCount: 1,
 			validateFunc: func(t *testing.T, status *DNSEndpointStatus) {
-				cond := GetCondition(status, DNSEndpointReady)
+				cond := GetCondition(status, string(DNSEndpointProgrammed))
 				assert.NotNil(t, cond, "condition should be found")
 				assert.Equal(t, "New message", cond.Message, "message should be updated")
 				assert.Equal(t, int64(2), cond.ObservedGeneration, "observedGeneration should be updated")
@@ -85,25 +85,25 @@ func TestSetCondition(t *testing.T) {
 			name: "update existing condition with different status updates LastTransitionTime",
 			existingConditions: []metav1.Condition{
 				{
-					Type:               DNSEndpointReady,
+					Type:               string(DNSEndpointProgrammed),
 					Status:             metav1.ConditionTrue,
-					Reason:             ReasonSyncSuccessful,
+					Reason:             string(ReasonProgrammed),
 					Message:            "Was successful",
 					ObservedGeneration: 1,
 					LastTransitionTime: metav1.NewTime(time.Now().Add(-1 * time.Hour)),
 				},
 			},
-			conditionType:      DNSEndpointReady,
+			conditionType:      string(DNSEndpointProgrammed),
 			status:             metav1.ConditionFalse,
-			reason:             ReasonFailed,
+			reason:             string(ReasonInvalid),
 			message:            "Now failed",
 			observedGeneration: 2,
 			wantConditionCount: 1,
 			validateFunc: func(t *testing.T, status *DNSEndpointStatus) {
-				cond := GetCondition(status, DNSEndpointReady)
+				cond := GetCondition(status, string(DNSEndpointProgrammed))
 				assert.NotNil(t, cond, "condition should be found")
 				assert.Equal(t, metav1.ConditionFalse, cond.Status)
-				assert.Equal(t, ReasonFailed, cond.Reason)
+				assert.Equal(t, string(ReasonInvalid), cond.Reason)
 				// LastTransitionTime should be recent (updated)
 				assert.Less(t, time.Since(cond.LastTransitionTime.Time), 5*time.Second, "LastTransitionTime should be updated (recent)")
 			},
@@ -112,28 +112,28 @@ func TestSetCondition(t *testing.T) {
 			name: "add second condition preserves first",
 			existingConditions: []metav1.Condition{
 				{
-					Type:               DNSEndpointSynced,
+					Type:               string(DNSEndpointAccepted),
 					Status:             metav1.ConditionTrue,
-					Reason:             ReasonReconciling,
-					Message:            "Reconciling",
+					Reason:             string(ReasonAccepted),
+					Message:            "Accepted",
 					ObservedGeneration: 1,
 					LastTransitionTime: metav1.Now(),
 				},
 			},
-			conditionType:      DNSEndpointReady,
+			conditionType:      string(DNSEndpointProgrammed),
 			status:             metav1.ConditionTrue,
-			reason:             ReasonSyncSuccessful,
-			message:            "Ready",
+			reason:             string(ReasonProgrammed),
+			message:            "Programmed",
 			observedGeneration: 1,
 			wantConditionCount: 2,
 			validateFunc: func(t *testing.T, status *DNSEndpointStatus) {
-				syncedCond := GetCondition(status, DNSEndpointSynced)
-				assert.NotNil(t, syncedCond, "Synced condition should be found")
-				assert.Equal(t, ReasonReconciling, syncedCond.Reason, "Synced condition should not be modified")
+				acceptedCond := GetCondition(status, string(DNSEndpointAccepted))
+				assert.NotNil(t, acceptedCond, "Accepted condition should be found")
+				assert.Equal(t, string(ReasonAccepted), acceptedCond.Reason, "Accepted condition should not be modified")
 
-				readyCond := GetCondition(status, DNSEndpointReady)
-				assert.NotNil(t, readyCond, "Ready condition should be found")
-				assert.Equal(t, ReasonSyncSuccessful, readyCond.Reason)
+				programmedCond := GetCondition(status, string(DNSEndpointProgrammed))
+				assert.NotNil(t, programmedCond, "Programmed condition should be found")
+				assert.Equal(t, string(ReasonProgrammed), programmedCond.Reason)
 			},
 		},
 	}
@@ -165,21 +165,21 @@ func TestGetCondition(t *testing.T) {
 	}{
 		{
 			name:          "get existing condition",
-			conditions:    []metav1.Condition{{Type: DNSEndpointReady, Reason: ReasonSyncSuccessful}},
-			conditionType: DNSEndpointReady,
+			conditions:    []metav1.Condition{{Type: string(DNSEndpointProgrammed), Reason: string(ReasonProgrammed)}},
+			conditionType: string(DNSEndpointProgrammed),
 			wantNil:       false,
-			wantReason:    ReasonSyncSuccessful,
+			wantReason:    string(ReasonProgrammed),
 		},
 		{
 			name:          "get non-existent condition",
-			conditions:    []metav1.Condition{{Type: DNSEndpointSynced, Reason: ReasonReconciling}},
-			conditionType: DNSEndpointReady,
+			conditions:    []metav1.Condition{{Type: string(DNSEndpointAccepted), Reason: string(ReasonAccepted)}},
+			conditionType: string(DNSEndpointProgrammed),
 			wantNil:       true,
 		},
 		{
 			name:          "get from empty conditions",
 			conditions:    []metav1.Condition{},
-			conditionType: DNSEndpointReady,
+			conditionType: string(DNSEndpointProgrammed),
 			wantNil:       true,
 		},
 	}
@@ -212,31 +212,31 @@ func TestIsConditionTrue(t *testing.T) {
 		{
 			name: "condition exists and is true",
 			conditions: []metav1.Condition{
-				{Type: DNSEndpointReady, Status: metav1.ConditionTrue},
+				{Type: string(DNSEndpointProgrammed), Status: metav1.ConditionTrue},
 			},
-			conditionType: DNSEndpointReady,
+			conditionType: string(DNSEndpointProgrammed),
 			want:          true,
 		},
 		{
 			name: "condition exists but is false",
 			conditions: []metav1.Condition{
-				{Type: DNSEndpointReady, Status: metav1.ConditionFalse},
+				{Type: string(DNSEndpointProgrammed), Status: metav1.ConditionFalse},
 			},
-			conditionType: DNSEndpointReady,
+			conditionType: string(DNSEndpointProgrammed),
 			want:          false,
 		},
 		{
 			name: "condition exists but is unknown",
 			conditions: []metav1.Condition{
-				{Type: DNSEndpointReady, Status: metav1.ConditionUnknown},
+				{Type: string(DNSEndpointProgrammed), Status: metav1.ConditionUnknown},
 			},
-			conditionType: DNSEndpointReady,
+			conditionType: string(DNSEndpointProgrammed),
 			want:          false,
 		},
 		{
 			name:          "condition does not exist",
 			conditions:    []metav1.Condition{},
-			conditionType: DNSEndpointReady,
+			conditionType: string(DNSEndpointProgrammed),
 			want:          false,
 		},
 	}
@@ -254,6 +254,22 @@ func TestIsConditionTrue(t *testing.T) {
 	}
 }
 
+func TestSetAccepted(t *testing.T) {
+	status := &DNSEndpointStatus{}
+	message := "DNSEndpoint accepted by controller with owner ID: test"
+	observedGeneration := int64(1)
+
+	SetAccepted(status, message, observedGeneration)
+
+	// Check Accepted condition
+	acceptedCond := GetCondition(status, string(DNSEndpointAccepted))
+	assert.NotNil(t, acceptedCond, "Accepted condition should be set")
+	assert.Equal(t, metav1.ConditionUnknown, acceptedCond.Status, "Should be Unknown when first accepted")
+	assert.Equal(t, string(ReasonAccepted), acceptedCond.Reason)
+	assert.Equal(t, message, acceptedCond.Message)
+	assert.Equal(t, observedGeneration, acceptedCond.ObservedGeneration)
+}
+
 func TestSetSyncSuccess(t *testing.T) {
 	status := &DNSEndpointStatus{}
 	message := "Successfully synced 5 DNS records"
@@ -261,23 +277,20 @@ func TestSetSyncSuccess(t *testing.T) {
 
 	SetSyncSuccess(status, message, observedGeneration)
 
-	// Check LastSyncTime was set
-	assert.NotNil(t, status.LastSyncTime, "LastSyncTime should be set")
-	assert.Less(t, time.Since(status.LastSyncTime.Time), 5*time.Second, "LastSyncTime should be recent")
+	// Check Accepted condition
+	acceptedCond := GetCondition(status, string(DNSEndpointAccepted))
+	assert.NotNil(t, acceptedCond, "Accepted condition should be set")
+	assert.Equal(t, metav1.ConditionTrue, acceptedCond.Status)
+	assert.Equal(t, string(ReasonAccepted), acceptedCond.Reason)
+	assert.Equal(t, observedGeneration, acceptedCond.ObservedGeneration)
 
-	// Check Synced condition
-	syncedCond := GetCondition(status, DNSEndpointSynced)
-	assert.NotNil(t, syncedCond, "Synced condition should be set")
-	assert.Equal(t, metav1.ConditionTrue, syncedCond.Status)
-	assert.Equal(t, ReasonSyncSuccessful, syncedCond.Reason)
-	assert.Equal(t, message, syncedCond.Message)
-	assert.Equal(t, observedGeneration, syncedCond.ObservedGeneration)
-
-	// Check Ready condition
-	readyCond := GetCondition(status, DNSEndpointReady)
-	assert.NotNil(t, readyCond, "Ready condition should be set")
-	assert.Equal(t, metav1.ConditionTrue, readyCond.Status)
-	assert.Equal(t, ReasonSyncSuccessful, readyCond.Reason)
+	// Check Programmed condition
+	programmedCond := GetCondition(status, string(DNSEndpointProgrammed))
+	assert.NotNil(t, programmedCond, "Programmed condition should be set")
+	assert.Equal(t, metav1.ConditionTrue, programmedCond.Status)
+	assert.Equal(t, string(ReasonProgrammed), programmedCond.Reason)
+	assert.Equal(t, message, programmedCond.Message)
+	assert.Equal(t, observedGeneration, programmedCond.ObservedGeneration)
 }
 
 func TestSetSyncFailed(t *testing.T) {
@@ -287,34 +300,16 @@ func TestSetSyncFailed(t *testing.T) {
 
 	SetSyncFailed(status, message, observedGeneration)
 
-	// Check Synced condition
-	syncedCond := GetCondition(status, DNSEndpointSynced)
-	assert.NotNil(t, syncedCond, "Synced condition should be set")
-	assert.Equal(t, metav1.ConditionFalse, syncedCond.Status)
-	assert.Equal(t, ReasonSyncFailed, syncedCond.Reason)
+	// Check Accepted condition
+	acceptedCond := GetCondition(status, string(DNSEndpointAccepted))
+	assert.NotNil(t, acceptedCond, "Accepted condition should be set")
+	assert.Equal(t, metav1.ConditionTrue, acceptedCond.Status)
+	assert.Equal(t, string(ReasonAccepted), acceptedCond.Reason)
 
-	// Check Ready condition
-	readyCond := GetCondition(status, DNSEndpointReady)
-	assert.NotNil(t, readyCond, "Ready condition should be set")
-	assert.Equal(t, metav1.ConditionFalse, readyCond.Status)
-	assert.Equal(t, ReasonFailed, readyCond.Reason)
-}
-
-func TestSetReconciling(t *testing.T) {
-	status := &DNSEndpointStatus{}
-	message := "Processing 3 endpoints"
-	observedGeneration := int64(1)
-
-	SetReconciling(status, message, observedGeneration)
-
-	// Check Synced condition
-	syncedCond := GetCondition(status, DNSEndpointSynced)
-	assert.NotNil(t, syncedCond, "Synced condition should be set")
-	assert.Equal(t, metav1.ConditionTrue, syncedCond.Status)
-	assert.Equal(t, ReasonReconciling, syncedCond.Reason)
-	assert.Equal(t, message, syncedCond.Message)
-
-	// Ready condition should not be set by SetReconciling
-	readyCond := GetCondition(status, DNSEndpointReady)
-	assert.Nil(t, readyCond, "Ready condition should not be set by SetReconciling")
+	// Check Programmed condition
+	programmedCond := GetCondition(status, string(DNSEndpointProgrammed))
+	assert.NotNil(t, programmedCond, "Programmed condition should be set")
+	assert.Equal(t, metav1.ConditionFalse, programmedCond.Status)
+	assert.Equal(t, string(ReasonInvalid), programmedCond.Reason)
+	assert.Equal(t, message, programmedCond.Message)
 }

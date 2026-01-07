@@ -68,7 +68,10 @@ func (m *mockStatusUpdater) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1
 	}
 	key := dnsEndpoint.Namespace + "/" + dnsEndpoint.Name
 	m.endpoints[key] = dnsEndpoint
-	m.lastUpdatedGen = dnsEndpoint.Status.ObservedGeneration
+	// Track the observedGeneration from the Programmed condition
+	if cond := apiv1alpha1.GetCondition(&dnsEndpoint.Status, string(apiv1alpha1.DNSEndpointProgrammed)); cond != nil {
+		m.lastUpdatedGen = cond.ObservedGeneration
+	}
 	return dnsEndpoint, nil
 }
 
@@ -218,19 +221,18 @@ func TestUpdateDNSEndpointStatus_SuccessfulSync(t *testing.T) {
 
 	assert.Equal(t, 1, mock.getCalls, "Get should be called once")
 	assert.Equal(t, 1, mock.updateCalls, "UpdateStatus should be called once")
-	assert.Equal(t, int64(5), mock.lastUpdatedGen, "ObservedGeneration should be updated")
+	assert.Equal(t, int64(5), mock.lastUpdatedGen, "ObservedGeneration should be updated in conditions")
 
 	// Check the updated status
 	updated := mock.endpoints["default/test-endpoint"]
-	assert.Equal(t, int64(5), updated.Status.ObservedGeneration)
-	assert.NotNil(t, updated.Status.LastSyncTime)
-	assert.True(t, apiv1alpha1.IsConditionTrue(&updated.Status, apiv1alpha1.DNSEndpointReady))
-	assert.True(t, apiv1alpha1.IsConditionTrue(&updated.Status, apiv1alpha1.DNSEndpointSynced))
+	assert.True(t, apiv1alpha1.IsConditionTrue(&updated.Status, string(apiv1alpha1.DNSEndpointAccepted)))
+	assert.True(t, apiv1alpha1.IsConditionTrue(&updated.Status, string(apiv1alpha1.DNSEndpointProgrammed)))
 
-	readyCond := apiv1alpha1.GetCondition(&updated.Status, apiv1alpha1.DNSEndpointReady)
-	assert.NotNil(t, readyCond)
-	assert.Equal(t, apiv1alpha1.ReasonSyncSuccessful, readyCond.Reason)
-	assert.Equal(t, "Successfully synced DNS records", readyCond.Message)
+	programmedCond := apiv1alpha1.GetCondition(&updated.Status, string(apiv1alpha1.DNSEndpointProgrammed))
+	assert.NotNil(t, programmedCond)
+	assert.Equal(t, int64(5), programmedCond.ObservedGeneration)
+	assert.Equal(t, string(apiv1alpha1.ReasonProgrammed), programmedCond.Reason)
+	assert.Equal(t, "Successfully synced DNS records", programmedCond.Message)
 }
 
 func TestUpdateDNSEndpointStatus_FailedSync(t *testing.T) {
@@ -269,18 +271,21 @@ func TestUpdateDNSEndpointStatus_FailedSync(t *testing.T) {
 
 	// Check the updated status
 	updated := mock.endpoints["default/test-endpoint"]
-	assert.Equal(t, int64(3), updated.Status.ObservedGeneration)
-	assert.False(t, apiv1alpha1.IsConditionTrue(&updated.Status, apiv1alpha1.DNSEndpointReady))
-	assert.False(t, apiv1alpha1.IsConditionTrue(&updated.Status, apiv1alpha1.DNSEndpointSynced))
+	// After sync fails, Accepted should be True (confirmed) but Programmed should be False
+	assert.True(t, apiv1alpha1.IsConditionTrue(&updated.Status, string(apiv1alpha1.DNSEndpointAccepted)))
+	assert.False(t, apiv1alpha1.IsConditionTrue(&updated.Status, string(apiv1alpha1.DNSEndpointProgrammed)))
 
-	readyCond := apiv1alpha1.GetCondition(&updated.Status, apiv1alpha1.DNSEndpointReady)
-	assert.NotNil(t, readyCond)
-	assert.Equal(t, apiv1alpha1.ReasonFailed, readyCond.Reason)
-	assert.Equal(t, "Failed to sync: connection timeout", readyCond.Message)
+	programmedCond := apiv1alpha1.GetCondition(&updated.Status, string(apiv1alpha1.DNSEndpointProgrammed))
+	assert.NotNil(t, programmedCond)
+	assert.Equal(t, int64(3), programmedCond.ObservedGeneration)
+	assert.Equal(t, string(apiv1alpha1.ReasonInvalid), programmedCond.Reason)
+	assert.Equal(t, "Failed to sync: connection timeout", programmedCond.Message)
 
-	syncedCond := apiv1alpha1.GetCondition(&updated.Status, apiv1alpha1.DNSEndpointSynced)
-	assert.NotNil(t, syncedCond)
-	assert.Equal(t, apiv1alpha1.ReasonSyncFailed, syncedCond.Reason)
+	acceptedCond := apiv1alpha1.GetCondition(&updated.Status, string(apiv1alpha1.DNSEndpointAccepted))
+	assert.NotNil(t, acceptedCond)
+	assert.Equal(t, metav1.ConditionTrue, acceptedCond.Status)
+	assert.Equal(t, int64(3), acceptedCond.ObservedGeneration)
+	assert.Equal(t, string(apiv1alpha1.ReasonAccepted), acceptedCond.Reason)
 }
 
 func TestUpdateDNSEndpointStatus_MultipleDNSEndpoints(t *testing.T) {
@@ -337,10 +342,10 @@ func TestUpdateDNSEndpointStatus_MultipleDNSEndpoints(t *testing.T) {
 
 	// Verify both were updated
 	updated1 := mock.endpoints["default/endpoint1"]
-	assert.True(t, apiv1alpha1.IsConditionTrue(&updated1.Status, apiv1alpha1.DNSEndpointReady))
+	assert.True(t, apiv1alpha1.IsConditionTrue(&updated1.Status, string(apiv1alpha1.DNSEndpointProgrammed)))
 
 	updated2 := mock.endpoints["default/endpoint2"]
-	assert.True(t, apiv1alpha1.IsConditionTrue(&updated2.Status, apiv1alpha1.DNSEndpointReady))
+	assert.True(t, apiv1alpha1.IsConditionTrue(&updated2.Status, string(apiv1alpha1.DNSEndpointProgrammed)))
 }
 
 func TestUpdateDNSEndpointStatus_DuplicateReferences(t *testing.T) {
@@ -557,6 +562,10 @@ func TestUpdateSingleDNSEndpointStatus_Failure(t *testing.T) {
 	assert.NoError(t, err)
 
 	updated := mock.endpoints["default/test-endpoint"]
-	assert.False(t, apiv1alpha1.IsConditionTrue(&updated.Status, apiv1alpha1.DNSEndpointReady))
-	assert.False(t, apiv1alpha1.IsConditionTrue(&updated.Status, apiv1alpha1.DNSEndpointSynced))
+	// After sync fails, Accepted should be True (confirmed) but Programmed should be False
+	acceptedCond := apiv1alpha1.GetCondition(&updated.Status, string(apiv1alpha1.DNSEndpointAccepted))
+	assert.NotNil(t, acceptedCond)
+	assert.Equal(t, metav1.ConditionTrue, acceptedCond.Status)
+
+	assert.False(t, apiv1alpha1.IsConditionTrue(&updated.Status, string(apiv1alpha1.DNSEndpointProgrammed)))
 }

@@ -223,15 +223,11 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 
 		endpoints = append(endpoints, crdEndpoints...)
 
-		if dnsEndpoint.Status.ObservedGeneration == dnsEndpoint.Generation {
-			continue
-		}
-
-		dnsEndpoint.Status.ObservedGeneration = dnsEndpoint.Generation
-		// Update the ObservedGeneration
+		// Update status to mark endpoint as accepted
+		apiv1alpha1.SetAccepted(&dnsEndpoint.Status, "DNSEndpoint accepted by controller", dnsEndpoint.Generation)
 		_, err = cs.UpdateStatus(ctx, dnsEndpoint)
 		if err != nil {
-			log.Warnf("Could not update ObservedGeneration of the CRD: %v", err)
+			log.Warnf("Could not update Accepted condition of DNSEndpoint %s/%s: %v", dnsEndpoint.Namespace, dnsEndpoint.Name, err)
 		}
 	}
 

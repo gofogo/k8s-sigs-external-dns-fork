@@ -79,30 +79,41 @@ func IsConditionTrue(status *DNSEndpointStatus, conditionType string) bool {
 	return condition != nil && condition.Status == metav1.ConditionTrue
 }
 
-// SetSyncSuccess is a high-level helper that marks the endpoint as successfully synced.
-// It sets both Ready and Synced conditions to True with appropriate messages.
-func SetSyncSuccess(status *DNSEndpointStatus, message string, observedGeneration int64) {
-	now := metav1.NewTime(metav1.Now().Time)
-	status.LastSyncTime = &now
+// SetAccepted marks the endpoint as accepted by the controller with Unknown status.
+// Use this when the endpoint is first seen and validated, but not yet processed.
+func SetAccepted(status *DNSEndpointStatus, message string, observedGeneration int64) {
+	SetCondition(status, string(DNSEndpointAccepted), metav1.ConditionUnknown,
+		string(ReasonAccepted), message, observedGeneration)
+}
 
-	SetCondition(status, DNSEndpointSynced, metav1.ConditionTrue,
-		ReasonSyncSuccessful, message, observedGeneration)
-	SetCondition(status, DNSEndpointReady, metav1.ConditionTrue,
-		ReasonSyncSuccessful, message, observedGeneration)
+// SetAcceptedTrue marks the endpoint as accepted and confirmed by the controller.
+func SetAcceptedTrue(status *DNSEndpointStatus, message string, observedGeneration int64) {
+	SetCondition(status, string(DNSEndpointAccepted), metav1.ConditionTrue,
+		string(ReasonAccepted), message, observedGeneration)
+}
+
+// SetProgrammed marks the endpoint as successfully programmed to the DNS provider.
+func SetProgrammed(status *DNSEndpointStatus, message string, observedGeneration int64) {
+	SetCondition(status, string(DNSEndpointProgrammed), metav1.ConditionTrue,
+		string(ReasonProgrammed), message, observedGeneration)
+}
+
+// SetProgrammedFailed marks the endpoint programming as failed.
+func SetProgrammedFailed(status *DNSEndpointStatus, message string, observedGeneration int64) {
+	SetCondition(status, string(DNSEndpointProgrammed), metav1.ConditionFalse,
+		string(ReasonInvalid), message, observedGeneration)
+}
+
+// SetSyncSuccess is a high-level helper that marks the endpoint as successfully synced.
+// It sets Accepted to True and Programmed to True with appropriate messages.
+func SetSyncSuccess(status *DNSEndpointStatus, message string, observedGeneration int64) {
+	SetAcceptedTrue(status, "DNSEndpoint accepted", observedGeneration)
+	SetProgrammed(status, message, observedGeneration)
 }
 
 // SetSyncFailed is a high-level helper that marks the endpoint sync as failed.
-// It sets the Ready condition to False and updates the Synced condition.
+// It sets Accepted to True and Programmed to False.
 func SetSyncFailed(status *DNSEndpointStatus, message string, observedGeneration int64) {
-	SetCondition(status, DNSEndpointSynced, metav1.ConditionFalse,
-		ReasonSyncFailed, message, observedGeneration)
-	SetCondition(status, DNSEndpointReady, metav1.ConditionFalse,
-		ReasonFailed, message, observedGeneration)
-}
-
-// SetReconciling is a high-level helper that marks the endpoint as reconciling.
-// It sets the Synced condition to True with Reconciling reason.
-func SetReconciling(status *DNSEndpointStatus, message string, observedGeneration int64) {
-	SetCondition(status, DNSEndpointSynced, metav1.ConditionTrue,
-		ReasonReconciling, message, observedGeneration)
+	SetAcceptedTrue(status, "DNSEndpoint accepted", observedGeneration)
+	SetProgrammedFailed(status, message, observedGeneration)
 }

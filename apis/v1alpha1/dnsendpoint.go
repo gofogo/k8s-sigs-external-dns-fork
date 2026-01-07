@@ -22,28 +22,34 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
+// DNSEndpointConditionType is a type of condition for a DNSEndpoint.
+type DNSEndpointConditionType string
+
+// ConditionReason is a reason for a DNSEndpoint condition.
+type ConditionReason string
+
 // Condition types for DNSEndpoint status
 const (
-	// DNSEndpointReady indicates the endpoint is fully synchronized with the DNS provider
-	DNSEndpointReady = "Ready"
+	// DNSEndpointAccepted indicates the endpoint has been accepted by the controller
+	DNSEndpointAccepted DNSEndpointConditionType = "Accepted"
 
-	// DNSEndpointSynced indicates the endpoint has been processed by the controller
-	DNSEndpointSynced = "Synced"
+	// DNSEndpointProgrammed indicates the endpoint has been successfully programmed to the DNS provider
+	DNSEndpointProgrammed DNSEndpointConditionType = "Programmed"
 )
 
 // Condition reasons for DNSEndpoint status
 const (
-	// ReasonSyncSuccessful indicates successful synchronization
-	ReasonSyncSuccessful = "SyncSuccessful"
+	// ReasonAccepted indicates the endpoint has been accepted
+	ReasonAccepted ConditionReason = "Accepted"
 
-	// ReasonSyncFailed indicates synchronization failed
-	ReasonSyncFailed = "SyncFailed"
+	// ReasonProgrammed indicates successful programming to DNS provider
+	ReasonProgrammed ConditionReason = "Programmed"
 
-	// ReasonReconciling indicates reconciliation in progress
-	ReasonReconciling = "Reconciling"
+	// ReasonInvalid indicates the endpoint is invalid
+	ReasonInvalid ConditionReason = "Invalid"
 
-	// ReasonFailed indicates the endpoint is in a failed state
-	ReasonFailed = "Failed"
+	// ReasonPending indicates the endpoint is pending processing
+	ReasonPending ConditionReason = "Pending"
 )
 
 // +genclient
@@ -62,7 +68,7 @@ type DNSEndpoint struct {
 	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   DNSEndpointSpec   `json:"spec"`
-	Status DNSEndpointStatus `json:"status"`
+	Status DNSEndpointStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -80,21 +86,12 @@ type DNSEndpointSpec struct {
 
 // DNSEndpointStatus defines the observed state of DNSEndpoint
 type DNSEndpointStatus struct {
-	// The generation observed by the external-dns controller.
-	// +optional
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
-	// Conditions represent the latest available observations of the DNSEndpoint's state.
+	// Conditions describe the current conditions of the DNSEndpoint.
+	//
 	// +optional
 	// +listType=map
 	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=8
+	// +kubebuilder:default={{type: "Accepted", status: "Unknown", reason:"Pending", message:"Waiting for controller", lastTransitionTime: "1970-01-01T00:00:00Z"},{type: "Programmed", status: "Unknown", reason:"Pending", message:"Waiting for controller", lastTransitionTime: "1970-01-01T00:00:00Z"}}
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// LastSyncTime is the timestamp of the last successful sync with the DNS provider.
-	// +optional
-	LastSyncTime *metav1.Time `json:"lastSyncTime,omitempty"`
-
-	// ProviderStatus contains provider-specific status information.
-	// +optional
-	ProviderStatus string `json:"providerStatus,omitempty"`
 }

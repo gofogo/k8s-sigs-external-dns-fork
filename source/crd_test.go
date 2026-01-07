@@ -112,7 +112,7 @@ func fakeRESTClient(endpoints []*endpoint.Endpoint, apiVersion, kind, namespace,
 				if err != nil {
 					return nil, err
 				}
-				dnsEndpoint.Status.ObservedGeneration = body.Status.ObservedGeneration
+				dnsEndpoint.Status = body.Status
 				return &http.Response{StatusCode: http.StatusOK, Header: defaultHeader(), Body: objBody(codec, dnsEndpoint)}, nil
 			default:
 				return nil, fmt.Errorf("unexpected request: %#v\n%#v", req.URL, req)
@@ -695,17 +695,11 @@ func TestCRDSource_Watch(t *testing.T) {
 func validateCRDResource(t *testing.T, src Source, expectError bool) {
 	t.Helper()
 	cs := src.(*crdSource)
-	result, err := cs.List(context.Background(), &metav1.ListOptions{})
+	_, err := cs.List(context.Background(), &metav1.ListOptions{})
 	if expectError {
 		require.Errorf(t, err, "Received err %v", err)
 	} else {
 		require.NoErrorf(t, err, "Received err %v", err)
-	}
-
-	for _, dnsEndpoint := range result.Items {
-		if dnsEndpoint.Status.ObservedGeneration != dnsEndpoint.Generation {
-			require.Errorf(t, err, "Unexpected CRD resource result: ObservedGenerations <%v> is not equal to Generation<%v>", dnsEndpoint.Status.ObservedGeneration, dnsEndpoint.Generation)
-		}
 	}
 }
 
