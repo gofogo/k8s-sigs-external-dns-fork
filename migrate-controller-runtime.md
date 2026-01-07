@@ -18,13 +18,13 @@
 
  Dimension 1: Status Updater Location (existing)
 
- - Option 1 (pkg-crd): pkg/crd/status_updater.go - Service layer in pkg/crd
- - Option 2 (controller): controller/dnsendpoint_status.go - Controller-owned status manager
+- Option 1 (pkg-crd): pkg/crd/status_updater.go - Service layer in pkg/crd
+- Option 2 (controller): controller/dnsendpoint_status.go - Controller-owned status manager
 
  Dimension 2: Client Implementation (new)
 
- - REST: Manual REST client (existing) - pkg/crd/dnsendpoint_client.go
- - Controller-Runtime: controller-runtime client (new) - pkg/crd/dnsendpoint_client_ctrlruntime.go
+- REST: Manual REST client (existing) - pkg/crd/dnsendpoint_client.go
+- Controller-Runtime: controller-runtime client (new) - pkg/crd/dnsendpoint_client_ctrlruntime.go
 
  Testing Combinations
 
@@ -45,19 +45,21 @@
  Option 1: Controller-Runtime Backed Interface
 
  Keep DNSEndpointClient interface, create new implementation backed by controller-runtime:
- - Interface: DNSEndpointClient (unchanged)
- - New Implementation: ctrlRuntimeDNSEndpointClient
- - Wraps client.Client from controller-runtime
- - Drop-in replacement for REST implementation
- - Minimal changes to existing code
+
+- Interface: DNSEndpointClient (unchanged)
+- New Implementation: ctrlRuntimeDNSEndpointClient
+- Wraps client.Client from controller-runtime
+- Drop-in replacement for REST implementation
+- Minimal changes to existing code
 
  Option 2: Direct client.Client Usage
 
  Bypass interface, use controller-runtime client directly:
- - No DNSEndpointClient interface
- - Direct client.Client usage in status managers
- - New file: controller/dnsendpoint_status_ctrlruntime.go
- - More idiomatic controller-runtime style
+
+- No DNSEndpointClient interface
+- Direct client.Client usage in status managers
+- New file: controller/dnsendpoint_status_ctrlruntime.go
+- More idiomatic controller-runtime style
 
  Files to Create
 
@@ -93,8 +95,8 @@
 
  4. Test Files
 
- - pkg/crd/dnsendpoint_client_ctrlruntime_test.go
- - controller/dnsendpoint_status_ctrlruntime_test.go
+- pkg/crd/dnsendpoint_client_ctrlruntime_test.go
+- controller/dnsendpoint_status_ctrlruntime_test.go
 
  Files to Modify
 
@@ -136,7 +138,7 @@
  List Options Conversion
 
  Convert metav1.ListOptions to client.ListOption:
- func (c *ctrlRuntimeDNSEndpointClient) List(ctx context.Context, opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error) {
+ func (c *ctrlRuntimeDNSEndpointClient) List(ctx context.Context, opts*metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error) {
      listOpts := []client.ListOption{}
 
      if c.namespace != "" {
@@ -156,7 +158,7 @@
  Status Subresource Update
 
  Controller-runtime uses .Status().Update():
- func (c *ctrlRuntimeDNSEndpointClient) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error) {
+ func (c *ctrlRuntimeDNSEndpointClient) UpdateStatus(ctx context.Context, dnsEndpoint*apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error) {
      err := c.client.Status().Update(ctx, dnsEndpoint)
      return dnsEndpoint, err
  }
@@ -164,7 +166,7 @@
  Watch() Implementation
 
  Initial approach: Return "not implemented" error:
- func (c *ctrlRuntimeDNSEndpointClient) Watch(ctx context.Context, opts *metav1.ListOptions) (watch.Interface, error) {
+ func (c *ctrlRuntimeDNSEndpointClient) Watch(ctx context.Context, opts*metav1.ListOptions) (watch.Interface, error) {
      return nil, fmt.Errorf("Watch not supported with controller-runtime client, use informer from source/crd.go")
  }
 
@@ -209,22 +211,27 @@
  Integration Tests
 
  Test all 4 combinations:
- # Baseline (existing)
+
+# Baseline (existing)
+
  export STATUS_UPDATER_IMPL=pkg-crd
  export CLIENT_IMPL=rest
  ./external-dns --source=crd --provider=inmemory --once
 
- # Option 1 + controller-runtime
+# Option 1 + controller-runtime
+
  export STATUS_UPDATER_IMPL=pkg-crd
  export CLIENT_IMPL=controller-runtime
  ./external-dns --source=crd --provider=inmemory --once
 
- # Option 2 + REST
+# Option 2 + REST
+
  export STATUS_UPDATER_IMPL=controller
  export CLIENT_IMPL=rest
  ./external-dns --source=crd --provider=inmemory --once
 
- # Option 2 + controller-runtime
+# Option 2 + controller-runtime
+
  export STATUS_UPDATER_IMPL=controller
  export CLIENT_IMPL=controller-runtime
  ./external-dns --source=crd --provider=inmemory --once
@@ -319,26 +326,26 @@
 
  Controller-Runtime Advantages
 
- - ✅ Simpler: No manual discovery, scheme setup, or serializer config
- - ✅ Type-safe: Uses client.Object interface
- - ✅ Modern: Industry standard for Kubernetes operators
- - ✅ Better errors: Clearer error messages
- - ✅ Status subresource: client.Status().Update() is cleaner
- - ✅ Already included: v0.22.4 in go.mod
+- ✅ Simpler: No manual discovery, scheme setup, or serializer config
+- ✅ Type-safe: Uses client.Object interface
+- ✅ Modern: Industry standard for Kubernetes operators
+- ✅ Better errors: Clearer error messages
+- ✅ Status subresource: client.Status().Update() is cleaner
+- ✅ Already included: v0.22.4 in go.mod
 
  Dual Implementation Advantages
 
- - ✅ Risk mitigation: Easy rollback if issues found
- - ✅ Performance comparison: Test both in production
- - ✅ Learning: Team can evaluate both approaches
- - ✅ Clean removal: Clear comments guide cleanup
+- ✅ Risk mitigation: Easy rollback if issues found
+- ✅ Performance comparison: Test both in production
+- ✅ Learning: Team can evaluate both approaches
+- ✅ Clean removal: Clear comments guide cleanup
 
  Trade-offs
 
- - ⚠️ More code to maintain temporarily (until decision made)
- - ⚠️ Watch() not implemented initially (defer if not needed)
- - ⚠️ Environment variables needed for switching
- - ⚠️ Testing matrix larger (4 combinations)
+- ⚠️ More code to maintain temporarily (until decision made)
+- ⚠️ Watch() not implemented initially (defer if not needed)
+- ⚠️ Environment variables needed for switching
+- ⚠️ Testing matrix larger (4 combinations)
 
  Success Criteria
 
