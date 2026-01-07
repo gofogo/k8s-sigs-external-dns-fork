@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -385,16 +386,17 @@ func buildController(
 	}
 
 	return &Controller{
-		Source:               src,
-		Registry:             reg,
-		Policy:               policy,
-		Interval:             cfg.Interval,
-		DomainFilter:         filter,
-		ManagedRecordTypes:   cfg.ManagedDNSRecordTypes,
-		ExcludeRecordTypes:   cfg.ExcludeDNSRecordTypes,
-		MinEventSyncInterval: cfg.MinEventSyncInterval,
-		TXTOwnerOld:          cfg.TXTOwnerOld,
-		EventEmitter:         eventEmitter,
+		Source:                  src,
+		Registry:                reg,
+		Policy:                  policy,
+		Interval:                cfg.Interval,
+		DomainFilter:            filter,
+		ManagedRecordTypes:      cfg.ManagedDNSRecordTypes,
+		ExcludeRecordTypes:      cfg.ExcludeDNSRecordTypes,
+		MinEventSyncInterval:    cfg.MinEventSyncInterval,
+		TXTOwnerOld:             cfg.TXTOwnerOld,
+		EventEmitter:            eventEmitter,
+		UpdateDNSEndpointStatus: slices.Contains(cfg.Sources, "crd"),
 	}, nil
 }
 

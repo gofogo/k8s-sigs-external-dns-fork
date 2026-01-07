@@ -184,6 +184,8 @@ type Controller struct {
 	MinEventSyncInterval time.Duration
 	// Old txt-owner value we need to migrate from
 	TXTOwnerOld string
+	// UpdateDNSEndpointStatus enables updating DNSEndpoint CRD status fields
+	UpdateDNSEndpointStatus bool
 }
 
 // RunOnce runs a single iteration of a reconciliation loop.
@@ -248,13 +250,23 @@ func (c *Controller) RunOnce(ctx context.Context) error {
 		if err != nil {
 			registryErrorsTotal.Counter.Inc()
 			deprecatedRegistryErrors.Counter.Inc()
+
+			// Update DNSEndpoint status on failure
+			c.updateDNSEndpointStatus(ctx, plan.Changes, false, fmt.Sprintf("Failed to sync: %v", err))
+
 			return err
 		} else {
 			emitChangeEvent(c.EventEmitter, *plan.Changes, events.RecordReady)
+
+			// Update DNSEndpoint status on success
+			c.updateDNSEndpointStatus(ctx, plan.Changes, true, "Successfully synced DNS records")
 		}
 	} else {
 		controllerNoChangesTotal.Counter.Inc()
 		log.Info("All records are already up to date")
+
+		// TODO: Review if we should update DNSEndpoint status when there are no changes
+		// c.updateDNSEndpointStatus(ctx, plan.Changes, true, "All records are already up to date")
 	}
 
 	lastSyncTimestamp.Gauge.SetToCurrentTime()

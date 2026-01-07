@@ -22,6 +22,30 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
+// Condition types for DNSEndpoint status
+const (
+	// DNSEndpointReady indicates the endpoint is fully synchronized with the DNS provider
+	DNSEndpointReady = "Ready"
+
+	// DNSEndpointSynced indicates the endpoint has been processed by the controller
+	DNSEndpointSynced = "Synced"
+)
+
+// Condition reasons for DNSEndpoint status
+const (
+	// ReasonSyncSuccessful indicates successful synchronization
+	ReasonSyncSuccessful = "SyncSuccessful"
+
+	// ReasonSyncFailed indicates synchronization failed
+	ReasonSyncFailed = "SyncFailed"
+
+	// ReasonReconciling indicates reconciliation in progress
+	ReasonReconciling = "Reconciling"
+
+	// ReasonFailed indicates the endpoint is in a failed state
+	ReasonFailed = "Failed"
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -59,4 +83,18 @@ type DNSEndpointStatus struct {
 	// The generation observed by the external-dns controller.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Conditions represent the latest available observations of the DNSEndpoint's state.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// LastSyncTime is the timestamp of the last successful sync with the DNS provider.
+	// +optional
+	LastSyncTime *metav1.Time `json:"lastSyncTime,omitempty"`
+
+	// ProviderStatus contains provider-specific status information.
+	// +optional
+	ProviderStatus string `json:"providerStatus,omitempty"`
 }

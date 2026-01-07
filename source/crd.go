@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
+	"sigs.k8s.io/external-dns/source/types"
 
 	"sigs.k8s.io/external-dns/source/annotations"
 
@@ -40,6 +41,7 @@ import (
 
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/pkg/events"
 )
 
 // crdSource is an implementation of Source that provides endpoints by listing
@@ -212,6 +214,8 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 			}
 
 			ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("crd/%s/%s", dnsEndpoint.Namespace, dnsEndpoint.Name))
+			// TODO: should add tests for this
+			ep.WithRefObject(events.NewObjectReference(dnsEndpoint, types.CRD))
 
 			crdEndpoints = append(crdEndpoints, ep)
 		}
@@ -260,6 +264,16 @@ func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.
 		Name(dnsEndpoint.Name).
 		SubResource("status").
 		Body(dnsEndpoint).
+		Do(ctx).
+		Into(result)
+}
+
+func (cs *crdSource) Get(ctx context.Context, namespace, name string) (*apiv1alpha1.DNSEndpoint, error) {
+	result := &apiv1alpha1.DNSEndpoint{}
+	return result, cs.crdClient.Get().
+		Namespace(namespace).
+		Resource(cs.crdResource).
+		Name(name).
 		Do(ctx).
 		Into(result)
 }
