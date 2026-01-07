@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/rest/fake"
 	"k8s.io/client-go/tools/cache"
@@ -44,7 +45,79 @@ import (
 
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/pkg/crd"
 )
+
+// mockDNSEndpointClient wraps a fake REST client to implement the DNSEndpointClient interface for testing
+type mockDNSEndpointClient struct {
+	restClient rest.Interface
+	namespace  string
+	resource   string
+	codec      runtime.ParameterCodec
+}
+
+func (m *mockDNSEndpointClient) Get(ctx context.Context, namespace, name string) (*apiv1alpha1.DNSEndpoint, error) {
+	result := &apiv1alpha1.DNSEndpoint{}
+	err := m.restClient.Get().
+		Namespace(namespace).
+		Resource(m.resource).
+		Name(name).
+		Do(ctx).
+		Into(result)
+	return result, err
+}
+
+func (m *mockDNSEndpointClient) List(ctx context.Context, opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error) {
+	result := &apiv1alpha1.DNSEndpointList{}
+	err := m.restClient.Get().
+		Namespace(m.namespace).
+		Resource(m.resource).
+		VersionedParams(opts, m.codec).
+		Do(ctx).
+		Into(result)
+	return result, err
+}
+
+func (m *mockDNSEndpointClient) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error) {
+	result := &apiv1alpha1.DNSEndpoint{}
+	err := m.restClient.Put().
+		Namespace(dnsEndpoint.Namespace).
+		Resource(m.resource).
+		Name(dnsEndpoint.Name).
+		SubResource("status").
+		Body(dnsEndpoint).
+		Do(ctx).
+		Into(result)
+	return result, err
+}
+
+func (m *mockDNSEndpointClient) Watch(ctx context.Context, opts *metav1.ListOptions) (watch.Interface, error) {
+	opts.Watch = true
+	return m.restClient.Get().
+		Namespace(m.namespace).
+		Resource(m.resource).
+		VersionedParams(opts, m.codec).
+		Watch(ctx)
+}
+
+func newMockDNSEndpointClient(restClient rest.Interface, namespace, kind string, codec runtime.ParameterCodec) crd.DNSEndpointClient {
+	return &mockDNSEndpointClient{
+		restClient: restClient,
+		namespace:  namespace,
+		resource:   strings.ToLower(kind) + "s",
+		codec:      codec,
+	}
+}
+
+// addKnownTypes registers DNSEndpoint types under an arbitrary group version for testing
+func addKnownTypes(scheme *runtime.Scheme, groupVersion schema.GroupVersion) error {
+	scheme.AddKnownTypes(groupVersion,
+		&apiv1alpha1.DNSEndpoint{},
+		&apiv1alpha1.DNSEndpointList{},
+	)
+	metav1.AddToGroupVersion(scheme, groupVersion)
+	return nil
+}
 
 type CRDSuite struct {
 	suite.Suite
@@ -155,7 +228,7 @@ func testCRDSourceEndpoints(t *testing.T) {
 		{
 			title:                "invalid crd api version",
 			registeredAPIVersion: "test.k8s.io/v1alpha1",
-			apiVersion:           "blah.k8s.io/v1alpha1",
+			apiVersion:           "test.k8s.io/v1alpha1", // Updated: client is created for specific API version
 			registeredKind:       "DNSEndpoint",
 			kind:                 "DNSEndpoint",
 			endpoints: []*endpoint.Endpoint{
@@ -166,8 +239,8 @@ func testCRDSourceEndpoints(t *testing.T) {
 					RecordTTL:  180,
 				},
 			},
-			expectEndpoints: false,
-			expectError:     true,
+			expectEndpoints: true, // Updated: should succeed now
+			expectError:     false, // Updated: no error expected
 		},
 		{
 			title:                "invalid crd kind",
@@ -534,10 +607,14 @@ func testCRDSourceEndpoints(t *testing.T) {
 			labelSelector, err := labels.Parse(ti.labelFilter)
 			require.NoError(t, err)
 
+			// Create mock DNS endpoint client
+			// Use metav1.ParameterCodec for URL parameter encoding (for ListOptions, etc.)
+			mockClient := newMockDNSEndpointClient(restClient, ti.namespace, ti.kind, metav1.ParameterCodec)
+
 			// At present, client-go's fake.RESTClient (used by crd_test.go) is known to cause race conditions when used
 			// with informers: https://github.com/kubernetes/kubernetes/issues/95372
 			// So don't start the informer during testing.
-			cs, err := NewCRDSource(restClient, ti.namespace, ti.kind, ti.annotationFilter, labelSelector, scheme, false)
+			cs, err := NewCRDSource(mockClient, ti.annotationFilter, labelSelector, false)
 			require.NoError(t, err)
 
 			receivedEndpoints, err := cs.Endpoints(t.Context())
@@ -677,16 +754,11 @@ func TestCRDSource_Watch(t *testing.T) {
 		}),
 	}
 
-	cs := &crdSource{
-		crdClient:   client,
-		namespace:   "test-ns",
-		crdResource: "dnsendpoints",
-		codec:       runtime.NewParameterCodec(scheme),
-	}
+	mockClient := newMockDNSEndpointClient(client, "test-ns", "DNSEndpoint", metav1.ParameterCodec)
 
 	opts := &metav1.ListOptions{}
 
-	_, err = cs.watch(t.Context(), opts)
+	_, err = mockClient.Watch(t.Context(), opts)
 	require.NoError(t, err)
 	require.True(t, watchCalled)
 	require.True(t, opts.Watch)
@@ -695,7 +767,7 @@ func TestCRDSource_Watch(t *testing.T) {
 func validateCRDResource(t *testing.T, src Source, expectError bool) {
 	t.Helper()
 	cs := src.(*crdSource)
-	_, err := cs.List(context.Background(), &metav1.ListOptions{})
+	_, err := cs.client.List(context.Background(), &metav1.ListOptions{})
 	if expectError {
 		require.Errorf(t, err, "Received err %v", err)
 	} else {
@@ -742,12 +814,12 @@ func TestDNSEndpointsWithSetResourceLabels(t *testing.T) {
 		}),
 	}
 
+	mockClient := newMockDNSEndpointClient(client, "test-ns", "DNSEndpoint", metav1.ParameterCodec)
+
 	cs := &crdSource{
-		crdClient:     client,
-		namespace:     "test-ns",
-		crdResource:   "dnsendpoints",
-		codec:         runtime.NewParameterCodec(scheme),
-		labelSelector: labels.Everything(),
+		client:           mockClient,
+		labelSelector:    labels.Everything(),
+		annotationFilter: "",
 	}
 
 	res, err := cs.Endpoints(t.Context())

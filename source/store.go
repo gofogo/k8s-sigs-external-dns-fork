@@ -28,6 +28,7 @@ import (
 	openshift "github.com/openshift/client-go/route/clientset/versioned"
 	log "github.com/sirupsen/logrus"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -40,6 +41,7 @@ import (
 	extdnshttp "sigs.k8s.io/external-dns/pkg/http"
 
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
+	"sigs.k8s.io/external-dns/pkg/crd"
 )
 
 // ErrSourceNotFound is returned when a requested source doesn't exist.
@@ -551,18 +553,47 @@ func buildOpenShiftRouteSource(ctx context.Context, p ClientGenerator, cfg *Conf
 }
 
 // buildCRDSource creates a CRD source for exposing custom resources as DNS records.
-// Uses a specialized CRD client created via NewCRDClientForAPIVersionKind.
-// Parameter order: crdClient, namespace, kind, annotationFilter, labelFilter, scheme, updateEvents
+// Uses the pkg/crd infrastructure for CRD client operations.
 func buildCRDSource(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
-	client, err := p.KubeClient()
+	kubeClient, err := p.KubeClient()
 	if err != nil {
 		return nil, err
 	}
-	crdClient, scheme, err := NewCRDClientForAPIVersionKind(client, cfg.KubeConfig, cfg.APIServerURL, cfg.CRDSourceAPIVersion, cfg.CRDSourceKind)
+
+	// Create REST client for CRD access
+	restClient, _, err := crd.NewCRDClientForAPIVersionKind(
+		kubeClient,
+		cfg.KubeConfig,
+		cfg.APIServerURL,
+		cfg.CRDSourceAPIVersion,
+		cfg.CRDSourceKind,
+	)
 	if err != nil {
 		return nil, err
 	}
-	return NewCRDSource(crdClient, cfg.Namespace, cfg.CRDSourceKind, cfg.AnnotationFilter, cfg.LabelFilter, scheme, cfg.UpdateEvents)
+
+	// Create DNSEndpoint client
+	// Use metav1.ParameterCodec for URL parameter encoding (ListOptions, etc.)
+	dnsEndpointClient := crd.NewDNSEndpointClient(
+		restClient,
+		cfg.Namespace,
+		cfg.CRDSourceKind,
+		metav1.ParameterCodec,
+	)
+
+	// Create CRD source with UpdateEvents controlling informer startup
+	return NewCRDSource(
+		dnsEndpointClient,
+		cfg.AnnotationFilter,
+		cfg.LabelFilter,
+		cfg.UpdateEvents,
+	)
+}
+
+// BuildCRDSource creates a CRD source for exposing custom resources as DNS records.
+// Exported for use in status update callback registration.
+func BuildCRDSource(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	return buildCRDSource(ctx, p, cfg)
 }
 
 // buildSkipperRouteGroupSource creates a Skipper RouteGroup source for exposing route groups as DNS records.

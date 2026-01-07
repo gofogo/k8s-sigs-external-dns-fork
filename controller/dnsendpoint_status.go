@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,95 +21,102 @@ import (
 	"fmt"
 
 	log "github.com/sirupsen/logrus"
-
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
-	"sigs.k8s.io/external-dns/plan"
+	"sigs.k8s.io/external-dns/pkg/crd"
 )
 
-// dnsEndpointStatusUpdater is an interface for sources that support DNSEndpoint status updates
-type dnsEndpointStatusUpdater interface {
-	Get(ctx context.Context, namespace, name string) (*apiv1alpha1.DNSEndpoint, error)
-	UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error)
+// REFACTORING NOTE: This is Option 2 - Status manager in controller package
+//
+// PROS:
+// - Status update logic lives where it's used (controller owns orchestration)
+// - Clear that status updates are controller-specific concern
+// - No need to expose StatusUpdater interface in pkg/crd
+// - Simpler: one less abstraction to understand
+//
+// CONS:
+// - Controller package now depends on pkg/crd package
+// - Less reusable (tied to controller context)
+// - Mixes controller orchestration with CRD-specific update logic
+// - Can't use this status updater from other packages without importing controller
+//
+// TO REMOVE THIS OPTION:
+// 1. Delete this file (controller/dnsendpoint_status.go)
+// 2. Delete controller/dnsendpoint_status_test.go (if exists)
+// 3. Remove DNSEndpointStatusManager usage from controller/execute.go (search for "OPTION 2")
+// 4. Keep Option 1 (pkg/crd/status_updater.go) and its usage
+
+// DNSEndpointStatusManager manages status updates for DNSEndpoint CRDs.
+// This is a controller-owned component that updates DNSEndpoint status
+// after DNS synchronization completes.
+//
+// Design Decision: Status updates are owned by the controller because:
+// - Controller orchestrates the sync loop
+// - Controller knows when sync succeeds or fails
+// - Controller has the context (plan.Changes) needed to identify which CRDs to update
+type DNSEndpointStatusManager struct {
+	// client is the repository layer for accessing DNSEndpoint CRDs
+	client crd.DNSEndpointClient
 }
 
-// updateDNSEndpointStatus updates the status of DNSEndpoint CRDs based on sync results
-func (c *Controller) updateDNSEndpointStatus(ctx context.Context, changes *plan.Changes, success bool, message string) {
-	fmt.Println("DEBUG: updateDNSEndpointStatus called") // Debug line
-	// Quick skip if status updates are disabled
-	if !c.UpdateDNSEndpointStatus {
-		return
-	}
-
-	// Check if the source supports DNSEndpoint status updates
-	statusUpdater, ok := c.Source.(dnsEndpointStatusUpdater)
-	if !ok {
-		// Source doesn't support status updates, skip
-		return
-	}
-	fmt.Println("DEBUG: updateDNSEndpointStatus statusUpdater ok") // Debug line
-
-	// Collect unique DNSEndpoint references from all endpoints in the plan
-	dnsEndpoints := make(map[string]struct {
-		namespace string
-		name      string
-		uid       string
-	})
-
-	// TODO: review
-	// Check all endpoints in Creates, UpdateOld, UpdateNew, and Delete
-	allEndpoints := append(append(append(
-		changes.Create,
-		changes.UpdateOld...),
-		changes.UpdateNew...))
-
-	for _, ep := range allEndpoints {
-		ref := ep.RefObject()
-		if ref != nil && ref.Kind == "DNSEndpoint" {
-			key := fmt.Sprintf("%s/%s", ref.Namespace, ref.Name)
-			dnsEndpoints[key] = struct {
-				namespace string
-				name      string
-				uid       string
-			}{
-				namespace: ref.Namespace,
-				name:      ref.Name,
-				uid:       string(ref.UID),
-			}
-		}
-	}
-
-	// Update status for each unique DNSEndpoint
-	for _, ref := range dnsEndpoints {
-		if err := updateSingleDNSEndpointStatus(ctx, statusUpdater, ref.namespace, ref.name, success, message); err != nil {
-			log.Warnf("Failed to update status for DNSEndpoint %s/%s: %v",
-				ref.namespace, ref.name, err)
-		}
+// NewDNSEndpointStatusManager creates a new status manager for DNSEndpoint CRDs.
+//
+// Parameters:
+//   - client: DNSEndpointClient for accessing DNSEndpoint CRDs
+//
+// Returns a status manager that can update DNSEndpoint status.
+func NewDNSEndpointStatusManager(client crd.DNSEndpointClient) *DNSEndpointStatusManager {
+	return &DNSEndpointStatusManager{
+		client: client,
 	}
 }
 
-// updateSingleDNSEndpointStatus updates status for a single DNSEndpoint
-func updateSingleDNSEndpointStatus(ctx context.Context, statusUpdater dnsEndpointStatusUpdater, namespace, name string, success bool, message string) error {
-	// Fetch the current DNSEndpoint
-	dnsEndpoint, err := statusUpdater.Get(ctx, namespace, name)
+// UpdateStatus updates the status of a single DNSEndpoint.
+// This method is called by the controller callback after DNS changes are applied.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - namespace: Kubernetes namespace of the DNSEndpoint
+//   - name: Name of the DNSEndpoint resource
+//   - success: Whether the DNS sync was successful
+//   - message: Human-readable message describing the sync result
+//
+// Returns error if the update fails.
+//
+// Implementation:
+// 1. Fetches the current DNSEndpoint from the API server
+// 2. Updates the status conditions based on success/failure
+// 3. Writes the updated status back to the API server (status subresource)
+func (m *DNSEndpointStatusManager) UpdateStatus(ctx context.Context, namespace, name string, success bool, message string) error {
+	// 1. Get current DNSEndpoint from API server
+	dnsEndpoint, err := m.client.Get(ctx, namespace, name)
 	if err != nil {
 		return fmt.Errorf("failed to get DNSEndpoint: %w", err)
 	}
 
-	// Update status fields based on success/failure
+	// 2. Update status conditions based on sync result
+	// Uses helper functions from apis/v1alpha1/status_helpers.go
 	if success {
+		// SetSyncSuccess updates:
+		// - Programmed condition to True
+		// - ObservedGeneration to current generation
+		// - LastTransitionTime to now
 		apiv1alpha1.SetSyncSuccess(&dnsEndpoint.Status, message, dnsEndpoint.Generation)
 	} else {
+		// SetSyncFailed updates:
+		// - Programmed condition to False
+		// - Adds error message
+		// - ObservedGeneration to current generation
+		// - LastTransitionTime to now
 		apiv1alpha1.SetSyncFailed(&dnsEndpoint.Status, message, dnsEndpoint.Generation)
 	}
 
-	// Update the status
-	_, err = statusUpdater.UpdateStatus(ctx, dnsEndpoint)
+	// 3. Update status subresource via API server
+	// This uses PUT /apis/externaldns.k8s.io/v1alpha1/namespaces/{ns}/dnsendpoints/{name}/status
+	_, err = m.client.UpdateStatus(ctx, dnsEndpoint)
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
 	}
 
-	log.Debugf("Updated status for DNSEndpoint %s/%s: success=%v, message=%s",
-		namespace, name, success, message)
-
+	log.Debugf("Updated status of DNSEndpoint %s/%s: success=%v", namespace, name, success)
 	return nil
 }

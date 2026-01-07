@@ -160,6 +160,9 @@ func init() {
 // * Ask the Source for the desired list of endpoints.
 // * Take both lists and calculate a Plan to move current towards the desired state.
 // * Tell the DNS provider to apply the changes calculated by the Plan.
+// StatusUpdateCallback is called after DNS changes are applied to update source status
+type StatusUpdateCallback func(ctx context.Context, changes *plan.Changes, success bool, message string)
+
 type Controller struct {
 	Source   source.Source
 	Registry registry.Registry
@@ -186,6 +189,10 @@ type Controller struct {
 	TXTOwnerOld string
 	// UpdateDNSEndpointStatus enables updating DNSEndpoint CRD status fields
 	UpdateDNSEndpointStatus bool
+	// statusUpdateCallbacks stores callbacks to be invoked after sync completion
+	statusUpdateCallbacks []StatusUpdateCallback
+	// statusUpdateMutex protects statusUpdateCallbacks from concurrent access
+	statusUpdateMutex sync.RWMutex
 }
 
 // RunOnce runs a single iteration of a reconciliation loop.
@@ -251,22 +258,28 @@ func (c *Controller) RunOnce(ctx context.Context) error {
 			registryErrorsTotal.Counter.Inc()
 			deprecatedRegistryErrors.Counter.Inc()
 
-			// Update DNSEndpoint status on failure
-			c.updateDNSEndpointStatus(ctx, plan.Changes, false, fmt.Sprintf("Failed to sync: %v", err))
+			// Invoke status update callbacks on failure
+			if c.UpdateDNSEndpointStatus {
+				c.invokeStatusUpdateCallbacks(ctx, plan.Changes, false, fmt.Sprintf("Failed to sync: %v", err))
+			}
 
 			return err
 		} else {
 			emitChangeEvent(c.EventEmitter, *plan.Changes, events.RecordReady)
 
-			// Update DNSEndpoint status on success
-			c.updateDNSEndpointStatus(ctx, plan.Changes, true, "Successfully synced DNS records")
+			// Invoke status update callbacks on success
+			if c.UpdateDNSEndpointStatus {
+				c.invokeStatusUpdateCallbacks(ctx, plan.Changes, true, "Successfully synced DNS records")
+			}
 		}
 	} else {
 		controllerNoChangesTotal.Counter.Inc()
 		log.Info("All records are already up to date")
 
 		// TODO: Review if we should update DNSEndpoint status when there are no changes
-		// c.updateDNSEndpointStatus(ctx, plan.Changes, true, "All records are already up to date")
+		// if c.UpdateDNSEndpointStatus {
+		//     c.invokeStatusUpdateCallbacks(ctx, plan.Changes, true, "All records are already up to date")
+		// }
 	}
 
 	lastSyncTimestamp.Gauge.SetToCurrentTime()
@@ -381,5 +394,24 @@ func (c *Controller) Run(ctx context.Context) {
 			log.Info("Terminating main controller loop")
 			return
 		}
+	}
+}
+
+// RegisterStatusUpdateCallback registers a callback to be invoked after sync completion
+func (c *Controller) RegisterStatusUpdateCallback(callback StatusUpdateCallback) {
+	c.statusUpdateMutex.Lock()
+	defer c.statusUpdateMutex.Unlock()
+	c.statusUpdateCallbacks = append(c.statusUpdateCallbacks, callback)
+	log.Debug("Registered status update callback")
+}
+
+// invokeStatusUpdateCallbacks calls all registered callbacks with sync results
+func (c *Controller) invokeStatusUpdateCallbacks(ctx context.Context, changes *plan.Changes, success bool, message string) {
+	c.statusUpdateMutex.RLock()
+	callbacks := append([]StatusUpdateCallback(nil), c.statusUpdateCallbacks...)
+	c.statusUpdateMutex.RUnlock()
+
+	for _, callback := range callbacks {
+		callback(ctx, changes, success, message)
 	}
 }
