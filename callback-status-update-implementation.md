@@ -7,6 +7,7 @@ This document describes the callback-based implementation for updating DNSEndpoi
 ## Problem Statement
 
 The original implementation used type assertion `c.Source.(dnsEndpointStatusUpdater)` which always failed because:
+
 1. Sources are wrapped in multiple wrapper layers during initialization
 2. Wrappers don't implement the `dnsEndpointStatusUpdater` interface
 3. Controller only has access to the outermost wrapper (PostProcessor)
@@ -17,6 +18,7 @@ The original implementation used type assertion `c.Source.(dnsEndpointStatusUpda
 ### Callback Registration Pattern
 
 Instead of type assertions, use callback registration:
+
 1. Controller exposes `RegisterStatusUpdateCallback()` method
 2. During initialization, create a separate unwrapped crdSource instance
 3. Register a callback function that processes plan changes and updates status
@@ -176,6 +178,7 @@ sequenceDiagram
 **Purpose**: Add callback infrastructure to Controller
 
 **Changes**:
+
 ```go
 // Added before Controller struct
 type StatusUpdateCallback func(ctx context.Context, changes *plan.Changes, success bool, message string)
@@ -194,6 +197,7 @@ func (c *Controller) invokeStatusUpdateCallbacks(ctx context.Context, changes *p
 ```
 
 **Modified in RunOnce() method** (around line 255-283):
+
 - Replaced `c.updateDNSEndpointStatus()` calls with `c.invokeStatusUpdateCallbacks()`
 - Added `if c.UpdateDNSEndpointStatus` check before invoking callbacks
 - Invoke on both success and failure paths
@@ -203,6 +207,7 @@ func (c *Controller) invokeStatusUpdateCallbacks(ctx context.Context, changes *p
 **Purpose**: Add simple status update method for individual DNSEndpoints
 
 **Changes**:
+
 ```go
 // Removed import
 - "sigs.k8s.io/external-dns/plan"
@@ -231,6 +236,7 @@ func (cs *crdSource) UpdateDNSEndpointStatus(ctx context.Context, namespace, nam
 ```
 
 **Key Design**:
+
 - Method updates ONE endpoint at a time
 - No knowledge of plan.Changes
 - Returns error for proper error handling
@@ -240,6 +246,7 @@ func (cs *crdSource) UpdateDNSEndpointStatus(ctx context.Context, namespace, nam
 **Purpose**: Export buildCRDSource function for callback registration
 
 **Changes**:
+
 ```go
 // Added after buildCRDSource function (around line 567)
 // BuildCRDSource creates a CRD source for exposing custom resources as DNS records.
@@ -256,6 +263,7 @@ func BuildCRDSource(ctx context.Context, p ClientGenerator, cfg *Config) (Source
 **Changes**:
 
 **In Execute() function** (after line 137):
+
 ```go
 // Register status update callbacks for CRD sources
 if slices.Contains(cfg.Sources, "crd") {
@@ -264,6 +272,7 @@ if slices.Contains(cfg.Sources, "crd") {
 ```
 
 **Added functions at end of file** (before configureLogger):
+
 ```go
 // registerStatusUpdateCallbacks creates a CRD source instance and registers its status update callback
 func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *externaldns.Config) {
@@ -362,6 +371,7 @@ func extractDNSEndpointsFromChanges(changes *plan.Changes) map[string]dnsEndpoin
 **Purpose**: Remove old implementation
 
 **Changes**: Replaced entire file content with deprecation notice:
+
 ```go
 package controller
 
@@ -382,12 +392,14 @@ package controller
 **Purpose**: Update tests for new callback mechanism
 
 **Changes**: Replaced old tests with new ones:
+
 ```go
 func TestCallbackRegistration(t *testing.T)
 func TestMultipleCallbacks(t *testing.T)
 ```
 
 Tests verify:
+
 - Callbacks can be registered
 - Callbacks are invoked with correct parameters
 - Multiple callbacks all execute
@@ -395,6 +407,7 @@ Tests verify:
 ## Implementation Flow
 
 ### Initialization (Execute())
+
 ```
 1. Build wrapped source chain
 2. Build controller
@@ -409,6 +422,7 @@ Tests verify:
 ```
 
 ### Runtime (RunOnce())
+
 ```
 1. Get endpoints from source
 2. Get current state from registry
@@ -429,27 +443,33 @@ Tests verify:
 ## Key Design Decisions
 
 ### 1. Separate CRD Source Instance
+
 **Decision**: Create a new crdSource instance for status updates instead of trying to unwrap the main source
 
 **Rationale**:
+
 - Avoids complex unwrapping logic
 - Clean separation of concerns
 - Minimal overhead (shares same Kubernetes client)
 - Main source remains unchanged
 
 ### 2. Batch Processing in Controller Layer
+
 **Decision**: Keep batch processing logic in controller/execute.go, not in crdSource
 
 **Rationale**:
+
 - crdSource shouldn't know about plan.Changes structure
 - Single Responsibility: crdSource = CRD operations only
 - Controller layer = orchestration logic
 - Better testability and separation
 
 ### 3. Simple Method Signature
+
 **Decision**: `UpdateDNSEndpointStatus(ctx, namespace, name, success, message) error`
 
 **Rationale**:
+
 - One endpoint at a time
 - No coupling to plan internals
 - Returns error for proper error handling
@@ -457,9 +477,11 @@ Tests verify:
 - Easy to test
 
 ### 4. Callback Pattern
+
 **Decision**: Use function callbacks instead of interfaces
 
 **Rationale**:
+
 - No need to modify wrappers
 - Flexible - any function matching signature can be registered
 - Extensible - multiple callbacks supported
@@ -483,6 +505,7 @@ Tests verify:
 ## Testing
 
 All tests pass:
+
 - `controller/controller_test.go` - Controller functionality
 - `controller/dnsendpoint_status_test.go` - Callback registration
 - `source/crd_test.go` - CRD source operations

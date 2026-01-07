@@ -240,6 +240,7 @@ if err := c.Registry.ApplyChanges(ctx, plan.Changes); err != nil {
 ### 1. **Dual Instance Architecture**
 
 **Problem**: Two separate `crdSource` instances are created:
+
 - **Instance #1**: Main source chain (wrapped in PostProcessor, filters, etc.)
   - Created in `buildSource()` at line 112
   - Used for **reading** DNSEndpoint CRDs and generating endpoints
@@ -256,6 +257,7 @@ The documentation (`callback-status-update-implementation.md:431-438`) explains:
 > **Decision**: Create a new crdSource instance for status updates instead of trying to unwrap the main source
 >
 > **Rationale**:
+>
 > - Avoids complex unwrapping logic
 > - Clean separation of concerns
 > - Minimal overhead (shares same Kubernetes client)
@@ -272,6 +274,7 @@ DNSEndpointClient is **not directly passed** from execute.go. Instead:
 5. crdSource stores it in `cs.client` field
 
 **Flow**:
+
 ```
 execute.go
   └─> source.BuildCRDSource()
@@ -408,6 +411,7 @@ The current dual-instance approach is actually reasonable because:
 5. **Repository**: Uses `client.Get()` and `client.UpdateStatus()`
 
 **Key Design Choice**:
+
 - Two separate instances provide clean separation
 - No shared state between reading and writing operations
 - Each instance has its own DNSEndpointClient wrapping a REST client

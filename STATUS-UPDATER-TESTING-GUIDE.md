@@ -138,6 +138,7 @@ kubectl get dnsendpoint test-error -o yaml | grep -A5 'type: Programmed'
 ```
 
 **Expected Output**:
+
 ```yaml
   - lastTransitionTime: "2025-01-XX..."
     message: "Failed to sync: ..."
@@ -178,7 +179,9 @@ time (export STATUS_UPDATER_IMPL=controller; ./external-dns --source=crd --provi
 ## Comparison Criteria
 
 ### Functionality ✓
+
 All three implementations should:
+
 - ✓ Update status on successful sync
 - ✓ Update status on failed sync
 - ✓ Set Accepted condition when DNSEndpoint is processed
@@ -198,31 +201,34 @@ All three implementations should:
 ### Performance
 
 Expected: **Both options should have identical performance**
+
 - Same underlying operations (Get + UpdateStatus)
 - Same number of API calls
 - Negligible difference in object creation overhead
 
 ## Making the Final Decision
 
-### Choose Option 1 (pkg-crd) if:
+### Choose Option 1 (pkg-crd) if
+
 ✅ You want clean separation of concerns
 ✅ You value reusability
 ✅ You follow repository/service pattern
 ✅ You want to avoid dual crdSource instances
 ✅ You plan to use status updates from multiple places
 
-### Choose Option 2 (controller) if:
+### Choose Option 2 (controller) if
+
 ✅ You want simpler package structure
 ✅ You prefer controller-owned status logic
 ✅ You don't need status updates outside controller
 ✅ You want fewer abstractions
-
 
 ## Removing Unused Options
 
 ### If Keeping Option 1 (pkg-crd)
 
 **Delete these files:**
+
 ```bash
 # Remove Option 2
 rm controller/dnsendpoint_status.go
@@ -232,6 +238,7 @@ rm controller/dnsendpoint_status.go
 ```
 
 **Update execute.go:**
+
 ```go
 // In controller/execute.go
 
@@ -282,6 +289,7 @@ func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *e
 ```
 
 **Update source/crd.go:**
+
 ```go
 // In source/crd.go
 
@@ -291,12 +299,14 @@ func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *e
 ### If Keeping Option 2 (controller)
 
 **Delete these files:**
+
 ```bash
 # Remove Option 1
 rm pkg/crd/status_updater.go
 ```
 
 **Update execute.go:**
+
 ```go
 // In controller/execute.go
 
@@ -347,6 +357,7 @@ func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *e
 ```
 
 **Update source/crd.go:**
+
 ```go
 // In source/crd.go
 
@@ -385,6 +396,7 @@ kubectl get dnsendpoint test-endpoint -o yaml | grep -A10 status:
 **Cause**: Invalid kubeconfig or API server URL
 
 **Fix**: Verify Kubernetes connectivity:
+
 ```bash
 kubectl get nodes  # Should work
 ```
@@ -392,11 +404,13 @@ kubectl get nodes  # Should work
 ### Status not updating
 
 **Possible causes:**
+
 1. `--source=crd` not specified
 2. DNSEndpoint CRD not installed
 3. External-dns doesn't have RBAC permissions for status subresource
 
 **Fix for RBAC:**
+
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -422,6 +436,7 @@ If you have questions about which option to choose or how to remove unused code:
 ## Recommendation Summary
 
 **Choose Option 1 (pkg-crd)** for:
+
 - ✅ Best separation of concerns
 - ✅ Most reusable
 - ✅ Follows established patterns

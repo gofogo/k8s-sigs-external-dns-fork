@@ -16,6 +16,7 @@ Based on architectural review, the following package locations have been chosen:
    - `crd.go` - Refactored to use `crd.DNSEndpointClient` interface
 
 This organization:
+
 - ✅ Makes CRD client infrastructure reusable across packages
 - ✅ Keeps type registration with type definitions
 - ✅ Separates business logic from data access
@@ -29,6 +30,7 @@ Currently, `source/crd.go` mixes two distinct responsibilities:
 2. **Source Implementation** - Business logic for implementing the Source interface
 
 This violates the Single Responsibility Principle and makes the code harder to:
+
 - Test (can't test CRUD operations independently)
 - Reuse (CRUD logic is locked inside Source)
 - Maintain (changes to one concern affect the other)
@@ -204,17 +206,20 @@ flowchart LR
 **Purpose**: Pure repository/data access layer for DNSEndpoint CRDs
 
 **Location Rationale**:
+
 - `pkg/crd/` is a shared package for CRD client infrastructure
 - Can be used by `source/`, `controller/`, or any other package
 - Not tied to Source implementation
 
 **Responsibilities**:
+
 - CRUD operations on DNSEndpoint resources
 - Low-level Kubernetes API interactions
 - No business logic
 - No knowledge of Source interface
 
 **Interface**:
+
 ```go
 package crd
 
@@ -245,6 +250,7 @@ func NewDNSEndpointClient(restClient rest.Interface, namespace, kind string, cod
 ```
 
 **Methods**:
+
 - `Get(ctx, namespace, name)` - Simple fetch
 - `List(ctx, opts)` - List with options
 - `UpdateStatus(ctx, dnsEndpoint)` - Update status subresource
@@ -255,12 +261,14 @@ func NewDNSEndpointClient(restClient rest.Interface, namespace, kind string, cod
 **Purpose**: Source implementation that uses DNSEndpointClient
 
 **Responsibilities**:
+
 - Implement Source interface (Endpoints, AddEventHandler)
 - Business logic: filtering, validation, conversion
 - Status update orchestration (uses client internally)
 - Informer management
 
 **Structure**:
+
 ```go
 type crdSource struct {
     client           DNSEndpointClient
@@ -283,6 +291,7 @@ func (cs *crdSource) UpdateDNSEndpointStatus(ctx context.Context, namespace, nam
 ```
 
 **Key Changes**:
+
 - Uses `DNSEndpointClient` interface instead of direct REST client
 - Focuses on Source interface implementation
 - Business logic for status updates (which status to set, when)
@@ -292,10 +301,12 @@ func (cs *crdSource) UpdateDNSEndpointStatus(ctx context.Context, namespace, nam
 **Purpose**: Client factory and REST client setup
 
 **Location Rationale**:
+
 - `pkg/crd/` is shared infrastructure for CRD clients
 - Can be reused for other CRD types in the future
 
 **Content**:
+
 - `NewCRDClientForAPIVersionKind()` - Creates REST client
 - Client configuration logic
 - REST client builder functions
@@ -305,11 +316,13 @@ func (cs *crdSource) UpdateDNSEndpointStatus(ctx context.Context, namespace, nam
 **Purpose**: Scheme registration for DNSEndpoint types
 
 **Location Rationale**:
+
 - `apis/v1alpha1` is where types are defined
 - Scheme registration belongs with type definitions
 - May be auto-generated in the future (e.g., via controller-gen)
 
 **Content**:
+
 ```go
 package v1alpha1
 
@@ -555,25 +568,30 @@ sequenceDiagram
 ## Benefits of This Refactoring
 
 ### 1. Single Responsibility Principle
+
 - **DNSEndpointClient**: Only responsible for CRUD operations
 - **crdSource**: Only responsible for Source interface and business logic
 
 ### 2. Testability
+
 - Can test CRUD operations independently with mock K8s API
 - Can test Source logic with mock DNSEndpointClient
 - Easier to write focused unit tests
 
 ### 3. Reusability
+
 - DNSEndpointClient can be used by other components
 - Not locked into crdSource
 - Example: Direct status updates from controller without going through Source
 
 ### 4. Maintainability
+
 - Changes to API calls don't affect business logic
 - Changes to business logic don't affect API calls
 - Clear separation makes code easier to understand
 
 ### 5. Future Extensibility
+
 - Easy to add new CRUD operations (Create, Delete, Patch)
 - Easy to swap implementations (e.g., caching layer)
 - Can add repository-level features (retry logic, batching)
@@ -583,6 +601,7 @@ sequenceDiagram
 ### Backward Compatibility
 
 The refactoring maintains the same external API:
+
 - `NewCRDSource()` signature can remain compatible (internal changes only)
 - `Source` interface implementation unchanged
 - `UpdateDNSEndpointStatus()` signature unchanged
@@ -648,18 +667,21 @@ graph TB
 ### New Files
 
 **Infrastructure Layer (pkg/crd/)**:
+
 - `pkg/crd/dnsendpoint_client.go` - Repository layer (CRUD operations)
 - `pkg/crd/dnsendpoint_client_test.go` - Repository tests
 - `pkg/crd/client_factory.go` - REST client factory and configuration
 - `pkg/crd/client_factory_test.go` - Factory tests
 
 **Type Registration (apis/v1alpha1/)**:
+
 - `apis/v1alpha1/scheme.go` - Scheme registration (moved from source/crd.go)
 - `apis/v1alpha1/scheme_test.go` - Scheme tests
 
 ### Modified Files
 
 **Source Layer**:
+
 - `source/crd.go` - Refactored to use `crd.DNSEndpointClient` interface
   - Changes: Use client instead of direct REST calls, remove CRUD methods
 - `source/crd_test.go` - Updated to use mock `crd.DNSEndpointClient`
@@ -667,25 +689,30 @@ graph TB
   - Changes: Import `pkg/crd`, use `crd.NewDNSEndpointClient()`
 
 **Controller Layer** (minimal changes):
+
 - `controller/execute.go` - Add `pkg/crd` import, verify type assertions work
 
 ### Code Movements
 
 **From `source/crd.go` → `pkg/crd/dnsendpoint_client.go`**:
+
 - `Get(ctx, namespace, name)` method
 - `List(ctx, opts)` method
 - `UpdateStatus(ctx, dnsEndpoint)` method
 - `watch(ctx, opts)` method (renamed to `Watch` - exported)
 
 **From `source/crd.go` → `pkg/crd/client_factory.go`**:
+
 - `NewCRDClientForAPIVersionKind()` function
 
 **From `source/crd.go` → `apis/v1alpha1/scheme.go`**:
+
 - `addKnownTypes()` function (renamed to `AddToScheme()`)
 
 ### Removed Code
 
 From `source/crd.go`:
+
 - Direct REST client interactions in CRUD methods
 - Low-level Kubernetes API call construction
 - REST client and codec fields in struct
@@ -694,11 +721,13 @@ From `source/crd.go`:
 ## Risk Assessment
 
 ### Low Risk
+
 - No external API changes
 - Maintains backward compatibility
 - Purely internal refactoring
 
 ### Mitigation
+
 - Comprehensive test coverage before refactoring
 - Incremental changes with testing at each step
 - Keep old code commented during migration for reference

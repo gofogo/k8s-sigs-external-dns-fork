@@ -5,6 +5,7 @@
 ### Issue: `crdSource.UpdateDNSEndpointStatus()` Violates SRP
 
 **Current state**: `crdSource` has two responsibilities:
+
 1. **Reading**: Implements `Source` interface - discovers and provides DNS endpoints
 2. **Writing**: Updates DNSEndpoint status after sync
 
@@ -172,6 +173,7 @@ func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *e
 ```
 
 ### Pros
+
 ✅ Clean separation: `crdSource` = reading, `StatusUpdater` = writing
 ✅ Single responsibility for each type
 ✅ No need for dual crdSource instances
@@ -180,6 +182,7 @@ func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *e
 ✅ Easy to test independently
 
 ### Cons
+
 ❌ Need to create helper to get KubeClient in execute.go
 ❌ Slightly more code in execute.go (but clearer)
 
@@ -267,12 +270,14 @@ func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *e
 ```
 
 ### Pros
+
 ✅ Status updates owned by controller (who orchestrates them)
 ✅ No dependency on source package for status updates
 ✅ `crdSource` stays pure (only reading)
 ✅ Clear: controller package controls all status logic
 
 ### Cons
+
 ❌ Controller package depends on `pkg/crd`
 ❌ Less reusable (tied to controller context)
 ❌ Mixes controller orchestration with CRD-specific logic
@@ -325,12 +330,14 @@ func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *e
 ```
 
 ### Pros
+
 ✅ Simplest approach
 ✅ No new types or files
 ✅ Clear that it's a one-off utility
 ✅ `crdSource` stays clean
 
 ### Cons
+
 ❌ Not reusable
 ❌ Harder to test in isolation
 ❌ Helper function in middle of larger function
@@ -477,6 +484,7 @@ func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *e
 ```
 
 ### Pros
+
 ✅ Encapsulates all batch update logic
 ✅ Moves `extractDNSEndpointsFromChanges` out of execute.go
 ✅ Clean callback registration
@@ -484,6 +492,7 @@ func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *e
 ✅ Single place for all batch status update logic
 
 ### Cons
+
 ❌ `pkg/crd` depends on `plan` package
 ❌ More complex than Option 1
 ❌ Ties CRD package to external-dns domain concepts
@@ -566,23 +575,28 @@ callback := func(ctx context.Context, changes *plan.Changes, success bool, messa
 If choosing Option 1, here's the migration:
 
 ### Step 1: Create StatusUpdater
+
 - Add `pkg/crd/status_updater.go`
 - Implement interface and type
 
 ### Step 2: Update execute.go
+
 - Modify `registerStatusUpdateCallbacks()`
 - Create `StatusUpdater` instead of `crdSource`
 - Use `StatusUpdater` in callback
 
 ### Step 3: Remove from crdSource
+
 - Delete `UpdateDNSEndpointStatus()` method from `source/crd.go`
 - Update `callback-status-update-implementation.md`
 
 ### Step 4: Update Tests
+
 - Remove status update tests from `source/crd_test.go`
 - Add tests for `StatusUpdater` in `pkg/crd/status_updater_test.go`
 
 ### Step 5: Update Documentation
+
 - Update `controller-crd-update-flow.md`
 - Update `crd-refactoring-plan.md`
 
