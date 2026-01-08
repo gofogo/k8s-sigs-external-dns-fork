@@ -19,12 +19,12 @@ package source
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
+
+	"sigs.k8s.io/external-dns/source/types"
 
 	"sigs.k8s.io/external-dns/source/annotations"
 
@@ -32,14 +32,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/apimachinery/pkg/watch"
 
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/pkg/crd"
+	"sigs.k8s.io/external-dns/pkg/events"
 )
 
 // crdSource is an implementation of Source that provides endpoints by listing
@@ -53,85 +51,27 @@ import (
 // +externaldns:source:namespace=all,single
 // +externaldns:source:fqdn-template=false
 type crdSource struct {
-	crdClient        rest.Interface
-	namespace        string
-	crdResource      string
-	codec            runtime.ParameterCodec
+	client           crd.DNSEndpointClient
 	annotationFilter string
 	labelSelector    labels.Selector
 	informer         cache.SharedInformer
 }
 
-func addKnownTypes(scheme *runtime.Scheme, groupVersion schema.GroupVersion) error {
-	scheme.AddKnownTypes(groupVersion,
-		&apiv1alpha1.DNSEndpoint{},
-		&apiv1alpha1.DNSEndpointList{},
-	)
-	metav1.AddToGroupVersion(scheme, groupVersion)
-	return nil
-}
-
-// NewCRDClientForAPIVersionKind return rest client for the given apiVersion and kind of the CRD
-func NewCRDClientForAPIVersionKind(client kubernetes.Interface, kubeConfig, apiServerURL, apiVersion, kind string) (*rest.RESTClient, *runtime.Scheme, error) {
-	if kubeConfig == "" {
-		if _, err := os.Stat(clientcmd.RecommendedHomeFile); err == nil {
-			kubeConfig = clientcmd.RecommendedHomeFile
-		}
-	}
-
-	config, err := clientcmd.BuildConfigFromFlags(apiServerURL, kubeConfig)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	groupVersion, err := schema.ParseGroupVersion(apiVersion)
-	if err != nil {
-		return nil, nil, err
-	}
-	apiResourceList, err := client.Discovery().ServerResourcesForGroupVersion(groupVersion.String())
-	if err != nil {
-		return nil, nil, fmt.Errorf("error listing resources in GroupVersion %q: %w", groupVersion.String(), err)
-	}
-
-	var crdAPIResource *metav1.APIResource
-	for _, apiResource := range apiResourceList.APIResources {
-		if apiResource.Kind == kind {
-			crdAPIResource = &apiResource
-			break
-		}
-	}
-	if crdAPIResource == nil {
-		return nil, nil, fmt.Errorf("unable to find Resource Kind %q in GroupVersion %q", kind, apiVersion)
-	}
-
-	scheme := runtime.NewScheme()
-	_ = addKnownTypes(scheme, groupVersion)
-
-	config.GroupVersion = &groupVersion
-	config.APIPath = "/apis"
-	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
-
-	crdClient, err := rest.UnversionedRESTClientFor(config)
-	if err != nil {
-		return nil, nil, err
-	}
-	return crdClient, scheme, nil
-}
-
 // NewCRDSource creates a new crdSource with the given config.
+// Parameters:
+//   - client: DNSEndpointClient for accessing DNSEndpoint CRDs
+//   - annotationFilter: Filter for annotation-based selection
+//   - labelSelector: Selector for label-based filtering
+//   - startInformer: Whether to start an informer for watching CRD changes
 func NewCRDSource(
-	crdClient rest.Interface,
-	namespace, kind, annotationFilter string,
+	client crd.DNSEndpointClient,
+	annotationFilter string,
 	labelSelector labels.Selector,
-	scheme *runtime.Scheme,
 	startInformer bool) (Source, error) {
 	sourceCrd := crdSource{
-		crdResource:      strings.ToLower(kind) + "s",
-		namespace:        namespace,
+		client:           client,
 		annotationFilter: annotationFilter,
 		labelSelector:    labelSelector,
-		crdClient:        crdClient,
-		codec:            runtime.NewParameterCodec(scheme),
 	}
 	if startInformer {
 		// external-dns already runs its sync-handler periodically (controlled by `--interval` flag) to ensure any
@@ -139,10 +79,10 @@ func NewCRDSource(
 		sourceCrd.informer = cache.NewSharedInformer(
 			&cache.ListWatch{
 				ListWithContextFunc: func(ctx context.Context, lo metav1.ListOptions) (runtime.Object, error) {
-					return sourceCrd.List(ctx, &lo)
+					return client.List(ctx, &lo)
 				},
 				WatchFuncWithContext: func(ctx context.Context, lo metav1.ListOptions) (watch.Interface, error) {
-					return sourceCrd.watch(ctx, &lo)
+					return client.Watch(ctx, &lo)
 				},
 			},
 			&apiv1alpha1.DNSEndpoint{},
@@ -182,7 +122,7 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 		err    error
 	)
 
-	result, err = cs.List(ctx, &metav1.ListOptions{LabelSelector: cs.labelSelector.String()})
+	result, err = cs.client.List(ctx, &metav1.ListOptions{LabelSelector: cs.labelSelector.String()})
 	if err != nil {
 		return nil, err
 	}
@@ -220,54 +160,30 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 			}
 
 			ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("crd/%s/%s", dnsEndpoint.Namespace, dnsEndpoint.Name))
+			// TODO: should add tests for this
+			ep.WithRefObject(events.NewObjectReference(dnsEndpoint, types.CRD))
 
 			crdEndpoints = append(crdEndpoints, ep)
 		}
 
 		endpoints = append(endpoints, crdEndpoints...)
 
-		if dnsEndpoint.Status.ObservedGeneration == dnsEndpoint.Generation {
-			continue
-		}
-
-		dnsEndpoint.Status.ObservedGeneration = dnsEndpoint.Generation
-		// Update the ObservedGeneration
-		_, err = cs.UpdateStatus(ctx, dnsEndpoint)
+		// Update status to mark endpoint as accepted
+		apiv1alpha1.SetAccepted(&dnsEndpoint.Status, "DNSEndpoint accepted by controller", dnsEndpoint.Generation)
+		_, err = cs.client.UpdateStatus(ctx, dnsEndpoint)
 		if err != nil {
-			log.Warnf("Could not update ObservedGeneration of the CRD: %v", err)
+			log.Warnf("Could not update Accepted condition of DNSEndpoint %s/%s: %v", dnsEndpoint.Namespace, dnsEndpoint.Name, err)
 		}
 	}
 
 	return endpoints, nil
 }
 
-func (cs *crdSource) watch(ctx context.Context, opts *metav1.ListOptions) (watch.Interface, error) {
-	opts.Watch = true
-	return cs.crdClient.Get().
-		Namespace(cs.namespace).
-		Resource(cs.crdResource).
-		VersionedParams(opts, cs.codec).
-		Watch(ctx)
-}
-
-func (cs *crdSource) List(ctx context.Context, opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error) {
-	result := &apiv1alpha1.DNSEndpointList{}
-	return result, cs.crdClient.Get().
-		Namespace(cs.namespace).
-		Resource(cs.crdResource).
-		VersionedParams(opts, cs.codec).
-		Do(ctx).
-		Into(result)
-}
-
-func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error) {
-	result := &apiv1alpha1.DNSEndpoint{}
-	return result, cs.crdClient.Put().
-		Namespace(dnsEndpoint.Namespace).
-		Resource(cs.crdResource).
-		Name(dnsEndpoint.Name).
-		SubResource("status").
-		Body(dnsEndpoint).
-		Do(ctx).
-		Into(result)
-}
+// NOTE: UpdateDNSEndpointStatus method removed - it violated Single Responsibility Principle
+//
+// Status updates are now handled by dedicated components:
+// - Option 1: pkg/crd.StatusUpdater (recommended)
+// - Option 2: controller.DNSEndpointStatusManager
+//
+// This keeps crdSource focused on its single responsibility: implementing the Source interface
+// for discovering and providing DNS endpoints from DNSEndpoint CRDs.

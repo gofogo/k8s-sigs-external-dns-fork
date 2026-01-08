@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -30,9 +31,12 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/pkg/crd"
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns/validation"
 	"sigs.k8s.io/external-dns/pkg/events"
@@ -133,6 +137,11 @@ func Execute() {
 	ctrl, err := buildController(ctx, cfg, endpointsSource, prvdr, domainFilter)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// Register status update callbacks for CRD sources
+	if slices.Contains(cfg.Sources, "crd") {
+		registerStatusUpdateCallbacks(ctx, ctrl, cfg)
 	}
 
 	if cfg.Once {
@@ -385,17 +394,305 @@ func buildController(
 	}
 
 	return &Controller{
-		Source:               src,
-		Registry:             reg,
-		Policy:               policy,
-		Interval:             cfg.Interval,
-		DomainFilter:         filter,
-		ManagedRecordTypes:   cfg.ManagedDNSRecordTypes,
-		ExcludeRecordTypes:   cfg.ExcludeDNSRecordTypes,
-		MinEventSyncInterval: cfg.MinEventSyncInterval,
-		TXTOwnerOld:          cfg.TXTOwnerOld,
-		EventEmitter:         eventEmitter,
+		Source:                  src,
+		Registry:                reg,
+		Policy:                  policy,
+		Interval:                cfg.Interval,
+		DomainFilter:            filter,
+		ManagedRecordTypes:      cfg.ManagedDNSRecordTypes,
+		ExcludeRecordTypes:      cfg.ExcludeDNSRecordTypes,
+		MinEventSyncInterval:    cfg.MinEventSyncInterval,
+		TXTOwnerOld:             cfg.TXTOwnerOld,
+		EventEmitter:            eventEmitter,
+		UpdateDNSEndpointStatus: slices.Contains(cfg.Sources, "crd"),
 	}, nil
+}
+
+// REFACTORING NOTE: Dual Implementation - 2x2 Matrix
+//
+// This function supports FOUR combinations for testing/comparison:
+//
+// DIMENSION 1 - Status Updater Location (STATUS_UPDATER_IMPL):
+//   OPTION 1 (pkg-crd):     Uses pkg/crd.StatusUpdater
+//   OPTION 2 (controller):  Uses controller.DNSEndpointStatusManager
+//
+// DIMENSION 2 - Client Type (CLIENT_IMPL):
+//   rest (default):          Uses k8s.io/client-go REST client
+//   controller-runtime:      Uses sigs.k8s.io/controller-runtime client
+//
+// TESTING MATRIX (4 combinations):
+//   1. STATUS_UPDATER_IMPL=pkg-crd + CLIENT_IMPL=rest (DEFAULT, baseline)
+//      → Option 1 with REST client (existing implementation)
+//
+//   2. STATUS_UPDATER_IMPL=pkg-crd + CLIENT_IMPL=controller-runtime
+//      → Option 1 with controller-runtime backed DNSEndpointClient interface
+//
+//   3. STATUS_UPDATER_IMPL=controller + CLIENT_IMPL=rest
+//      → Option 2 with REST client via DNSEndpointClient interface
+//
+//   4. STATUS_UPDATER_IMPL=controller + CLIENT_IMPL=controller-runtime
+//      → Option 2 with direct client.Client usage (no interface)
+//
+// TO FINALIZE:
+//   A. Choose status updater location (Option 1 or 2)
+//   B. Choose client type (REST or controller-runtime)
+//   C. Remove environment variables
+//   D. Delete unused code per file-level comments
+//
+// registerStatusUpdateCallbacks creates a status updater and registers its callback
+func registerStatusUpdateCallbacks(ctx context.Context, ctrl *Controller, cfg *externaldns.Config) {
+	// Read environment variable to choose implementation
+	// Default to "pkg-crd" (Option 1 - recommended)
+	statusUpdaterImpl := os.Getenv("STATUS_UPDATER_IMPL")
+	if statusUpdaterImpl == "" {
+		statusUpdaterImpl = "pkg-crd"
+	}
+
+	log.Infof("Using status updater implementation: %s", statusUpdaterImpl)
+
+	switch statusUpdaterImpl {
+	case "pkg-crd":
+		// OPTION 1: StatusUpdater in pkg/crd package (RECOMMENDED)
+		// Uses pkg/crd.NewDNSEndpointStatusUpdater()
+		registerStatusUpdateCallbacksOption1(ctx, ctrl, cfg)
+
+	case "controller":
+		// OPTION 2: Status manager in controller package
+		// Uses controller.NewDNSEndpointStatusManager()
+		registerStatusUpdateCallbacksOption2(ctx, ctrl, cfg)
+
+	default:
+		log.Warnf("Unknown STATUS_UPDATER_IMPL value: %s, falling back to pkg-crd", statusUpdaterImpl)
+		registerStatusUpdateCallbacksOption1(ctx, ctrl, cfg)
+	}
+}
+
+// ============================================================================
+// OPTION 1: StatusUpdater in pkg/crd package
+// ============================================================================
+// Supports both REST and controller-runtime client implementations
+// TO REMOVE: Delete this function and pkg/crd/status_updater.go
+func registerStatusUpdateCallbacksOption1(ctx context.Context, ctrl *Controller, cfg *externaldns.Config) {
+	// Check which client implementation to use
+	// Default to "rest" for backwards compatibility
+	clientImpl := os.Getenv("CLIENT_IMPL")
+	if clientImpl == "" {
+		clientImpl = "rest"
+	}
+
+	var dnsEndpointClient crd.DNSEndpointClient
+
+	if clientImpl == "controller-runtime" {
+		// Use controller-runtime backed DNSEndpointClient (NEW)
+		log.Info("Option 1: Using controller-runtime backed DNSEndpointClient")
+
+		ctrlRuntimeClient, err := crd.NewControllerRuntimeClient(
+			cfg.KubeConfig,
+			cfg.APIServerURL,
+			cfg.Namespace,
+		)
+		if err != nil {
+			log.Warnf("Could not create controller-runtime client: %v", err)
+			return
+		}
+
+		dnsEndpointClient = crd.NewDNSEndpointClientCtrlRuntime(ctrlRuntimeClient, cfg.Namespace)
+	} else {
+		// Use REST client (EXISTING)
+		log.Info("Option 1: Using REST client DNSEndpointClient")
+
+		kubeClient, err := getKubeClient(cfg)
+		if err != nil {
+			log.Warnf("Could not create Kubernetes client: %v", err)
+			return
+		}
+
+		restClient, _, err := crd.NewCRDClientForAPIVersionKind(
+			kubeClient,
+			cfg.KubeConfig,
+			cfg.APIServerURL,
+			cfg.CRDSourceAPIVersion,
+			cfg.CRDSourceKind,
+		)
+		if err != nil {
+			log.Warnf("Could not create CRD REST client: %v", err)
+			return
+		}
+
+		dnsEndpointClient = crd.NewDNSEndpointClient(
+			restClient,
+			cfg.Namespace,
+			cfg.CRDSourceKind,
+			metav1.ParameterCodec,
+		)
+	}
+
+	// Create status updater (Option 1 - service layer in pkg/crd)
+	// Uses the DNSEndpointClient interface - works with both implementations
+	statusUpdater := crd.NewDNSEndpointStatusUpdater(dnsEndpointClient)
+
+	// Register callback
+	callback := func(ctx context.Context, changes *plan.Changes, success bool, message string) {
+		dnsEndpoints := extractDNSEndpointsFromChanges(changes)
+		log.Debugf("Updating status for %d DNSEndpoint(s)", len(dnsEndpoints))
+
+		for key, ref := range dnsEndpoints {
+			err := statusUpdater.UpdateDNSEndpointStatus(ctx, ref.namespace, ref.name, success, message)
+			if err != nil {
+				log.Warnf("Failed to update status for DNSEndpoint %s: %v", key, err)
+			}
+		}
+	}
+
+	ctrl.RegisterStatusUpdateCallback(callback)
+	log.Infof("Registered DNSEndpoint status update callback (Option 1: pkg/crd, client: %s)", clientImpl)
+}
+
+// ============================================================================
+// OPTION 2: Status manager in controller package
+// ============================================================================
+// Supports both REST (via interface) and direct controller-runtime implementations
+// TO REMOVE: Delete this function and controller/dnsendpoint_status.go
+func registerStatusUpdateCallbacksOption2(ctx context.Context, ctrl *Controller, cfg *externaldns.Config) {
+	// Check which client implementation to use
+	// Default to "rest" for backwards compatibility
+	clientImpl := os.Getenv("CLIENT_IMPL")
+	if clientImpl == "" {
+		clientImpl = "rest"
+	}
+
+	if clientImpl == "controller-runtime" {
+		// Use direct controller-runtime client (NEW)
+		log.Info("Option 2: Using direct controller-runtime client")
+
+		ctrlRuntimeClient, err := crd.NewControllerRuntimeClient(
+			cfg.KubeConfig,
+			cfg.APIServerURL,
+			cfg.Namespace,
+		)
+		if err != nil {
+			log.Warnf("Could not create controller-runtime client: %v", err)
+			return
+		}
+
+		statusManager := NewDNSEndpointStatusManagerCtrlRuntime(ctrlRuntimeClient)
+
+		callback := func(ctx context.Context, changes *plan.Changes, success bool, message string) {
+			dnsEndpoints := extractDNSEndpointsFromChanges(changes)
+			log.Debugf("Updating status for %d DNSEndpoint(s) (controller-runtime direct)", len(dnsEndpoints))
+
+			for key, ref := range dnsEndpoints {
+				err := statusManager.UpdateStatus(ctx, ref.namespace, ref.name, success, message)
+				if err != nil {
+					log.Warnf("Failed to update status for DNSEndpoint %s: %v", key, err)
+				}
+			}
+		}
+
+		ctrl.RegisterStatusUpdateCallback(callback)
+		log.Infof("Registered DNSEndpoint status update callback (Option 2: controller, client: controller-runtime)")
+	} else {
+		// Use REST client via DNSEndpointClient interface (EXISTING)
+		log.Info("Option 2: Using REST client via DNSEndpointClient interface")
+
+		kubeClient, err := getKubeClient(cfg)
+		if err != nil {
+			log.Warnf("Could not create Kubernetes client: %v", err)
+			return
+		}
+
+		restClient, _, err := crd.NewCRDClientForAPIVersionKind(
+			kubeClient,
+			cfg.KubeConfig,
+			cfg.APIServerURL,
+			cfg.CRDSourceAPIVersion,
+			cfg.CRDSourceKind,
+		)
+		if err != nil {
+			log.Warnf("Could not create CRD REST client: %v", err)
+			return
+		}
+
+		dnsEndpointClient := crd.NewDNSEndpointClient(
+			restClient,
+			cfg.Namespace,
+			cfg.CRDSourceKind,
+			metav1.ParameterCodec,
+		)
+
+		statusManager := NewDNSEndpointStatusManager(dnsEndpointClient)
+
+		callback := func(ctx context.Context, changes *plan.Changes, success bool, message string) {
+			dnsEndpoints := extractDNSEndpointsFromChanges(changes)
+			log.Debugf("Updating status for %d DNSEndpoint(s)", len(dnsEndpoints))
+
+			for key, ref := range dnsEndpoints {
+				err := statusManager.UpdateStatus(ctx, ref.namespace, ref.name, success, message)
+				if err != nil {
+					log.Warnf("Failed to update status for DNSEndpoint %s: %v", key, err)
+				}
+			}
+		}
+
+		ctrl.RegisterStatusUpdateCallback(callback)
+		log.Infof("Registered DNSEndpoint status update callback (Option 2: controller, client: %s)", clientImpl)
+	}
+}
+
+// getKubeClient creates a Kubernetes client from config
+// Helper function used by both Option 1 and Option 2
+func getKubeClient(cfg *externaldns.Config) (kubernetes.Interface, error) {
+	clientGen := &source.SingletonClientGenerator{
+		KubeConfig:     cfg.KubeConfig,
+		APIServerURL:   cfg.APIServerURL,
+		RequestTimeout: cfg.RequestTimeout,
+	}
+	return clientGen.KubeClient()
+}
+
+// dnsEndpointRef holds a reference to a DNSEndpoint CRD
+type dnsEndpointRef struct {
+	namespace string
+	name      string
+}
+
+// extractDNSEndpointsFromChanges extracts unique DNSEndpoint references from plan changes
+func extractDNSEndpointsFromChanges(changes *plan.Changes) map[string]dnsEndpointRef {
+	endpoints := make(map[string]dnsEndpointRef)
+
+	// Helper to add endpoint ref
+	addEndpoint := func(ep *endpoint.Endpoint) {
+		if ep == nil {
+			return
+		}
+		ref := ep.RefObject()
+		if ref == nil || ref.Kind != "DNSEndpoint" {
+			return
+		}
+		key := fmt.Sprintf("%s/%s", ref.Namespace, ref.Name)
+		if _, exists := endpoints[key]; !exists {
+			endpoints[key] = dnsEndpointRef{
+				namespace: ref.Namespace,
+				name:      ref.Name,
+			}
+		}
+	}
+
+	// Collect from all change types
+	for _, ep := range changes.Create {
+		addEndpoint(ep)
+	}
+	for _, ep := range changes.UpdateOld {
+		addEndpoint(ep)
+	}
+	for _, ep := range changes.UpdateNew {
+		addEndpoint(ep)
+	}
+	for _, ep := range changes.Delete {
+		addEndpoint(ep)
+	}
+
+	return endpoints
 }
 
 // This function configures the logger format and level based on the provided configuration.

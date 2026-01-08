@@ -22,6 +22,36 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
+// DNSEndpointConditionType is a type of condition for a DNSEndpoint.
+type DNSEndpointConditionType string
+
+// ConditionReason is a reason for a DNSEndpoint condition.
+type ConditionReason string
+
+// Condition types for DNSEndpoint status
+const (
+	// DNSEndpointAccepted indicates the endpoint has been accepted by the controller
+	DNSEndpointAccepted DNSEndpointConditionType = "Accepted"
+
+	// DNSEndpointProgrammed indicates the endpoint has been successfully programmed to the DNS provider
+	DNSEndpointProgrammed DNSEndpointConditionType = "Programmed"
+)
+
+// Condition reasons for DNSEndpoint status
+const (
+	// ReasonAccepted indicates the endpoint has been accepted
+	ReasonAccepted ConditionReason = "Accepted"
+
+	// ReasonProgrammed indicates successful programming to DNS provider
+	ReasonProgrammed ConditionReason = "Programmed"
+
+	// ReasonInvalid indicates the endpoint is invalid
+	ReasonInvalid ConditionReason = "Invalid"
+
+	// ReasonPending indicates the endpoint is pending processing
+	ReasonPending ConditionReason = "Pending"
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -38,7 +68,7 @@ type DNSEndpoint struct {
 	metav1.ObjectMeta `json:"metadata"`
 
 	Spec   DNSEndpointSpec   `json:"spec"`
-	Status DNSEndpointStatus `json:"status"`
+	Status DNSEndpointStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -56,7 +86,12 @@ type DNSEndpointSpec struct {
 
 // DNSEndpointStatus defines the observed state of DNSEndpoint
 type DNSEndpointStatus struct {
-	// The generation observed by the external-dns controller.
+	// Conditions describe the current conditions of the DNSEndpoint.
+	//
 	// +optional
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=8
+	// +kubebuilder:default={{type: "Accepted", status: "Unknown", reason:"Pending", message:"Waiting for controller", lastTransitionTime: "1970-01-01T00:00:00Z"},{type: "Programmed", status: "Unknown", reason:"Pending", message:"Waiting for controller", lastTransitionTime: "1970-01-01T00:00:00Z"}}
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
