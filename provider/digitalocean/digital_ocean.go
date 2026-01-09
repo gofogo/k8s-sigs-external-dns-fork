@@ -32,6 +32,10 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 )
 
+// digitalOceanRecordTypeConfig defines the record types supported by the DigitalOcean provider.
+// DigitalOcean supports base types plus MX.
+var digitalOceanRecordTypeConfig = provider.MXRecordTypeConfig
+
 const (
 	// defaultTTL is the default TTL value
 	defaultTTL = 300
@@ -623,12 +627,7 @@ func processDeleteActions(
 
 // SupportedRecordType returns true if the record type is supported by the provider
 func (p *DigitalOceanProvider) SupportedRecordType(recordType string) bool {
-	switch recordType {
-	case "MX":
-		return true
-	default:
-		return provider.SupportedRecordType(recordType)
-	}
+	return digitalOceanRecordTypeConfig.Supports(recordType)
 }
 
 // ApplyChanges applies the given set of generic changes to the provider.

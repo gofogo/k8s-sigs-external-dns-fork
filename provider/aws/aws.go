@@ -37,6 +37,10 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 )
 
+// awsRecordTypeConfig defines the record types supported by the AWS provider.
+// AWS supports base types plus MX and NAPTR.
+var awsRecordTypeConfig = provider.MXNAPTRRecordTypeConfig
+
 const (
 	defaultAWSProfile = "default"
 	defaultTTL        = 300
@@ -390,7 +394,7 @@ func (p *AWSProvider) zones(ctx context.Context) (map[string]*profiledZone, erro
 					continue
 				}
 				// nothing to do here. Falling through to general error handling
-				return nil, provider.NewSoftErrorf("failed to list hosted zones: %w", err)
+				return nil, provider.SoftErrorZones(err)
 			}
 			var zonesToTagFilter []string
 			for _, zone := range resp.HostedZones {
@@ -423,7 +427,7 @@ func (p *AWSProvider) zones(ctx context.Context) (map[string]*profiledZone, erro
 
 			if len(zonesToTagFilter) > 0 {
 				if zTags, err := p.tagsForZone(ctx, zonesToTagFilter, profile); err != nil {
-					return nil, provider.NewSoftErrorf("failed to list tags for zones %w", err)
+					return nil, provider.SoftErrorTags(err)
 				} else {
 					zTags.filterZonesByTags(p, zones)
 				}
@@ -477,7 +481,7 @@ func containsOctalSequence(domain string) bool {
 func (p *AWSProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 	zones, err := p.zones(ctx)
 	if err != nil {
-		return nil, provider.NewSoftErrorf("records retrieval failed: %v", err)
+		return nil, provider.SoftErrorRecords(err)
 	}
 
 	return p.records(ctx, zones)
@@ -497,7 +501,7 @@ func (p *AWSProvider) records(ctx context.Context, zones map[string]*profiledZon
 		for paginator.HasMorePages() {
 			resp, err := paginator.NextPage(ctx)
 			if err != nil {
-				return nil, provider.NewSoftErrorf("failed to list resource records sets for zone %s using aws profile %q: %w", *z.zone.Id, z.profile, err)
+				return nil, provider.SoftErrorRecordsForZone(err, *z.zone.Id)
 			}
 
 			for _, r := range resp.ResourceRecordSets {
@@ -683,7 +687,7 @@ func (p *AWSProvider) GetDomainFilter() endpoint.DomainFilterInterface {
 func (p *AWSProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	zones, err := p.zones(ctx)
 	if err != nil {
-		return provider.NewSoftErrorf("failed to list zones, not applying changes: %w", err)
+		return provider.SoftErrorZones(err)
 	}
 
 	updateChanges := p.createUpdateChanges(changes.UpdateNew, changes.UpdateOld)
@@ -798,7 +802,7 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 	}
 
 	if len(failedZones) > 0 {
-		return provider.NewSoftErrorf("failed to submit all changes for the following zones: %v", failedZones)
+		return provider.SoftErrorApplyChangesForZones(failedZones)
 	}
 
 	return nil
@@ -1153,7 +1157,7 @@ func (p *AWSProvider) tagsForZone(ctx context.Context, zoneIDs []string, profile
 			ResourceIds:  batch,
 		})
 		if err != nil {
-			return nil, provider.NewSoftErrorf("failed to list tags for zones. %v", err)
+			return nil, provider.SoftErrorTags(err)
 		}
 
 		for _, res := range response.ResourceTagSets {
@@ -1394,10 +1398,5 @@ func cleanZoneID(id string) string {
 }
 
 func (p *AWSProvider) SupportedRecordType(recordType route53types.RRType) bool {
-	switch recordType {
-	case route53types.RRTypeMx, route53types.RRTypeNaptr:
-		return true
-	default:
-		return provider.SupportedRecordType(string(recordType))
-	}
+	return awsRecordTypeConfig.Supports(string(recordType))
 }
