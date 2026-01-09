@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"text/template"
 
 	projectcontour "github.com/projectcontour/contour/apis/projectcontour/v1"
@@ -34,6 +33,7 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
 )
@@ -144,10 +144,7 @@ func (sc *httpProxySource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 
 	for _, hp := range httpProxies {
 		// Check controller annotation to see if we are responsible.
-		controller, ok := hp.Annotations[annotations.ControllerKey]
-		if ok && controller != annotations.ControllerValue {
-			log.Debugf("Skipping HTTPProxy %s/%s because controller value does not match, found: %s, required: %s",
-				hp.Namespace, hp.Name, controller, annotations.ControllerValue)
+		if !common.ShouldProcessResource(hp.Annotations, annotations.ControllerValue, "httpproxy", hp.Namespace, hp.Name) {
 			continue
 		}
 
@@ -170,8 +167,7 @@ func (sc *httpProxySource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 			}
 		}
 
-		if len(hpEndpoints) == 0 {
-			log.Debugf("No endpoints could be generated from HTTPProxy %s/%s", hp.Namespace, hp.Name)
+		if common.CheckAndLogEmptyEndpoints(hpEndpoints, "httpproxy", hp.Namespace, hp.Name) {
 			continue
 		}
 
@@ -179,9 +175,7 @@ func (sc *httpProxySource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 		endpoints = append(endpoints, hpEndpoints...)
 	}
 
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
@@ -192,9 +186,9 @@ func (sc *httpProxySource) endpointsFromTemplate(httpProxy *projectcontour.HTTPP
 		return nil, err
 	}
 
-	resource := fmt.Sprintf("HTTPProxy/%s/%s", httpProxy.Namespace, httpProxy.Name)
+	resource := common.BuildResourceIdentifier("httpproxy", httpProxy.Namespace, httpProxy.Name)
 
-	ttl := annotations.TTLFromAnnotations(httpProxy.Annotations, resource)
+	ttl := common.GetTTLForResource(httpProxy.Annotations, "httpproxy", httpProxy.Namespace, httpProxy.Name)
 
 	targets := annotations.TargetsFromTargetAnnotation(httpProxy.Annotations)
 	if len(targets) == 0 {
@@ -219,9 +213,9 @@ func (sc *httpProxySource) endpointsFromTemplate(httpProxy *projectcontour.HTTPP
 
 // endpointsFromHTTPProxyConfig extracts the endpoints from a Contour HTTPProxy object
 func (sc *httpProxySource) endpointsFromHTTPProxy(httpProxy *projectcontour.HTTPProxy) ([]*endpoint.Endpoint, error) {
-	resource := fmt.Sprintf("HTTPProxy/%s/%s", httpProxy.Namespace, httpProxy.Name)
+	resource := common.BuildResourceIdentifier("httpproxy", httpProxy.Namespace, httpProxy.Name)
 
-	ttl := annotations.TTLFromAnnotations(httpProxy.Annotations, resource)
+	ttl := common.GetTTLForResource(httpProxy.Annotations, "httpproxy", httpProxy.Namespace, httpProxy.Name)
 
 	targets := annotations.TargetsFromTargetAnnotation(httpProxy.Annotations)
 
@@ -262,5 +256,5 @@ func (sc *httpProxySource) AddEventHandler(_ context.Context, handler func()) {
 
 	// Right now there is no way to remove event handler from informer, see:
 	// https://github.com/kubernetes/kubernetes/issues/79610
-	_, _ = sc.httpProxyInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(sc.httpProxyInformer.Informer(), handler)
 }

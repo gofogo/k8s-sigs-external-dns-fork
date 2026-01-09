@@ -199,7 +199,7 @@ func (sc *gatewaySource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, e
 func (sc *gatewaySource) AddEventHandler(_ context.Context, handler func()) {
 	log.Debug("Adding event handler for Istio Gateway")
 
-	_, _ = sc.gatewayInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(sc.gatewayInformer.Informer(), handler)
 }
 
 func (sc *gatewaySource) targetsFromIngress(ingressStr string, gateway *networkingv1beta1.Gateway) (endpoint.Targets, error) {
@@ -256,8 +256,8 @@ func (sc *gatewaySource) endpointsFromGateway(ctx context.Context, hostnames []s
 		return endpoints, nil
 	}
 
-	resource := fmt.Sprintf("gateway/%s/%s", gateway.Namespace, gateway.Name)
-	ttl := annotations.TTLFromAnnotations(gateway.Annotations, resource)
+	resource := common.BuildResourceIdentifier("gateway", gateway.Namespace, gateway.Name)
+	ttl := common.GetTTLForResource(gateway.Annotations, "gateway", gateway.Namespace, gateway.Name)
 	providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(gateway.Annotations)
 
 	for _, host := range hostnames {
