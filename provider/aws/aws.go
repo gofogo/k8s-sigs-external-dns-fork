@@ -963,11 +963,7 @@ func (p *AWSProvider) newChange(action route53types.ChangeAction, ep *endpoint.E
 		change.ResourceRecordSet.SetIdentifier = aws.String(ep.SetIdentifier)
 	}
 	if prop, ok := ep.GetProviderSpecificProperty(providerSpecificWeight); ok {
-		weight, err := strconv.ParseInt(prop, 10, 64)
-		if err != nil {
-			log.Errorf("Failed parsing value of %s: %s: %v; using weight of 0", providerSpecificWeight, prop, err)
-			weight = 0
-		}
+		weight := provider.ParseInt64(prop, 0, providerSpecificWeight)
 		change.ResourceRecordSet.Weight = aws.Int64(weight)
 	}
 	if prop, ok := ep.GetProviderSpecificProperty(providerSpecificRegion); ok {
@@ -1040,12 +1036,8 @@ func (gp *geoProximity) withLocalZoneGroup() *geoProximity {
 // add a method to set the bias for the geoproximity location
 func (gp *geoProximity) withBias() *geoProximity {
 	if prop, ok := gp.endpoint.GetProviderSpecificProperty(providerSpecificGeoProximityLocationBias); ok {
-		bias, err := strconv.ParseInt(prop, 10, 32)
-		if err != nil {
-			log.Warnf("Failed parsing value of %s: %s: %v; using bias of 0", providerSpecificGeoProximityLocationBias, prop, err)
-			bias = 0
-		}
-		gp.location.Bias = aws.Int32(int32(bias))
+		bias := provider.ParseInt32(prop, 0, providerSpecificGeoProximityLocationBias)
+		gp.location.Bias = aws.Int32(bias)
 		gp.isSet = true
 	}
 	return gp
@@ -1053,12 +1045,12 @@ func (gp *geoProximity) withBias() *geoProximity {
 
 // validateCoordinates checks if the given latitude and longitude are valid.
 func validateCoordinates(lat, long string) error {
-	latitude, err := strconv.ParseFloat(lat, 64)
+	latitude, err := provider.ParseFloat64OrError(lat)
 	if err != nil || latitude < minLatitude || latitude > maxLatitude {
 		return fmt.Errorf("invalid latitude: must be a number between %f and %f", minLatitude, maxLatitude)
 	}
 
-	longitude, err := strconv.ParseFloat(long, 64)
+	longitude, err := provider.ParseFloat64OrError(long)
 	if err != nil || longitude < minLongitude || longitude > maxLongitude {
 		return fmt.Errorf("invalid longitude: must be a number between %f and %f", minLongitude, maxLongitude)
 	}
