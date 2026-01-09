@@ -39,6 +39,7 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/informers"
 )
 
@@ -242,15 +243,13 @@ func (gs *glooSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, erro
 func (gs *glooSource) generateEndpointsFromProxy(proxy *proxy, targets endpoint.Targets) ([]*endpoint.Endpoint, error) {
 	endpoints := []*endpoint.Endpoint{}
 
-	resource := fmt.Sprintf("proxy/%s/%s", proxy.Metadata.Namespace, proxy.Metadata.Name)
-
 	for _, listener := range proxy.Spec.Listeners {
 		for _, virtualHost := range listener.HTTPListener.VirtualHosts {
 			ants, err := gs.annotationsFromProxySource(virtualHost)
 			if err != nil {
 				return nil, err
 			}
-			ttl := annotations.TTLFromAnnotations(ants, resource)
+			ttl := common.GetTTLForResource(ants, "proxy", proxy.Metadata.Namespace, proxy.Metadata.Name)
 			providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(ants)
 			for _, domain := range virtualHost.Domains {
 				endpoints = append(endpoints, EndpointsForHostname(strings.TrimSuffix(domain, "."), targets, ttl, providerSpecific, setIdentifier, "")...)

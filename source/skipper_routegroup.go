@@ -27,7 +27,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"text/template"
@@ -37,6 +36,7 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
 )
 
@@ -262,10 +262,7 @@ func (sc *routeGroupSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint
 	endpoints := []*endpoint.Endpoint{}
 	for _, rg := range filtered {
 		// Check controller annotation to see if we are responsible.
-		controller, ok := rg.Metadata.Annotations[annotations.ControllerKey]
-		if ok && controller != annotations.ControllerValue {
-			log.Debugf("Skipping routegroup %s/%s because controller value does not match, found: %s, required: %s",
-				rg.Metadata.Namespace, rg.Metadata.Name, controller, annotations.ControllerValue)
+		if !common.ShouldProcessResource(rg.Metadata.Annotations, annotations.ControllerValue, "routegroup", rg.Metadata.Namespace, rg.Metadata.Name) {
 			continue
 		}
 
@@ -293,9 +290,7 @@ func (sc *routeGroupSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint
 		endpoints = append(endpoints, eps...)
 	}
 
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
@@ -310,10 +305,10 @@ func (sc *routeGroupSource) endpointsFromTemplate(rg *routeGroup) ([]*endpoint.E
 
 	hostnames := buf.String()
 
-	resource := fmt.Sprintf("routegroup/%s/%s", rg.Metadata.Namespace, rg.Metadata.Name)
+	resource := common.BuildResourceIdentifier("routegroup", rg.Metadata.Namespace, rg.Metadata.Name)
 
 	// error handled in endpointsFromRouteGroup(), otherwise duplicate log
-	ttl := annotations.TTLFromAnnotations(rg.Metadata.Annotations, resource)
+	ttl := common.GetTTLForResource(rg.Metadata.Annotations, "routegroup", rg.Metadata.Namespace, rg.Metadata.Name)
 
 	targets := annotations.TargetsFromTargetAnnotation(rg.Metadata.Annotations)
 
@@ -337,9 +332,9 @@ func (sc *routeGroupSource) endpointsFromTemplate(rg *routeGroup) ([]*endpoint.E
 func (sc *routeGroupSource) endpointsFromRouteGroup(rg *routeGroup) []*endpoint.Endpoint {
 	endpoints := []*endpoint.Endpoint{}
 
-	resource := fmt.Sprintf("routegroup/%s/%s", rg.Metadata.Namespace, rg.Metadata.Name)
+	resource := common.BuildResourceIdentifier("routegroup", rg.Metadata.Namespace, rg.Metadata.Name)
 
-	ttl := annotations.TTLFromAnnotations(rg.Metadata.Annotations, resource)
+	ttl := common.GetTTLForResource(rg.Metadata.Annotations, "routegroup", rg.Metadata.Namespace, rg.Metadata.Name)
 
 	targets := annotations.TargetsFromTargetAnnotation(rg.Metadata.Annotations)
 	if len(targets) == 0 {
