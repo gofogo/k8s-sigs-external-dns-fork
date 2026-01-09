@@ -7,6 +7,7 @@ This document outlines code duplication patterns and improvement opportunities i
 ### Phase 1: Low-Hanging Fruit (COMPLETED)
 
 #### 1. Configuration-Based Record Type Support
+
 - **File**: `provider/record_type_config.go`
 - **Status**: DONE
 - Created `RecordTypeConfig` type with predefined configs:
@@ -16,6 +17,7 @@ This document outlines code duplication patterns and improvement opportunities i
 - Updated providers: AWS, Azure, Google, DigitalOcean, Cloudflare
 
 #### 2. Standardized Error Utilities
+
 - **File**: `provider/errors.go`
 - **Status**: DONE
 - Created error helpers:
@@ -26,6 +28,7 @@ This document outlines code duplication patterns and improvement opportunities i
 - Updated providers: AWS, Azure, Google, OCI, PDNS, Cloudflare
 
 #### 3. Tests
+
 - **Files**: `provider/record_type_config_test.go`, `provider/errors_test.go`
 - **Status**: DONE
 
@@ -52,6 +55,7 @@ func (p *AzureProvider) SupportedRecordType(recordType string) bool {
 **Affected providers:** akamai, alibabacloud, aws, azure, civo, cloudflare, digitalocean, gandi, godaddy, google, linode, ns1, oci, ovh, scaleway, transip
 
 **Locations:**
+
 - `provider/aws/aws.go:1396-1403`
 - `provider/azure/azure.go:203-210`
 - `provider/google/google.go:248-255`
@@ -269,6 +273,7 @@ func SafeParseFloat64(value string, defaultVal float64, context string) float64 
 ### 2.6 Test Helper Package
 
 Large test files with repeated patterns:
+
 - `provider/aws/aws_test.go` - 2,886 lines
 - `provider/cloudflare/cloudflare_test.go` - 3,658 lines
 - `provider/azure/azure_test.go` - 614 lines
@@ -286,6 +291,7 @@ func NewTestEndpoint(name, recordType string, targets ...string) *endpoint.Endpo
 ### 3.1 Zone Return Types
 
 Different providers return zones in different formats:
+
 - AWS: `map[string]*profiledZone`
 - Azure: `[]dns.Zone`
 - Google: `map[string]*dns.ManagedZone`
@@ -321,23 +327,27 @@ Different providers return zones in different formats:
 ## 5. Implementation Phases
 
 ### Phase 1: Low-Hanging Fruit
+
 1. Create `provider/errors.go` with standardized error utilities
 2. Create `provider/record_type_config.go` and migrate providers
 3. Create `provider/type_converters.go`
 
 ### Phase 2: Zone Management
+
 1. Design `ZoneManager` interface with generics
 2. Implement `CachedZoneManager`
 3. Migrate AWS provider as pilot
 4. Roll out to remaining providers
 
 ### Phase 3: Pagination
+
 1. Create generic `Paginator` interface
 2. Implement `PaginateAndFilter` helper
 3. Create adapter implementations for AWS, Azure, Google SDK paginators
 4. Migrate providers
 
 ### Phase 4: Testing
+
 1. Create `provider/testutil` package
 2. Extract common test fixtures
 3. Create assertion helpers
