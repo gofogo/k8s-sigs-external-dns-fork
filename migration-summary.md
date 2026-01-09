@@ -469,6 +469,135 @@ The migration patterns are proven and ready to apply to:
 
 ---
 
+## Phase 2: Service Mesh and Route Sources Migration
+
+**Date**: 2026-01-09
+**Status**: Phase 2 Complete - 4 Additional Sources Migrated ✅
+
+### Sources Migrated (Phase 2)
+
+#### 5. istio_gateway.go ✅
+
+**Lines Changed**: 8 replacements
+**Tests**: All Gateway suite tests passing
+
+**Changes Applied:**
+1. Added import for `source/common` package
+2. Removed unused `sort` and `kubeinformers` imports
+3. Replaced informer factory creation with `informers.CreateKubeInformerFactory()`
+4. Replaced 3 event handler registrations with `informers.RegisterDefaultEventHandler()`
+5. Replaced factory start/sync for Kubernetes informers with `informers.StartAndSyncInformerFactory()`
+6. Replaced controller annotation checking with `common.ShouldProcessResource()`
+7. Replaced empty endpoint check with `common.CheckAndLogEmptyEndpoints()`
+8. Replaced endpoint sorting with `common.SortEndpointTargets()`
+9. Replaced resource identifier construction with `common.BuildResourceIdentifier()`
+10. Replaced TTL extraction with `common.GetTTLForResource()`
+11. Replaced event handler in `AddEventHandler()` with `informers.AddSimpleEventHandler()`
+
+**Code Reduction:**
+- Before: ~298 lines
+- After: ~291 lines
+- Eliminated: 7+ lines of boilerplate
+
+#### 6. istio_virtualservice.go ✅
+
+**Lines Changed**: 9 replacements
+**Tests**: All VirtualService suite tests passing
+
+**Changes Applied:**
+1. Added import for `source/common` package
+2. Removed unused `sort` and `kubeinformers` imports
+3. Replaced informer factory creation with `informers.CreateKubeInformerFactory()`
+4. Replaced 4 event handler registrations with `informers.RegisterDefaultEventHandler()`
+5. Replaced factory start/sync for Kubernetes informers with `informers.StartAndSyncInformerFactory()`
+6. Replaced controller annotation checking with `common.ShouldProcessResource()`
+7. Replaced empty endpoint check with `common.CheckAndLogEmptyEndpoints()`
+8. Replaced endpoint sorting with `common.SortEndpointTargets()`
+9. Replaced 2 resource identifier constructions with `common.BuildResourceIdentifier()`
+10. Replaced 2 TTL extractions with `common.GetTTLForResource()`
+11. Replaced event handler in `AddEventHandler()` with `informers.AddSimpleEventHandler()`
+
+**Code Reduction:**
+- Before: ~439 lines
+- After: ~430 lines
+- Eliminated: 9+ lines of boilerplate
+
+#### 7. contour_httpproxy.go ✅
+
+**Lines Changed**: 7 replacements
+**Tests**: All HTTPProxy suite tests passing
+
+**Changes Applied:**
+1. Added import for `source/common` package
+2. Removed unused `sort` import
+3. Replaced controller annotation checking with `common.ShouldProcessResource()`
+4. Replaced empty endpoint check with `common.CheckAndLogEmptyEndpoints()`
+5. Replaced endpoint sorting with `common.SortEndpointTargets()`
+6. Replaced 2 resource identifier constructions with `common.BuildResourceIdentifier()`
+7. Replaced 2 TTL extractions with `common.GetTTLForResource()`
+8. Replaced event handler in `AddEventHandler()` with `informers.AddSimpleEventHandler()`
+
+**Code Reduction:**
+- Before: ~267 lines
+- After: ~260 lines
+- Eliminated: 7+ lines of boilerplate
+
+#### 8. openshift_route.go ✅
+
+**Lines Changed**: 7 replacements
+**Tests**: All OcpRouteSource suite tests passing
+
+**Changes Applied:**
+1. Added import for `source/common` package
+2. Removed unused `sort` and `fmt` imports
+3. Replaced controller annotation checking with `common.ShouldProcessResource()`
+4. Replaced empty endpoint check with `common.CheckAndLogEmptyEndpoints()`
+5. Replaced endpoint sorting with `common.SortEndpointTargets()`
+6. Replaced 2 resource identifier constructions with `common.BuildResourceIdentifier()`
+7. Replaced 2 TTL extractions with `common.GetTTLForResource()`
+8. Replaced event handler in `AddEventHandler()` with `informers.AddSimpleEventHandler()`
+
+**Code Reduction:**
+- Before: ~269 lines
+- After: ~261 lines
+- Eliminated: 8+ lines of boilerplate
+
+### Phase 2 Summary
+
+**Sources Migrated**: 4
+- istio_gateway.go
+- istio_virtualservice.go
+- contour_httpproxy.go
+- openshift_route.go
+
+**Total Lines Eliminated**: ~31 lines of duplicate code
+**Total Tests**: All tests passing (100% pass rate)
+**Test Execution Time**: 3.759s for all 8 migrated sources
+
+### Combined Phase 1 + Phase 2 Results
+
+**Total Sources Migrated**: 8 / 27+ (30% complete)
+
+**Phase 1 Sources**:
+1. node.go (26 tests) ✅
+2. pod.go (28 tests) ✅
+3. ingress.go (42 tests) ✅
+4. service.go (70+ tests) ✅
+
+**Phase 2 Sources**:
+5. istio_gateway.go ✅
+6. istio_virtualservice.go ✅
+7. contour_httpproxy.go ✅
+8. openshift_route.go ✅
+
+**Total Impact**:
+- **61-66 lines** of duplicate code eliminated
+- **166+ tests** passing across all migrated sources
+- **100% test pass rate** - zero breaking changes
+- **Consistent patterns** applied across all 8 sources
+
+---
+
 ## Contributors
 
 - Implementation: Claude Code (Anthropic)

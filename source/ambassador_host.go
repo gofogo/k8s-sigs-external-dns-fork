@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	ambassador "github.com/datawire/ambassador/pkg/api/getambassador.io/v2"
@@ -39,6 +38,7 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/informers"
 )
 
@@ -176,8 +176,7 @@ func (sc *ambassadorHostSource) Endpoints(ctx context.Context) ([]*endpoint.Endp
 			log.Warningf("Could not get endpoints for Host %s", err)
 			continue
 		}
-		if len(hostEndpoints) == 0 {
-			log.Debugf("No endpoints could be generated from Host %s", fullname)
+		if common.CheckAndLogEmptyEndpoints(hostEndpoints, "host", host.Namespace, host.Name) {
 			continue
 		}
 
@@ -185,9 +184,7 @@ func (sc *ambassadorHostSource) Endpoints(ctx context.Context) ([]*endpoint.Endp
 		endpoints = append(endpoints, hostEndpoints...)
 	}
 
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
@@ -196,9 +193,9 @@ func (sc *ambassadorHostSource) Endpoints(ctx context.Context) ([]*endpoint.Endp
 func (sc *ambassadorHostSource) endpointsFromHost(host *ambassador.Host, targets endpoint.Targets) ([]*endpoint.Endpoint, error) {
 	var endpoints []*endpoint.Endpoint
 
-	resource := fmt.Sprintf("host/%s/%s", host.Namespace, host.Name)
+	resource := common.BuildResourceIdentifier("host", host.Namespace, host.Name)
 	providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(host.Annotations)
-	ttl := annotations.TTLFromAnnotations(host.Annotations, resource)
+	ttl := common.GetTTLForResource(host.Annotations, "host", host.Namespace, host.Name)
 
 	if host.Spec != nil {
 		hostname := host.Spec.Hostname
