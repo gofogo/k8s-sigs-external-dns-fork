@@ -63,6 +63,10 @@ This document outlines code duplication patterns and improvement opportunities i
   - `NewMapZoneCache[K, V]()` - cache for map types
   - `CachedZoneProvider[T]` - wrapper that combines cache with fetcher
 - Tests: `provider/zone_cache_test.go`
+- Migrated providers:
+  - AWS: Uses `NewMapZoneCache[string, *profiledZone]` for zone caching
+  - Azure: Uses `NewSliceZoneCache[dns.Zone]` and `NewSliceZoneCache[privatedns.PrivateZone]`
+    - Deleted `provider/azure/cache.go` and `provider/azure/cache_test.go` (redundant with shared cache)
 - Available for new providers or future refactoring of existing providers
 
 ---
