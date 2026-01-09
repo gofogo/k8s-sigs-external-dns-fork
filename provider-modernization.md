@@ -44,7 +44,14 @@ This document outlines code duplication patterns and improvement opportunities i
   - `ParseBool(value, defaultVal, context)` - bool with logging on error
   - `ParseInt64OrError(value)` - int64 with error return
   - `ParseFloat64OrError(value)` - float64 with error return
-- Updated providers: AWS (weight, bias, coordinates parsing)
+- Updated providers:
+  - AWS: weight, bias, coordinates parsing
+  - Scaleway: page size, priority parsing
+  - Azure: MX preference parsing
+  - Cloudflare: proxied annotation parsing
+  - Godaddy: retry-after header parsing
+  - Pihole: TTL parsing
+  - Akamai: max body, debug flag parsing
 
 #### 5. Generic Zone Cache
 
