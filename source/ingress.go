@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"text/template"
 
@@ -28,15 +27,14 @@ import (
 	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	kubeinformers "k8s.io/client-go/informers"
 	netinformers "k8s.io/client-go/informers/networking/v1"
 	"k8s.io/client-go/kubernetes"
 
-	"sigs.k8s.io/external-dns/source/informers"
-
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
+	"sigs.k8s.io/external-dns/source/informers"
 )
 
 const (
@@ -103,16 +101,14 @@ func NewIngressSource(
 	}
 	// Use shared informer to listen for add/update/delete of ingresses in the specified namespace.
 	// Set resync period to 0, to prevent processing when nothing has changed.
-	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(namespace))
+	informerFactory := informers.CreateKubeInformerFactory(kubeClient, namespace)
 	ingressInformer := informerFactory.Networking().V1().Ingresses()
 
 	// Add default resource event handlers to properly initialize informer.
-	_, _ = ingressInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(ingressInformer.Informer())
 
-	informerFactory.Start(ctx.Done())
-
-	// wait for the local cache to be populated.
-	if err := informers.WaitForCacheSync(ctx, informerFactory); err != nil {
+	// Start the informer and wait for the local cache to be populated.
+	if err := informers.StartAndSyncInformerFactory(ctx, informerFactory); err != nil {
 		return nil, err
 	}
 
@@ -153,9 +149,7 @@ func (sc *ingressSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 
 	for _, ing := range ingresses {
 		// Check the controller annotation to see if we are responsible.
-		if controller, ok := ing.Annotations[annotations.ControllerKey]; ok && controller != annotations.ControllerValue {
-			log.Debugf("Skipping ingress %s/%s because controller value does not match, found: %s, required: %s",
-				ing.Namespace, ing.Name, controller, annotations.ControllerValue)
+		if !common.ShouldProcessResource(ing.Annotations, annotations.ControllerValue, "ingress", ing.Namespace, ing.Name) {
 			continue
 		}
 
@@ -171,8 +165,7 @@ func (sc *ingressSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 			ingEndpoints = append(ingEndpoints, iEndpoints...)
 		}
 
-		if len(ingEndpoints) == 0 {
-			log.Debugf("No endpoints could be generated from ingress %s/%s", ing.Namespace, ing.Name)
+		if common.CheckAndLogEmptyEndpoints(ingEndpoints, "ingress", ing.Namespace, ing.Name) {
 			continue
 		}
 
@@ -180,9 +173,7 @@ func (sc *ingressSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 		endpoints = append(endpoints, ingEndpoints...)
 	}
 
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
@@ -193,9 +184,9 @@ func (sc *ingressSource) endpointsFromTemplate(ing *networkv1.Ingress) ([]*endpo
 		return nil, err
 	}
 
-	resource := fmt.Sprintf("ingress/%s/%s", ing.Namespace, ing.Name)
+	resource := common.BuildResourceIdentifier("ingress", ing.Namespace, ing.Name)
 
-	ttl := annotations.TTLFromAnnotations(ing.Annotations, resource)
+	ttl := common.GetTTLForResource(ing.Annotations, "ingress", ing.Namespace, ing.Name)
 
 	targets := annotations.TargetsFromTargetAnnotation(ing.Annotations)
 	if len(targets) == 0 {
@@ -338,5 +329,5 @@ func (sc *ingressSource) AddEventHandler(_ context.Context, handler func()) {
 
 	// Right now there is no way to remove event handler from informer, see:
 	// https://github.com/kubernetes/kubernetes/issues/79610
-	_, _ = sc.ingressInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(sc.ingressInformer.Informer(), handler)
 }

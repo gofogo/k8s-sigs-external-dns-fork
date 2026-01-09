@@ -24,12 +24,12 @@ import (
 	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	kubeinformers "k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
 )
@@ -71,16 +71,14 @@ func NewNodeSource(
 
 	// Use shared informers to listen for add/update/delete of nodes.
 	// Set resync period to 0, to prevent processing when nothing has changed
-	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0)
+	informerFactory := informers.CreateKubeInformerFactory(kubeClient, "")
 	nodeInformer := informerFactory.Core().V1().Nodes()
 
 	// Add default resource event handler to properly initialize informer.
-	_, _ = nodeInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(nodeInformer.Informer())
 
-	informerFactory.Start(ctx.Done())
-
-	// wait for the local cache to be populated.
-	if err := informers.WaitForCacheSync(ctx, informerFactory); err != nil {
+	// Start the informer and wait for the local cache to be populated.
+	if err := informers.StartAndSyncInformerFactory(ctx, informerFactory); err != nil {
 		return nil, err
 	}
 
@@ -113,9 +111,7 @@ func (ns *nodeSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error)
 	// create endpoints for all nodes
 	for _, node := range nodes {
 		// Check the controller annotation to see if we are responsible.
-		if controller, ok := node.Annotations[annotations.ControllerKey]; ok && controller != annotations.ControllerValue {
-			log.Debugf("Skipping node %s because controller value does not match, found: %s, required: %s",
-				node.Name, controller, annotations.ControllerValue)
+		if !common.ShouldProcessResource(node.Annotations, annotations.ControllerValue, "node", "", node.Name) {
 			continue
 		}
 
@@ -126,7 +122,7 @@ func (ns *nodeSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error)
 
 		log.Debugf("creating endpoint for node %s", node.Name)
 
-		ttl := annotations.TTLFromAnnotations(node.Annotations, fmt.Sprintf("node/%s", node.Name))
+		ttl := common.GetTTLForResource(node.Annotations, "node", "", node.Name)
 
 		addrs := annotations.TargetsFromTargetAnnotation(node.Annotations)
 
@@ -173,7 +169,7 @@ func (ns *nodeSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error)
 }
 
 func (ns *nodeSource) AddEventHandler(_ context.Context, handler func()) {
-	_, _ = ns.nodeInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(ns.nodeInformer.Informer(), handler)
 }
 
 // nodeAddress returns the node's externalIP and if that's not found, the node's internalIP

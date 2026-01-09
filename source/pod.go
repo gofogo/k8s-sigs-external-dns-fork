@@ -27,12 +27,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	kubeinformers "k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
 )
@@ -72,7 +72,7 @@ func NewPodSource(
 	annotationFilter string,
 	labelSelector labels.Selector,
 ) (Source, error) {
-	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(namespace))
+	informerFactory := informers.CreateKubeInformerFactory(kubeClient, namespace)
 	podInformer := informerFactory.Core().V1().Pods()
 	nodeInformer := informerFactory.Core().V1().Nodes()
 
@@ -85,7 +85,7 @@ func NewPodSource(
 		return nil, fmt.Errorf("failed to add indexers to pod informer: %w", err)
 	}
 
-	_, _ = podInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(podInformer.Informer())
 
 	if fqdnTemplate == "" {
 		// Transformer is used to reduce the memory usage of the informer.
@@ -120,12 +120,10 @@ func NewPodSource(
 		})
 	}
 
-	_, _ = nodeInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(nodeInformer.Informer())
 
-	informerFactory.Start(ctx.Done())
-
-	// wait for the local cache to be populated.
-	if err := informers.WaitForCacheSync(ctx, informerFactory); err != nil {
+	// Start the informer and wait for the local cache to be populated.
+	if err := informers.StartAndSyncInformerFactory(ctx, informerFactory); err != nil {
 		return nil, err
 	}
 
@@ -148,7 +146,7 @@ func NewPodSource(
 }
 
 func (ps *podSource) AddEventHandler(_ context.Context, handler func()) {
-	_, _ = ps.podInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(ps.podInformer.Informer(), handler)
 }
 
 func (ps *podSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error) {
@@ -278,7 +276,7 @@ func (ps *podSource) hostsFromTemplate(pod *corev1.Pod) (map[endpoint.EndpointKe
 			key := endpoint.EndpointKey{
 				DNSName:    target,
 				RecordType: suitableType(address.IP),
-				RecordTTL:  annotations.TTLFromAnnotations(pod.Annotations, fmt.Sprintf("pod/%s", pod.Name)),
+				RecordTTL:  common.GetTTLForResource(pod.Annotations, "pod", pod.Namespace, pod.Name),
 			}
 			result[key] = append(result[key], address.IP)
 		}
@@ -299,7 +297,7 @@ func addToEndpointMap(endpointMap map[endpoint.EndpointKey][]string, pod *corev1
 	key := endpoint.EndpointKey{
 		DNSName:    domain,
 		RecordType: recordType,
-		RecordTTL:  annotations.TTLFromAnnotations(pod.Annotations, fmt.Sprintf("pod/%s", pod.Name)),
+		RecordTTL:  common.GetTTLForResource(pod.Annotations, "pod", pod.Namespace, pod.Name),
 	}
 	if _, ok := endpointMap[key]; !ok {
 		endpointMap[key] = []string{}

@@ -19,7 +19,6 @@ package source
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"text/template"
 
@@ -30,13 +29,13 @@ import (
 	networkingv1beta1informer "istio.io/client-go/pkg/informers/externalversions/networking/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kubeinformers "k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	netinformers "k8s.io/client-go/informers/networking/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
 )
@@ -88,16 +87,16 @@ func NewIstioGatewaySource(
 
 	// Use shared informers to listen for add/update/delete of services/pods/nodes in the specified namespace.
 	// Set resync period to 0, to prevent processing when nothing has changed
-	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(namespace))
+	informerFactory := informers.CreateKubeInformerFactory(kubeClient, namespace)
 	serviceInformer := informerFactory.Core().V1().Services()
 	istioInformerFactory := istioinformers.NewSharedInformerFactory(istioClient, 0)
 	gatewayInformer := istioInformerFactory.Networking().V1beta1().Gateways()
 	ingressInformer := informerFactory.Networking().V1().Ingresses()
 
-	_, _ = ingressInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(ingressInformer.Informer())
 
 	// Add default resource event handlers to properly initialize informer.
-	_, _ = serviceInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(serviceInformer.Informer())
 	err = serviceInformer.Informer().SetTransform(informers.TransformerWithOptions[*corev1.Service](
 		informers.TransformWithSpecSelector(),
 		informers.TransformWithSpecExternalIPs(),
@@ -107,15 +106,13 @@ func NewIstioGatewaySource(
 		return nil, err
 	}
 
-	_, _ = gatewayInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(gatewayInformer.Informer())
 
-	informerFactory.Start(ctx.Done())
-	istioInformerFactory.Start(ctx.Done())
-
-	// wait for the local cache to be populated.
-	if err := informers.WaitForCacheSync(ctx, informerFactory); err != nil {
+	// Start the informers and wait for the local caches to be populated.
+	if err := informers.StartAndSyncInformerFactory(ctx, informerFactory); err != nil {
 		return nil, err
 	}
+	istioInformerFactory.Start(ctx.Done())
 	if err := informers.WaitForCacheSync(ctx, istioInformerFactory); err != nil {
 		return nil, err
 	}
@@ -154,10 +151,7 @@ func (sc *gatewaySource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, e
 
 	for _, gateway := range gateways {
 		// Check controller annotation to see if we are responsible.
-		controller, ok := gateway.Annotations[annotations.ControllerKey]
-		if ok && controller != annotations.ControllerValue {
-			log.Debugf("Skipping gateway %s/%s,%s because controller value does not match, found: %s, required: %s",
-				gateway.Namespace, gateway.APIVersion, gateway.Name, controller, annotations.ControllerValue)
+		if !common.ShouldProcessResource(gateway.Annotations, annotations.ControllerValue, "gateway", gateway.Namespace, gateway.Name) {
 			continue
 		}
 
@@ -182,18 +176,12 @@ func (sc *gatewaySource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, e
 
 		log.Debugf("Processing gateway '%s/%s.%s' and hosts %q", gateway.Namespace, gateway.APIVersion, gateway.Name, strings.Join(gwHostnames, ","))
 
-		if len(gwHostnames) == 0 {
-			log.Debugf("No hostnames could be generated from gateway %s/%s", gateway.Namespace, gateway.Name)
-			continue
-		}
-
 		gwEndpoints, err := sc.endpointsFromGateway(ctx, gwHostnames, gateway)
 		if err != nil {
 			return nil, err
 		}
 
-		if len(gwEndpoints) == 0 {
-			log.Debugf("No endpoints could be generated from gateway %s/%s", gateway.Namespace, gateway.Name)
+		if common.CheckAndLogEmptyEndpoints(gwEndpoints, "gateway", gateway.Namespace, gateway.Name) {
 			continue
 		}
 
@@ -202,9 +190,7 @@ func (sc *gatewaySource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, e
 	}
 
 	// TODO: sort on endpoint creation
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
