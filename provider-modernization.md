@@ -32,6 +32,32 @@ This document outlines code duplication patterns and improvement opportunities i
 - **Files**: `provider/record_type_config_test.go`, `provider/errors_test.go`
 - **Status**: DONE
 
+#### 4. Type Converters
+
+- **File**: `provider/type_converters.go`
+- **Status**: DONE
+- Created safe parsing utilities:
+  - `ParseInt64(value, defaultVal, context)` - int64 with logging on error
+  - `ParseInt32(value, defaultVal, context)` - int32 with logging on error
+  - `ParseUint32(value, defaultVal, context)` - uint32 with logging on error
+  - `ParseFloat64(value, defaultVal, context)` - float64 with logging on error
+  - `ParseBool(value, defaultVal, context)` - bool with logging on error
+  - `ParseInt64OrError(value)` - int64 with error return
+  - `ParseFloat64OrError(value)` - float64 with error return
+- Updated providers: AWS (weight, bias, coordinates parsing)
+
+#### 5. Generic Zone Cache
+
+- **File**: `provider/zone_cache.go`
+- **Status**: DONE
+- Created generic, thread-safe zone caching utilities:
+  - `ZoneCache[T]` - generic cache with TTL expiration
+  - `NewSliceZoneCache[T]()` - cache for slice types
+  - `NewMapZoneCache[K, V]()` - cache for map types
+  - `CachedZoneProvider[T]` - wrapper that combines cache with fetcher
+- Tests: `provider/zone_cache_test.go`
+- Available for new providers or future refactoring of existing providers
+
 ---
 
 ## 1. Code Duplication Patterns

@@ -967,12 +967,7 @@ func shouldBeProxied(ep *endpoint.Endpoint, proxiedByDefault bool) bool {
 
 	for _, v := range ep.ProviderSpecific {
 		if v.Name == annotations.CloudflareProxiedKey {
-			b, err := strconv.ParseBool(v.Value)
-			if err != nil {
-				log.Errorf("Failed to parse annotation [%q]: %v", annotations.CloudflareProxiedKey, err)
-			} else {
-				proxied = b
-			}
+			proxied = provider.ParseBool(v.Value, proxiedByDefault, annotations.CloudflareProxiedKey)
 			break
 		}
 	}
