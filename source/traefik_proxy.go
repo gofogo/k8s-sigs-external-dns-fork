@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -39,6 +38,7 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/informers"
 )
 
@@ -231,9 +231,7 @@ func (ts *traefikSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 		endpoints = append(endpoints, oldIngressRouteUdpEndpoints...)
 	}
 
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
@@ -365,9 +363,9 @@ func (ts *traefikSource) oldIngressRouteUDPEndpoints() ([]*endpoint.Endpoint, er
 func (ts *traefikSource) endpointsFromIngressRoute(ingressRoute *IngressRoute, targets endpoint.Targets) []*endpoint.Endpoint {
 	var endpoints []*endpoint.Endpoint
 
-	resource := fmt.Sprintf("ingressroute/%s/%s", ingressRoute.Namespace, ingressRoute.Name)
+	resource := common.BuildResourceIdentifier("ingressroute", ingressRoute.Namespace, ingressRoute.Name)
 
-	ttl := annotations.TTLFromAnnotations(ingressRoute.Annotations, resource)
+	ttl := common.GetTTLForResource(ingressRoute.Annotations, "ingressroute", ingressRoute.Namespace, ingressRoute.Name)
 
 	providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(ingressRoute.Annotations)
 
@@ -398,9 +396,9 @@ func (ts *traefikSource) endpointsFromIngressRoute(ingressRoute *IngressRoute, t
 func (ts *traefikSource) endpointsFromIngressRouteTCP(ingressRoute *IngressRouteTCP, targets endpoint.Targets) []*endpoint.Endpoint {
 	var endpoints []*endpoint.Endpoint
 
-	resource := fmt.Sprintf("ingressroutetcp/%s/%s", ingressRoute.Namespace, ingressRoute.Name)
+	resource := common.BuildResourceIdentifier("ingressroutetcp", ingressRoute.Namespace, ingressRoute.Name)
 
-	ttl := annotations.TTLFromAnnotations(ingressRoute.Annotations, resource)
+	ttl := common.GetTTLForResource(ingressRoute.Annotations, "ingressroutetcp", ingressRoute.Namespace, ingressRoute.Name)
 
 	providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(ingressRoute.Annotations)
 
@@ -431,9 +429,9 @@ func (ts *traefikSource) endpointsFromIngressRouteTCP(ingressRoute *IngressRoute
 func (ts *traefikSource) endpointsFromIngressRouteUDP(ingressRoute *IngressRouteUDP, targets endpoint.Targets) []*endpoint.Endpoint {
 	var endpoints []*endpoint.Endpoint
 
-	resource := fmt.Sprintf("ingressrouteudp/%s/%s", ingressRoute.Namespace, ingressRoute.Name)
+	resource := common.BuildResourceIdentifier("ingressrouteudp", ingressRoute.Namespace, ingressRoute.Name)
 
-	ttl := annotations.TTLFromAnnotations(ingressRoute.Annotations, resource)
+	ttl := common.GetTTLForResource(ingressRoute.Annotations, "ingressrouteudp", ingressRoute.Namespace, ingressRoute.Name)
 
 	providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(ingressRoute.Annotations)
 

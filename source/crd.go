@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 
 	log "github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -219,7 +220,7 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 				continue
 			}
 
-			ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("crd/%s/%s", dnsEndpoint.Namespace, dnsEndpoint.Name))
+			ep.WithLabel(endpoint.ResourceLabelKey, common.BuildResourceIdentifier("crd", dnsEndpoint.Namespace, dnsEndpoint.Name))
 
 			crdEndpoints = append(crdEndpoints, ep)
 		}

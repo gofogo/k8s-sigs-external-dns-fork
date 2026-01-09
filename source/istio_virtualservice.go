@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"text/template"
 
@@ -33,13 +32,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
-	kubeinformers "k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	netinformers "k8s.io/client-go/informers/networking/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
 )
@@ -90,17 +89,17 @@ func NewIstioVirtualServiceSource(
 
 	// Use shared informers to listen for add/update/delete of services/pods/nodes in the specified namespace.
 	// Set resync period to 0, to prevent processing when nothing has changed
-	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(namespace))
+	informerFactory := informers.CreateKubeInformerFactory(kubeClient, namespace)
 	serviceInformer := informerFactory.Core().V1().Services()
 	istioInformerFactory := istioinformers.NewSharedInformerFactoryWithOptions(istioClient, 0, istioinformers.WithNamespace(namespace))
 	virtualServiceInformer := istioInformerFactory.Networking().V1beta1().VirtualServices()
 	gatewayInformer := istioInformerFactory.Networking().V1beta1().Gateways()
 	ingressInformer := informerFactory.Networking().V1().Ingresses()
 
-	_, _ = ingressInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(ingressInformer.Informer())
 
 	// Add default resource event handlers to properly initialize informer.
-	_, _ = serviceInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(serviceInformer.Informer())
 	err = serviceInformer.Informer().SetTransform(informers.TransformerWithOptions[*corev1.Service](
 		informers.TransformWithSpecSelector(),
 		informers.TransformWithSpecExternalIPs(),
@@ -110,17 +109,15 @@ func NewIstioVirtualServiceSource(
 		return nil, err
 	}
 
-	_, _ = virtualServiceInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(virtualServiceInformer.Informer())
 
-	_, _ = gatewayInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(gatewayInformer.Informer())
 
-	informerFactory.Start(ctx.Done())
-	istioInformerFactory.Start(ctx.Done())
-
-	// wait for the local cache to be populated.
-	if err := informers.WaitForCacheSync(ctx, informerFactory); err != nil {
+	// Start the informers and wait for the local caches to be populated.
+	if err := informers.StartAndSyncInformerFactory(ctx, informerFactory); err != nil {
 		return nil, err
 	}
+	istioInformerFactory.Start(ctx.Done())
 	if err := informers.WaitForCacheSync(ctx, istioInformerFactory); err != nil {
 		return nil, err
 	}
@@ -158,10 +155,7 @@ func (sc *virtualServiceSource) Endpoints(ctx context.Context) ([]*endpoint.Endp
 
 	for _, vService := range virtualServices {
 		// Check controller annotation to see if we are responsible.
-		controller, ok := vService.Annotations[annotations.ControllerKey]
-		if ok && controller != annotations.ControllerValue {
-			log.Debugf("Skipping VirtualService %s/%s.%s because controller value does not match, found: %s, required: %s",
-				vService.Namespace, vService.APIVersion, vService.Name, controller, annotations.ControllerValue)
+		if !common.ShouldProcessResource(vService.Annotations, annotations.ControllerValue, "virtualservice", vService.Namespace, vService.Name) {
 			continue
 		}
 
@@ -184,8 +178,7 @@ func (sc *virtualServiceSource) Endpoints(ctx context.Context) ([]*endpoint.Endp
 			}
 		}
 
-		if len(gwEndpoints) == 0 {
-			log.Debugf("No endpoints could be generated from VirtualService %s/%s", vService.Namespace, vService.Name)
+		if common.CheckAndLogEmptyEndpoints(gwEndpoints, "virtualservice", vService.Namespace, vService.Name) {
 			continue
 		}
 
@@ -194,9 +187,7 @@ func (sc *virtualServiceSource) Endpoints(ctx context.Context) ([]*endpoint.Endp
 	}
 
 	// TODO: sort on endpoint creation
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
@@ -205,7 +196,7 @@ func (sc *virtualServiceSource) Endpoints(ctx context.Context) ([]*endpoint.Endp
 func (sc *virtualServiceSource) AddEventHandler(_ context.Context, handler func()) {
 	log.Debug("Adding event handler for Istio VirtualService")
 
-	_, _ = sc.vServiceInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(sc.vServiceInformer.Informer(), handler)
 }
 
 func (sc *virtualServiceSource) getGateway(_ context.Context, gatewayStr string, virtualService *v1beta1.VirtualService) (*v1beta1.Gateway, error) {
@@ -242,9 +233,9 @@ func (sc *virtualServiceSource) endpointsFromTemplate(ctx context.Context, virtu
 		return nil, err
 	}
 
-	resource := fmt.Sprintf("virtualservice/%s/%s", virtualService.Namespace, virtualService.Name)
+	resource := common.BuildResourceIdentifier("virtualservice", virtualService.Namespace, virtualService.Name)
 
-	ttl := annotations.TTLFromAnnotations(virtualService.Annotations, resource)
+	ttl := common.GetTTLForResource(virtualService.Annotations, "virtualservice", virtualService.Namespace, virtualService.Name)
 
 	providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(virtualService.Annotations)
 
@@ -297,9 +288,9 @@ func (sc *virtualServiceSource) endpointsFromVirtualService(ctx context.Context,
 	var endpoints []*endpoint.Endpoint
 	var err error
 
-	resource := fmt.Sprintf("virtualservice/%s/%s", vService.Namespace, vService.Name)
+	resource := common.BuildResourceIdentifier("virtualservice", vService.Namespace, vService.Name)
 
-	ttl := annotations.TTLFromAnnotations(vService.Annotations, resource)
+	ttl := common.GetTTLForResource(vService.Annotations, "virtualservice", vService.Namespace, vService.Name)
 
 	targetsFromAnnotation := annotations.TargetsFromTargetAnnotation(vService.Annotations)
 

@@ -18,8 +18,6 @@ package source
 
 import (
 	"context"
-	"fmt"
-	"sort"
 	"text/template"
 	"time"
 
@@ -34,6 +32,7 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
 )
@@ -118,7 +117,7 @@ func (ors *ocpRouteSource) AddEventHandler(_ context.Context, handler func()) {
 
 	// Right now there is no way to remove event handler from informer, see:
 	// https://github.com/kubernetes/kubernetes/issues/79610
-	_, _ = ors.routeInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(ors.routeInformer.Informer(), handler)
 }
 
 // Endpoints returns endpoint objects for each host-target combination that should be processed.
@@ -139,10 +138,7 @@ func (ors *ocpRouteSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 
 	for _, ocpRoute := range ocpRoutes {
 		// Check controller annotation to see if we are responsible.
-		controller, ok := ocpRoute.Annotations[annotations.ControllerKey]
-		if ok && controller != annotations.ControllerValue {
-			log.Debugf("Skipping OpenShift Route %s/%s because controller value does not match, found: %s, required: %s",
-				ocpRoute.Namespace, ocpRoute.Name, controller, annotations.ControllerValue)
+		if !common.ShouldProcessResource(ocpRoute.Annotations, annotations.ControllerValue, "route", ocpRoute.Namespace, ocpRoute.Name) {
 			continue
 		}
 
@@ -162,8 +158,7 @@ func (ors *ocpRouteSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 			}
 		}
 
-		if len(orEndpoints) == 0 {
-			log.Debugf("No endpoints could be generated from OpenShift Route %s/%s", ocpRoute.Namespace, ocpRoute.Name)
+		if common.CheckAndLogEmptyEndpoints(orEndpoints, "route", ocpRoute.Namespace, ocpRoute.Name) {
 			continue
 		}
 
@@ -171,9 +166,7 @@ func (ors *ocpRouteSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 		endpoints = append(endpoints, orEndpoints...)
 	}
 
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
@@ -184,9 +177,9 @@ func (ors *ocpRouteSource) endpointsFromTemplate(ocpRoute *routev1.Route) ([]*en
 		return nil, err
 	}
 
-	resource := fmt.Sprintf("route/%s/%s", ocpRoute.Namespace, ocpRoute.Name)
+	resource := common.BuildResourceIdentifier("route", ocpRoute.Namespace, ocpRoute.Name)
 
-	ttl := annotations.TTLFromAnnotations(ocpRoute.Annotations, resource)
+	ttl := common.GetTTLForResource(ocpRoute.Annotations, "route", ocpRoute.Namespace, ocpRoute.Name)
 
 	targets := annotations.TargetsFromTargetAnnotation(ocpRoute.Annotations)
 	if len(targets) == 0 {
@@ -207,9 +200,9 @@ func (ors *ocpRouteSource) endpointsFromTemplate(ocpRoute *routev1.Route) ([]*en
 func (ors *ocpRouteSource) endpointsFromOcpRoute(ocpRoute *routev1.Route, ignoreHostnameAnnotation bool) []*endpoint.Endpoint {
 	var endpoints []*endpoint.Endpoint
 
-	resource := fmt.Sprintf("route/%s/%s", ocpRoute.Namespace, ocpRoute.Name)
+	resource := common.BuildResourceIdentifier("route", ocpRoute.Namespace, ocpRoute.Name)
 
-	ttl := annotations.TTLFromAnnotations(ocpRoute.Annotations, resource)
+	ttl := common.GetTTLForResource(ocpRoute.Annotations, "route", ocpRoute.Namespace, ocpRoute.Name)
 
 	targets := annotations.TargetsFromTargetAnnotation(ocpRoute.Annotations)
 	targetsFromRoute, host := ors.getTargetsFromRouteStatus(ocpRoute.Status)

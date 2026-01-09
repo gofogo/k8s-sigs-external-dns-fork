@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -39,6 +38,7 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/informers"
 )
 
@@ -139,9 +139,7 @@ func (vs *f5VirtualServerSource) Endpoints(_ context.Context) ([]*endpoint.Endpo
 	}
 
 	// Sort endpoints
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
@@ -149,7 +147,7 @@ func (vs *f5VirtualServerSource) Endpoints(_ context.Context) ([]*endpoint.Endpo
 func (vs *f5VirtualServerSource) AddEventHandler(_ context.Context, handler func()) {
 	log.Debug("Adding event handler for VirtualServer")
 
-	_, _ = vs.virtualServerInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(vs.virtualServerInformer.Informer(), handler)
 }
 
 // endpointsFromVirtualServers extracts the endpoints from a slice of VirtualServers
@@ -163,9 +161,9 @@ func (vs *f5VirtualServerSource) endpointsFromVirtualServers(virtualServers []*f
 			continue
 		}
 
-		resource := fmt.Sprintf("f5-virtualserver/%s/%s", virtualServer.Namespace, virtualServer.Name)
+		resource := common.BuildResourceIdentifier("f5-virtualserver", virtualServer.Namespace, virtualServer.Name)
 
-		ttl := annotations.TTLFromAnnotations(virtualServer.Annotations, resource)
+		ttl := common.GetTTLForResource(virtualServer.Annotations, "f5-virtualserver", virtualServer.Namespace, virtualServer.Name)
 
 		targets := annotations.TargetsFromTargetAnnotation(virtualServer.Annotations)
 		if len(targets) == 0 && virtualServer.Spec.VirtualServerAddress != "" {

@@ -36,10 +36,10 @@ import (
 
 	f5 "github.com/F5Networks/k8s-bigip-ctlr/v2/config/apis/cis/v1"
 
-	"sigs.k8s.io/external-dns/source/informers"
-
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
+	"sigs.k8s.io/external-dns/source/informers"
 )
 
 var f5TransportServerGVR = schema.GroupVersionResource{
@@ -144,7 +144,7 @@ func (ts *f5TransportServerSource) Endpoints(_ context.Context) ([]*endpoint.End
 func (ts *f5TransportServerSource) AddEventHandler(_ context.Context, handler func()) {
 	log.Debug("Adding event handler for TransportServer")
 
-	_, _ = ts.transportServerInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(ts.transportServerInformer.Informer(), handler)
 }
 
 // endpointsFromTransportServers extracts the endpoints from a slice of TransportServers
@@ -158,9 +158,9 @@ func (ts *f5TransportServerSource) endpointsFromTransportServers(transportServer
 			continue
 		}
 
-		resource := fmt.Sprintf("f5-transportserver/%s/%s", transportServer.Namespace, transportServer.Name)
+		resource := common.BuildResourceIdentifier("f5-transportserver", transportServer.Namespace, transportServer.Name)
 
-		ttl := annotations.TTLFromAnnotations(transportServer.Annotations, resource)
+		ttl := common.GetTTLForResource(transportServer.Annotations, "f5-transportserver", transportServer.Namespace, transportServer.Name)
 
 		targets := annotations.TargetsFromTargetAnnotation(transportServer.Annotations)
 		if len(targets) == 0 && transportServer.Spec.VirtualServerAddress != "" {

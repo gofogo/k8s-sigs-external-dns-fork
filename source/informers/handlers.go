@@ -36,3 +36,22 @@ func DefaultEventHandler(handlers ...func()) cache.ResourceEventHandler {
 		},
 	}
 }
+
+// AddSimpleEventHandler registers an event handler that calls the provided function
+// for all add, update, and delete events. This is a convenience wrapper for the
+// common pattern of registering the same handler for all event types.
+func AddSimpleEventHandler(informer cache.SharedIndexInformer, handler func()) {
+	_, _ = informer.AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    func(obj interface{}) { handler() },
+			UpdateFunc: func(oldObj, newObj interface{}) { handler() },
+			DeleteFunc: func(obj interface{}) { handler() },
+		},
+	)
+}
+
+// RegisterDefaultEventHandler adds a no-op event handler to the informer.
+// This is required to properly initialize the informer's cache.
+func RegisterDefaultEventHandler(informer cache.SharedIndexInformer) {
+	_, _ = informer.AddEventHandler(DefaultEventHandler())
+}

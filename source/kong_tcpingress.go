@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 
 	log "github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
@@ -38,6 +37,7 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/informers"
 )
 
@@ -165,9 +165,7 @@ func (sc *kongTCPIngressSource) Endpoints(_ context.Context) ([]*endpoint.Endpoi
 		endpoints = append(endpoints, ingressEndpoints...)
 	}
 
-	for _, ep := range endpoints {
-		sort.Sort(ep.Targets)
-	}
+	common.SortEndpointTargets(endpoints)
 
 	return endpoints, nil
 }
@@ -176,9 +174,9 @@ func (sc *kongTCPIngressSource) Endpoints(_ context.Context) ([]*endpoint.Endpoi
 func (sc *kongTCPIngressSource) endpointsFromTCPIngress(tcpIngress *TCPIngress, targets endpoint.Targets) ([]*endpoint.Endpoint, error) {
 	var endpoints []*endpoint.Endpoint
 
-	resource := fmt.Sprintf("tcpingress/%s/%s", tcpIngress.Namespace, tcpIngress.Name)
+	resource := common.BuildResourceIdentifier("tcpingress", tcpIngress.Namespace, tcpIngress.Name)
 
-	ttl := annotations.TTLFromAnnotations(tcpIngress.Annotations, resource)
+	ttl := common.GetTTLForResource(tcpIngress.Annotations, "tcpingress", tcpIngress.Namespace, tcpIngress.Name)
 
 	providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(tcpIngress.Annotations)
 

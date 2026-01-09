@@ -32,19 +32,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	kubeinformers "k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	discoveryinformers "k8s.io/client-go/informers/discovery/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 
-	"sigs.k8s.io/external-dns/provider"
-	"sigs.k8s.io/external-dns/source/informers"
-
-	"sigs.k8s.io/external-dns/source/annotations"
-
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/provider"
+	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
+	"sigs.k8s.io/external-dns/source/informers"
 )
 
 var (
@@ -115,11 +113,11 @@ func NewServiceSource(
 
 	// Use shared informers to listen for add/update/delete of services/pods/nodes in the specified namespace.
 	// Set the resync period to 0 to prevent processing when nothing has changed
-	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(namespace))
+	informerFactory := informers.CreateKubeInformerFactory(kubeClient, namespace)
 	serviceInformer := informerFactory.Core().V1().Services()
 
 	// Add default resource event handlers to properly initialize informer.
-	_, _ = serviceInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.RegisterDefaultEventHandler(serviceInformer.Informer())
 
 	// Transform the slice into a map so it will be way much easier and fast to filter later
 	sTypesFilter, err := newServiceTypesFilter(serviceTypeFilter)
@@ -133,8 +131,8 @@ func NewServiceSource(
 		endpointSlicesInformer = informerFactory.Discovery().V1().EndpointSlices()
 		podInformer = informerFactory.Core().V1().Pods()
 
-		_, _ = endpointSlicesInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
-		_, _ = podInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+		informers.RegisterDefaultEventHandler(endpointSlicesInformer.Informer())
+		informers.RegisterDefaultEventHandler(podInformer.Informer())
 
 		// Add an indexer to the EndpointSlice informer to index by the service name label
 		err = endpointSlicesInformer.Informer().AddIndexers(cache.Indexers{
@@ -202,13 +200,11 @@ func NewServiceSource(
 	var nodeInformer coreinformers.NodeInformer
 	if sTypesFilter.isRequired(v1.ServiceTypeNodePort) {
 		nodeInformer = informerFactory.Core().V1().Nodes()
-		_, _ = nodeInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+		informers.RegisterDefaultEventHandler(nodeInformer.Informer())
 	}
 
-	informerFactory.Start(ctx.Done())
-
-	// wait for the local cache to be populated.
-	if err := informers.WaitForCacheSync(ctx, informerFactory); err != nil {
+	// Start the informer and wait for the local cache to be populated.
+	if err := informers.StartAndSyncInformerFactory(ctx, informerFactory); err != nil {
 		return nil, err
 	}
 
@@ -255,10 +251,7 @@ func (sc *serviceSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 
 	for _, svc := range services {
 		// Check controller annotation to see if we are responsible.
-		controller, ok := svc.Annotations[annotations.ControllerKey]
-		if ok && controller != annotations.ControllerValue {
-			log.Debugf("Skipping service %s/%s because controller value does not match, found: %s, required: %s",
-				svc.Namespace, svc.Name, controller, annotations.ControllerValue)
+		if !common.ShouldProcessResource(svc.Annotations, annotations.ControllerValue, "service", svc.Namespace, svc.Name) {
 			continue
 		}
 
@@ -597,9 +590,9 @@ func (sc *serviceSource) filterByServiceType(services []*v1.Service) []*v1.Servi
 func (sc *serviceSource) generateEndpoints(svc *v1.Service, hostname string, providerSpecific endpoint.ProviderSpecific, setIdentifier string, useClusterIP bool) []*endpoint.Endpoint {
 	hostname = strings.TrimSuffix(hostname, ".")
 
-	resource := fmt.Sprintf("service/%s/%s", svc.Namespace, svc.Name)
+	resource := common.BuildResourceIdentifier("service", svc.Namespace, svc.Name)
 
-	ttl := annotations.TTLFromAnnotations(svc.Annotations, resource)
+	ttl := common.GetTTLForResource(svc.Annotations, "service", svc.Namespace, svc.Name)
 
 	targets := annotations.TargetsFromTargetAnnotation(svc.Annotations)
 
@@ -882,9 +875,9 @@ func (sc *serviceSource) AddEventHandler(_ context.Context, handler func()) {
 
 	// Right now there is no way to remove event handler from informer, see:
 	// https://github.com/kubernetes/kubernetes/issues/79610
-	_, _ = sc.serviceInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.AddSimpleEventHandler(sc.serviceInformer.Informer(), handler)
 	if sc.listenEndpointEvents && sc.serviceTypeFilter.isRequired(v1.ServiceTypeNodePort, v1.ServiceTypeClusterIP) {
-		_, _ = sc.endpointSlicesInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+		informers.AddSimpleEventHandler(sc.endpointSlicesInformer.Informer(), handler)
 	}
 }
 

@@ -18,7 +18,6 @@ package source
 
 import (
 	"context"
-	"fmt"
 	"net/netip"
 	"sort"
 	"strings"
@@ -41,6 +40,7 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/source/common"
 	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
 )
@@ -264,9 +264,7 @@ func (src *gatewayRouteSource) Endpoints(_ context.Context) ([]*endpoint.Endpoin
 		}
 
 		// Check controller annotation to see if we are responsible.
-		if v, ok := annots[annotations.ControllerKey]; ok && v != annotations.ControllerValue {
-			log.Debugf("Skipping %s %s/%s because controller value does not match, found: %s, required: %s",
-				src.rtKind, meta.Namespace, meta.Name, v, annotations.ControllerValue)
+		if !common.ShouldProcessResource(annots, annotations.ControllerValue, kind, meta.Namespace, meta.Name) {
 			continue
 		}
 
@@ -282,9 +280,9 @@ func (src *gatewayRouteSource) Endpoints(_ context.Context) ([]*endpoint.Endpoin
 
 		// Create endpoints from hostnames and targets.
 		var routeEndpoints []*endpoint.Endpoint
-		resource := fmt.Sprintf("%s/%s/%s", kind, meta.Namespace, meta.Name)
+		resource := common.BuildResourceIdentifier(kind, meta.Namespace, meta.Name)
 		providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(annots)
-		ttl := annotations.TTLFromAnnotations(annots, resource)
+		ttl := common.GetTTLForResource(annots, kind, meta.Namespace, meta.Name)
 		for host, targets := range hostTargets {
 			routeEndpoints = append(routeEndpoints, EndpointsForHostname(host, targets, ttl, providerSpecific, setIdentifier, resource)...)
 		}
