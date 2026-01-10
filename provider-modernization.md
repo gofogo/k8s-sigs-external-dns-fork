@@ -2,6 +2,19 @@
 
 This document outlines code duplication patterns and improvement opportunities identified in the provider package.
 
+## Next Steps
+
+| Option | Description | Complexity | Est. Reduction |
+|--------|-------------|------------|----------------|
+| **A** | Migrate more providers to shared zone cache (Google, Cloudflare, OCI, etc.) | Low-Medium | ~100 lines/provider |
+| **B** | Create generic pagination helper to abstract paginate→filter→collect pattern | Medium | ~600 lines |
+| **C** | Create test helper package with shared assertions and fixtures | Medium | ~1500 lines |
+| **D** | Done - Phase 1 complete, no further work needed | - | - |
+
+The zone cache migrations (A) would be incremental work similar to what we just did. The pagination helper (B) would abstract the common "paginate -> filter -> collect" pattern seen across 20+ providers. The test helpers (C) would reduce duplication in test files.
+
+---
+
 ## Status: Completed Items
 
 ### Phase 1: Low-Hanging Fruit (COMPLETED)
