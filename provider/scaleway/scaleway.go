@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	domain "github.com/scaleway/scaleway-sdk-go/api/domain/v2beta1"
@@ -56,14 +55,9 @@ type ScalewayChange struct {
 
 // NewScalewayProvider initializes a new Scaleway DNS provider
 func NewScalewayProvider(ctx context.Context, domainFilter *endpoint.DomainFilter, dryRun bool) (*ScalewayProvider, error) {
-	var err error
-	defaultPageSize := uint64(1000)
+	defaultPageSize := uint32(1000)
 	if envPageSize, ok := os.LookupEnv("SCW_DEFAULT_PAGE_SIZE"); ok {
-		defaultPageSize, err = strconv.ParseUint(envPageSize, 10, 32)
-		if err != nil {
-			log.Infof("Ignoring default page size %s, defaulting to 1000", envPageSize)
-			defaultPageSize = 1000
-		}
+		defaultPageSize = provider.ParseUint32(envPageSize, 1000, "SCW_DEFAULT_PAGE_SIZE")
 	}
 
 	p := &scw.Profile{}
@@ -81,7 +75,7 @@ func NewScalewayProvider(ctx context.Context, domainFilter *endpoint.DomainFilte
 		scw.WithProfile(p),
 		scw.WithEnv(),
 		scw.WithUserAgent(externaldns.UserAgent()),
-		scw.WithDefaultPageSize(uint32(defaultPageSize)),
+		scw.WithDefaultPageSize(defaultPageSize),
 	)
 	if err != nil {
 		return nil, err
@@ -306,12 +300,7 @@ func endpointToScalewayRecords(zoneName string, ep *endpoint.Endpoint) []*domain
 	}
 	priority := scalewayDefaultPriority
 	if prop, ok := ep.GetProviderSpecificProperty(scalewayPriorityKey); ok {
-		prio, err := strconv.ParseUint(prop, 10, 32)
-		if err != nil {
-			log.Errorf("Failed parsing value of %s: %s: %v; using priority of %d", scalewayPriorityKey, prop, err, scalewayDefaultPriority)
-		} else {
-			priority = uint32(prio)
-		}
+		priority = provider.ParseUint32(prop, scalewayDefaultPriority, scalewayPriorityKey)
 	}
 
 	records := []*domain.Record{}

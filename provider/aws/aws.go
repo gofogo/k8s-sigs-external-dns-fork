@@ -37,6 +37,10 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 )
 
+// awsRecordTypeConfig defines the record types supported by the AWS provider.
+// AWS supports base types plus MX and NAPTR.
+var awsRecordTypeConfig = provider.MXNAPTRRecordTypeConfig
+
 const (
 	defaultAWSProfile = "default"
 	defaultTTL        = 300
@@ -282,12 +286,6 @@ func (z zoneTags) append(id string, tags []route53types.Tag) {
 	}
 }
 
-type zonesListCache struct {
-	age      time.Time
-	duration time.Duration
-	zones    map[string]*profiledZone
-}
-
 // AWSProvider is an implementation of Provider for AWS Route53.
 type AWSProvider struct {
 	provider.BaseProvider
@@ -309,7 +307,7 @@ type AWSProvider struct {
 	// extend filter for subdomains in the zone (e.g. first.us-east-1.example.com)
 	zoneMatchParent bool
 	preferCNAME     bool
-	zonesCache      *zonesListCache
+	zonesCache      *provider.ZoneCache[map[string]*profiledZone]
 	// queue for collecting changes to submit them in the next iteration, but after all other changes
 	failedChangesQueue map[string]Route53Changes
 }
@@ -347,7 +345,7 @@ func NewAWSProvider(awsConfig AWSConfig, clients map[string]Route53API) (*AWSPro
 		evaluateTargetHealth:  awsConfig.EvaluateTargetHealth,
 		preferCNAME:           awsConfig.PreferCNAME,
 		dryRun:                awsConfig.DryRun,
-		zonesCache:            &zonesListCache{duration: awsConfig.ZoneCacheDuration},
+		zonesCache:            provider.NewMapZoneCache[string, *profiledZone](awsConfig.ZoneCacheDuration),
 		failedChangesQueue:    make(map[string]Route53Changes),
 	}
 
@@ -370,9 +368,9 @@ func (p *AWSProvider) Zones(ctx context.Context) (map[string]*route53types.Hoste
 
 // zones returns the list of zones per AWS profile
 func (p *AWSProvider) zones(ctx context.Context) (map[string]*profiledZone, error) {
-	if p.zonesCache.zones != nil && time.Since(p.zonesCache.age) < p.zonesCache.duration {
+	if !p.zonesCache.Expired() {
 		log.Debug("Using cached zones list")
-		return p.zonesCache.zones, nil
+		return p.zonesCache.Get(), nil
 	}
 	log.Debug("Refreshing zones list cache")
 
@@ -390,7 +388,7 @@ func (p *AWSProvider) zones(ctx context.Context) (map[string]*profiledZone, erro
 					continue
 				}
 				// nothing to do here. Falling through to general error handling
-				return nil, provider.NewSoftErrorf("failed to list hosted zones: %w", err)
+				return nil, provider.SoftErrorZones(err)
 			}
 			var zonesToTagFilter []string
 			for _, zone := range resp.HostedZones {
@@ -423,7 +421,7 @@ func (p *AWSProvider) zones(ctx context.Context) (map[string]*profiledZone, erro
 
 			if len(zonesToTagFilter) > 0 {
 				if zTags, err := p.tagsForZone(ctx, zonesToTagFilter, profile); err != nil {
-					return nil, provider.NewSoftErrorf("failed to list tags for zones %w", err)
+					return nil, provider.SoftErrorTags(err)
 				} else {
 					zTags.filterZonesByTags(p, zones)
 				}
@@ -437,10 +435,7 @@ func (p *AWSProvider) zones(ctx context.Context) (map[string]*profiledZone, erro
 		}
 	}
 
-	if p.zonesCache.duration > time.Duration(0) {
-		p.zonesCache.zones = zones
-		p.zonesCache.age = time.Now()
-	}
+	p.zonesCache.Reset(zones)
 
 	return zones, nil
 }
@@ -477,7 +472,7 @@ func containsOctalSequence(domain string) bool {
 func (p *AWSProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 	zones, err := p.zones(ctx)
 	if err != nil {
-		return nil, provider.NewSoftErrorf("records retrieval failed: %v", err)
+		return nil, provider.SoftErrorRecords(err)
 	}
 
 	return p.records(ctx, zones)
@@ -497,7 +492,7 @@ func (p *AWSProvider) records(ctx context.Context, zones map[string]*profiledZon
 		for paginator.HasMorePages() {
 			resp, err := paginator.NextPage(ctx)
 			if err != nil {
-				return nil, provider.NewSoftErrorf("failed to list resource records sets for zone %s using aws profile %q: %w", *z.zone.Id, z.profile, err)
+				return nil, provider.SoftErrorRecordsForZone(err, *z.zone.Id)
 			}
 
 			for _, r := range resp.ResourceRecordSets {
@@ -683,7 +678,7 @@ func (p *AWSProvider) GetDomainFilter() endpoint.DomainFilterInterface {
 func (p *AWSProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	zones, err := p.zones(ctx)
 	if err != nil {
-		return provider.NewSoftErrorf("failed to list zones, not applying changes: %w", err)
+		return provider.SoftErrorZones(err)
 	}
 
 	updateChanges := p.createUpdateChanges(changes.UpdateNew, changes.UpdateOld)
@@ -798,7 +793,7 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 	}
 
 	if len(failedZones) > 0 {
-		return provider.NewSoftErrorf("failed to submit all changes for the following zones: %v", failedZones)
+		return provider.SoftErrorApplyChangesForZones(failedZones)
 	}
 
 	return nil
@@ -959,11 +954,7 @@ func (p *AWSProvider) newChange(action route53types.ChangeAction, ep *endpoint.E
 		change.ResourceRecordSet.SetIdentifier = aws.String(ep.SetIdentifier)
 	}
 	if prop, ok := ep.GetProviderSpecificProperty(providerSpecificWeight); ok {
-		weight, err := strconv.ParseInt(prop, 10, 64)
-		if err != nil {
-			log.Errorf("Failed parsing value of %s: %s: %v; using weight of 0", providerSpecificWeight, prop, err)
-			weight = 0
-		}
+		weight := provider.ParseInt64(prop, 0, providerSpecificWeight)
 		change.ResourceRecordSet.Weight = aws.Int64(weight)
 	}
 	if prop, ok := ep.GetProviderSpecificProperty(providerSpecificRegion); ok {
@@ -1036,12 +1027,8 @@ func (gp *geoProximity) withLocalZoneGroup() *geoProximity {
 // add a method to set the bias for the geoproximity location
 func (gp *geoProximity) withBias() *geoProximity {
 	if prop, ok := gp.endpoint.GetProviderSpecificProperty(providerSpecificGeoProximityLocationBias); ok {
-		bias, err := strconv.ParseInt(prop, 10, 32)
-		if err != nil {
-			log.Warnf("Failed parsing value of %s: %s: %v; using bias of 0", providerSpecificGeoProximityLocationBias, prop, err)
-			bias = 0
-		}
-		gp.location.Bias = aws.Int32(int32(bias))
+		bias := provider.ParseInt32(prop, 0, providerSpecificGeoProximityLocationBias)
+		gp.location.Bias = aws.Int32(bias)
 		gp.isSet = true
 	}
 	return gp
@@ -1049,12 +1036,12 @@ func (gp *geoProximity) withBias() *geoProximity {
 
 // validateCoordinates checks if the given latitude and longitude are valid.
 func validateCoordinates(lat, long string) error {
-	latitude, err := strconv.ParseFloat(lat, 64)
+	latitude, err := provider.ParseFloat64OrError(lat)
 	if err != nil || latitude < minLatitude || latitude > maxLatitude {
 		return fmt.Errorf("invalid latitude: must be a number between %f and %f", minLatitude, maxLatitude)
 	}
 
-	longitude, err := strconv.ParseFloat(long, 64)
+	longitude, err := provider.ParseFloat64OrError(long)
 	if err != nil || longitude < minLongitude || longitude > maxLongitude {
 		return fmt.Errorf("invalid longitude: must be a number between %f and %f", minLongitude, maxLongitude)
 	}
@@ -1153,7 +1140,7 @@ func (p *AWSProvider) tagsForZone(ctx context.Context, zoneIDs []string, profile
 			ResourceIds:  batch,
 		})
 		if err != nil {
-			return nil, provider.NewSoftErrorf("failed to list tags for zones. %v", err)
+			return nil, provider.SoftErrorTags(err)
 		}
 
 		for _, res := range response.ResourceTagSets {
@@ -1394,10 +1381,5 @@ func cleanZoneID(id string) string {
 }
 
 func (p *AWSProvider) SupportedRecordType(recordType route53types.RRType) bool {
-	switch recordType {
-	case route53types.RRTypeMx, route53types.RRTypeNaptr:
-		return true
-	default:
-		return provider.SupportedRecordType(string(recordType))
-	}
+	return awsRecordTypeConfig.Supports(string(recordType))
 }

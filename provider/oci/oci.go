@@ -215,7 +215,7 @@ func (p *OCIProvider) addPaginatedZones(ctx context.Context, zones map[string]dn
 			Page:          page,
 		})
 		if err != nil {
-			return provider.NewSoftErrorf("listing zones in %s: %w", p.cfg.CompartmentID, err)
+			return provider.SoftErrorZonesWithContext(err, p.cfg.CompartmentID)
 		}
 		for _, zone := range resp.Items {
 			if p.domainFilter.Match(*zone.Name) && p.zoneIDFilter.Match(*zone.Id) {
@@ -259,7 +259,7 @@ func (p *OCIProvider) newFilteredRecordOperations(endpoints []*endpoint.Endpoint
 func (p *OCIProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 	zones, err := p.zones(ctx)
 	if err != nil {
-		return nil, provider.NewSoftErrorf("getting zones: %w", err)
+		return nil, provider.SoftErrorZones(err)
 	}
 
 	var endpoints []*endpoint.Endpoint
@@ -272,7 +272,7 @@ func (p *OCIProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error)
 				CompartmentId: &p.cfg.CompartmentID,
 			})
 			if err != nil {
-				return nil, provider.NewSoftErrorf("getting records for zone %q: %w", *zone.Id, err)
+				return nil, provider.SoftErrorRecordsForZone(err, *zone.Id)
 			}
 
 			for _, record := range resp.Items {
@@ -319,7 +319,7 @@ func (p *OCIProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) e
 
 	zones, err := p.zones(ctx)
 	if err != nil {
-		return provider.NewSoftErrorf("fetching zones: %w", err)
+		return provider.SoftErrorZones(err)
 	}
 
 	// Separate into per-zone change sets to be passed to OCI API.

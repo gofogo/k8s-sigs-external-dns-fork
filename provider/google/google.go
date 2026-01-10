@@ -36,6 +36,10 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 )
 
+// googleRecordTypeConfig defines the record types supported by the Google provider.
+// Google supports base types plus MX.
+var googleRecordTypeConfig = provider.MXRecordTypeConfig
+
 const (
 	defaultTTL = 300
 )
@@ -187,7 +191,7 @@ func (p *GoogleProvider) Zones(ctx context.Context) (map[string]*dns.ManagedZone
 
 	log.Debugf("Matching zones against domain filters: %v", p.domainFilter)
 	if err := p.managedZonesClient.List(p.project).Pages(ctx, f); err != nil {
-		return nil, provider.NewSoftErrorf("failed to list zones: %w", err)
+		return nil, provider.SoftErrorZones(err)
 	}
 
 	if len(zones) == 0 {
@@ -223,7 +227,7 @@ func (p *GoogleProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, err
 
 	for _, z := range zones {
 		if err := p.resourceRecordSetsClient.List(p.project, z.Name).Pages(ctx, f); err != nil {
-			return nil, provider.NewSoftErrorf("failed to list records in zone %s: %v", z.Name, err)
+			return nil, provider.SoftErrorRecordsForZone(err, z.Name)
 		}
 	}
 
@@ -246,12 +250,7 @@ func (p *GoogleProvider) ApplyChanges(ctx context.Context, changes *plan.Changes
 
 // SupportedRecordType returns true if the record type is supported by the provider
 func (p *GoogleProvider) SupportedRecordType(recordType string) bool {
-	switch recordType {
-	case "MX":
-		return true
-	default:
-		return provider.SupportedRecordType(recordType)
-	}
+	return googleRecordTypeConfig.Supports(recordType)
 }
 
 // newFilteredRecords returns a collection of RecordSets based on the given endpoints and domainFilter.
@@ -297,7 +296,7 @@ func (p *GoogleProvider) submitChange(ctx context.Context, change *dns.Change) e
 			}
 
 			if _, err := p.changesClient.Create(p.project, zone, c).Do(); err != nil {
-				return provider.NewSoftErrorf("failed to create changes: %w", err)
+				return provider.SoftErrorApplyChanges(err)
 			}
 
 			time.Sleep(p.batchChangeInterval)

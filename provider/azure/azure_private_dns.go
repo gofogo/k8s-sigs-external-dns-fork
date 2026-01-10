@@ -56,7 +56,7 @@ type AzurePrivateDNSProvider struct {
 	userAssignedIdentityClientID string
 	activeDirectoryAuthorityHost string
 	zonesClient                  PrivateZonesClient
-	zonesCache                   *zonesCache[privatedns.PrivateZone]
+	zonesCache                   *provider.ZoneCache[[]privatedns.PrivateZone]
 	recordSetsClient             PrivateRecordSetsClient
 	maxRetriesCount              int
 }
@@ -92,7 +92,7 @@ func NewAzurePrivateDNSProvider(configFile string, domainFilter *endpoint.Domain
 		userAssignedIdentityClientID: cfg.UserAssignedIdentityID,
 		activeDirectoryAuthorityHost: cfg.ActiveDirectoryAuthorityHost,
 		zonesClient:                  zonesClient,
-		zonesCache:                   &zonesCache[privatedns.PrivateZone]{duration: zonesCacheDuration},
+		zonesCache:                   provider.NewSliceZoneCache[privatedns.PrivateZone](zonesCacheDuration),
 		recordSetsClient:             recordSetsClient,
 		maxRetriesCount:              maxRetriesCount,
 	}, nil
@@ -115,7 +115,7 @@ func (p *AzurePrivateDNSProvider) Records(ctx context.Context) ([]*endpoint.Endp
 		for pager.More() {
 			nextResult, err := pager.NextPage(ctx)
 			if err != nil {
-				return nil, provider.NewSoftErrorf("failed to fetch dns records: %v", err)
+				return nil, provider.SoftErrorRecords(err)
 			}
 
 			for _, recordSet := range nextResult.Value {

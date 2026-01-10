@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"net/http"
@@ -168,7 +169,7 @@ func (c *PDNSAPIClient) ListZones() ([]pgo.Zone, *http.Response, error) {
 		return zones, resp, err
 	}
 
-	return zones, resp, provider.NewSoftErrorf("unable to list zones: %v", err)
+	return zones, resp, provider.SoftErrorZones(err)
 }
 
 // PartitionZones : Method returns a slice of zones that adhere to the domain filter and a slice of ones that does not adhere to the filter
@@ -204,7 +205,7 @@ func (c *PDNSAPIClient) ListZone(zoneID string) (pgo.Zone, *http.Response, error
 		return zone, resp, err
 	}
 
-	return pgo.Zone{}, nil, provider.NewSoftErrorf("unable to list zone")
+	return pgo.Zone{}, nil, provider.SoftErrorZones(fmt.Errorf("unable to list zone after retries"))
 }
 
 // PatchZone : Method used to update the contents of a particular zone from PowerDNS
@@ -223,7 +224,7 @@ func (c *PDNSAPIClient) PatchZone(zoneID string, zoneStruct pgo.Zone) (*http.Res
 		return resp, err
 	}
 
-	return resp, provider.NewSoftErrorf("unable to patch zone: %v", err)
+	return resp, provider.SoftErrorApplyChanges(err)
 }
 
 // PDNSProvider is an implementation of the Provider interface for PowerDNS
@@ -435,7 +436,7 @@ func (p *PDNSProvider) Records(_ context.Context) ([]*endpoint.Endpoint, error) 
 	for _, zone := range filteredZones {
 		z, _, err := p.client.ListZone(zone.Id)
 		if err != nil {
-			return nil, provider.NewSoftErrorf("unable to fetch records: %v", err)
+			return nil, provider.SoftErrorRecords(err)
 		}
 
 		for _, rr := range z.Rrsets {

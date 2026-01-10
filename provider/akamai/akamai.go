@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	dns "github.com/akamai/AkamaiOPEN-edgegrid-golang/configdns-v2"
@@ -117,20 +116,16 @@ func NewAkamaiProvider(akamaiConfig AkamaiConfig, akaService AkamaiDNSService) (
 		}
 		// Check for edgegrid overrides
 		if envval, ok := os.LookupEnv("AKAMAI_MAX_BODY"); ok {
-			if i, err := strconv.Atoi(envval); err == nil {
-				edgeGridConfig.MaxBody = i
-				log.Debugf("Edgegrid maxbody set to %s", envval)
-			}
+			edgeGridConfig.MaxBody = int(provider.ParseInt64(envval, 0, "AKAMAI_MAX_BODY"))
+			log.Debugf("Edgegrid maxbody set to %d", edgeGridConfig.MaxBody)
 		}
 		if envval, ok := os.LookupEnv("AKAMAI_ACCOUNT_KEY"); ok {
 			edgeGridConfig.AccountKey = envval
 			log.Debugf("Edgegrid applying account key %s", envval)
 		}
 		if envval, ok := os.LookupEnv("AKAMAI_DEBUG"); ok {
-			if dbgval, err := strconv.ParseBool(envval); err == nil {
-				edgeGridConfig.Debug = dbgval
-				log.Debugf("Edgegrid debug set to %s", envval)
-			}
+			edgeGridConfig.Debug = provider.ParseBool(envval, false, "AKAMAI_DEBUG")
+			log.Debugf("Edgegrid debug set to %t", edgeGridConfig.Debug)
 		}
 	}
 
