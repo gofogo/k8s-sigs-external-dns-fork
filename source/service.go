@@ -115,7 +115,17 @@ func NewServiceSource(
 
 	// Use shared informers to listen for add/update/delete of services/pods/nodes in the specified namespace.
 	// Set the resync period to 0 to prevent processing when nothing has changed
-	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(namespace))
+	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(namespace),
+		kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+			// If a label selector is provided, use it to filter the services.
+			if labelSelector != nil {
+				opts.LabelSelector = labelSelector.String()
+			}
+			// If an annotation filter is provided, use it to filter the services.
+			if annotationFilter != "" {
+				opts.FieldSelector = annotations.AnnotationFilterToFieldSelector(annotationFilter)
+			}
+		}))
 	serviceInformer := informerFactory.Core().V1().Services()
 
 	// Add default resource event handlers to properly initialize informer.
