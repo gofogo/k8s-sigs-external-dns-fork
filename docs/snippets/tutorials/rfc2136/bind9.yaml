@@ -1,0 +1,183 @@
+# kubectl apply -f docs/snippets/tutorials/rfc2136/bind9.yaml
+# kubectl delete -f docs/snippets/tutorials/rfc2136/bind9.yaml
+# kubectl logs deploy/bind9 -c bind9
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bind9
+  namespace: default
+  labels:
+    app: bind9
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bind9
+  template:
+    metadata:
+      labels:
+        app: bind9
+    spec:
+      securityContext:
+        fsGroup: 111
+      volumes:
+        - name: cfg
+          configMap:
+            name: bind9-config
+        - name: keys
+          secret:
+            secretName: bind9-tsig
+        - name: var-lib-bind
+          emptyDir: {}
+      initContainers:
+        - name: init-zone
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              mkdir -p /var/lib/bind
+              cp /cfg/db.example.org /var/lib/bind/db.example.org
+          volumeMounts:
+            - name: cfg
+              mountPath: /cfg
+            - name: var-lib-bind
+              mountPath: /var/lib/bind
+      containers:
+        - name: bind9
+          image: docker.io/ubuntu/bind9:edge
+          args: ["-c", "/etc/bind/named.conf"]
+          ports:
+            - name: dns
+              containerPort: 53
+          volumeMounts:
+            - name: cfg
+              mountPath: /etc/bind/named.conf
+              subPath: named.conf
+            - name: keys
+              mountPath: /etc/bind/keys/tsig.key
+              subPath: tsig.key
+            - name: var-lib-bind
+              mountPath: /var/lib/bind
+          readinessProbe:
+            tcpSocket:
+              port: 53
+            periodSeconds: 5
+            initialDelaySeconds: 3
+        # sanity check container to ensure BIND9 is up and running
+        # kubectl logs -f deploy/bind9 -c test-zone
+        # - name: test-zone
+        #   image: debian:bookworm-slim
+        #   command: ["sh", "-c"]
+        #   args:
+        #     - |
+        #       sudo ufw status verbose
+        #       if [ -f /tmp/nsupdate.txt ]; then
+        #         exit 0
+        #       fi
+        #       apt-get update -qq && apt-get install -y -qq dnsutils netcat-openbsd >/dev/null
+        #       echo "sleeping 10 seconds to wait for BIND9 to be ready..."
+        #       cat > /tmp/nsupdate.txt <<EOF
+        #       server bind9.default.svc.cluster.local
+        #       zone example.org
+        #       update add sanitycheck.example.org. 10 A 1.2.3.4
+        #       send
+        #       EOF
+        #       cat /tmp/nsupdate.txt
+        #       nsupdate -v /tmp/nsupdate.txt
+        #       echo "Waiting 2 seconds for record propagation..."
+        #       sleep 2
+        #       echo "Verifying the record was added with 'dig +short @bind9.default.svc.cluster.local sanitycheck.example.org'"
+        #       dig +short @bind9.default.svc.cluster.local sanitycheck.example.org A
+        #   volumeMounts:
+        #     - name: var-lib-bind
+        #       mountPath: /var/lib/bind
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bind9-tsig
+  namespace: default
+type: Opaque
+stringData:
+  tsig.key: |
+    key "tsig-key." {
+        algorithm hmac-sha256;
+        secret "2Jw1r0k9zC3cG1t7Gqv1b7g0k9zC3cG1t7Gqv1b7g0k=";
+    };
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bind9-config
+  namespace: default
+data:
+  named.conf: |
+    acl internal-network {
+        10.0.0.0/24;
+        172.19.0.0/24;
+        172.19.0.2;
+        172.19.0.3;
+    };
+
+    logging {
+      channel stdout_channel {
+        stderr;
+        severity debug 3;
+        print-category yes;
+        print-severity yes;
+        print-time yes;
+      };
+      category default          { stdout_channel; };
+      category queries          { stdout_channel; };
+      category update           { stdout_channel; };
+      category update-security  { stdout_channel; };
+      category security         { stdout_channel; };
+    };
+
+    options {
+        directory "/var/cache/bind";
+
+        pid-file "/var/run/named/named.pid";
+        listen-on { internal-network; };
+        listen-on port 53 { internal-network; };
+        listen-on-v6 { none; };
+        allow-query { any; };
+        allow-transfer { localhost; };
+        forwarders { 8.8.8.8; };
+        recursion yes;
+        auth-nxdomain no;
+
+        dnssec-validation no;
+    };
+
+    zone "example.org" {
+        type master;
+        file "/var/lib/bind/db.example.org";
+        allow-update { any; };
+    };
+  db.example.org: |
+    $TTL 30
+    @   IN SOA ns1.example.org. hostmaster.example.org. (
+            2025010101 ; serial
+            60         ; refresh
+            30         ; retry
+            1209600    ; expire
+            60 )       ; minimum
+        IN NS  ns1.example.org.
+    ns1 IN A   10.96.0.10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bind9
+  namespace: default
+spec:
+  selector:
+    app: bind9
+  ports:
+    - name: dns
+      port: 53
+      targetPort: 53
+  type: ClusterIP
