@@ -820,7 +820,7 @@ func (p *CloudFlareProvider) submitChanges(ctx context.Context, changes []*cloud
 	}
 
 	if len(failedZones) > 0 {
-		return provider.NewSoftErrorf("failed to submit all changes for the following zones: %q", failedZones)
+		return provider.SoftErrorApplyChangesForZones(failedZones)
 	}
 
 	return nil
@@ -1060,12 +1060,7 @@ func shouldBeProxied(ep *endpoint.Endpoint, proxiedByDefault bool) bool {
 
 	for _, v := range ep.ProviderSpecific {
 		if v.Name == annotations.CloudflareProxiedKey {
-			b, err := strconv.ParseBool(v.Value)
-			if err != nil {
-				log.Errorf("Failed to parse annotation [%q]: %v", annotations.CloudflareProxiedKey, err)
-			} else {
-				proxied = b
-			}
+			proxied = provider.ParseBool(v.Value, proxiedByDefault, annotations.CloudflareProxiedKey)
 			break
 		}
 	}
@@ -1157,12 +1152,11 @@ func (p *CloudFlareProvider) groupByNameAndTypeWithCustomHostnames(records DNSRe
 	return endpoints
 }
 
+// cloudflareRecordTypeConfig defines the record types supported by the Cloudflare provider.
+// Cloudflare supports base types plus MX.
+var cloudflareRecordTypeConfig = provider.MXRecordTypeConfig
+
 // SupportedRecordType returns true if the record type is supported by the provider
 func (p *CloudFlareProvider) SupportedAdditionalRecordTypes(recordType string) bool {
-	switch recordType {
-	case endpoint.RecordTypeMX:
-		return true
-	default:
-		return provider.SupportedRecordType(recordType)
-	}
+	return cloudflareRecordTypeConfig.Supports(recordType)
 }

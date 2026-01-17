@@ -34,6 +34,10 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 )
 
+// azureRecordTypeConfig defines the record types supported by the Azure provider.
+// Azure supports base types plus MX.
+var azureRecordTypeConfig = provider.MXRecordTypeConfig
+
 const (
 	defaultTTL = 300
 )
@@ -61,7 +65,7 @@ type AzureProvider struct {
 	userAssignedIdentityClientID string
 	activeDirectoryAuthorityHost string
 	zonesClient                  ZonesClient
-	zonesCache                   *zonesCache[dns.Zone]
+	zonesCache                   *provider.ZoneCache[[]dns.Zone]
 	recordSetsClient             RecordSetsClient
 	maxRetriesCount              int
 }
@@ -97,7 +101,7 @@ func NewAzureProvider(configFile string, domainFilter *endpoint.DomainFilter, zo
 		userAssignedIdentityClientID: cfg.UserAssignedIdentityID,
 		activeDirectoryAuthorityHost: cfg.ActiveDirectoryAuthorityHost,
 		zonesClient:                  zonesClient,
-		zonesCache:                   &zonesCache[dns.Zone]{duration: zonesCacheDuration},
+		zonesCache:                   provider.NewSliceZoneCache[dns.Zone](zonesCacheDuration),
 		recordSetsClient:             recordSetsClient,
 		maxRetriesCount:              maxRetriesCount,
 	}, nil
@@ -119,7 +123,7 @@ func (p *AzureProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, erro
 		for pager.More() {
 			nextResult, err := pager.NextPage(ctx)
 			if err != nil {
-				return nil, provider.NewSoftErrorf("failed to fetch dns records: %w", err)
+				return nil, provider.SoftErrorRecords(err)
 			}
 			for _, recordSet := range nextResult.Value {
 				if recordSet.Name == nil || recordSet.Type == nil {
@@ -201,12 +205,7 @@ func (p *AzureProvider) zones(ctx context.Context) ([]dns.Zone, error) {
 }
 
 func (p *AzureProvider) SupportedRecordType(recordType string) bool {
-	switch recordType {
-	case "MX":
-		return true
-	default:
-		return provider.SupportedRecordType(recordType)
-	}
+	return azureRecordTypeConfig.Supports(recordType)
 }
 
 type azureChangeMap map[string][]*endpoint.Endpoint

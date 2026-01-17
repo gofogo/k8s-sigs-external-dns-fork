@@ -27,7 +27,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -179,12 +178,7 @@ func (p *piholeClientV6) listRecords(ctx context.Context, rtype string) ([]*endp
 			// CNAME format is DNSName,target, ttl?
 			DNSName, Target = recs[0], recs[1]
 			if len(recs) == 3 { // TTL is present
-				// Parse string to int64 first
-				if ttlInt, err := strconv.ParseInt(recs[2], 10, 64); err == nil {
-					Ttl = endpoint.TTL(ttlInt)
-				} else {
-					log.Warnf("failed to parse TTL value received from PiHole '%s': %v; using a TTL of %d", recs[2], err, Ttl)
-				}
+				Ttl = endpoint.TTL(provider.ParseInt64(recs[2], 0, "PiHole TTL"))
 			}
 		}
 

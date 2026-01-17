@@ -19,12 +19,13 @@ package azure
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	dns "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
 	privatedns "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns"
+
+	"sigs.k8s.io/external-dns/provider"
 )
 
 // Helper function (shared with test code)
@@ -35,7 +36,7 @@ func parseMxTarget[T dns.MxRecord | privatedns.MxRecord](mxTarget string) (T, er
 	}
 
 	preferenceRaw, exchange := targetParts[0], targetParts[1]
-	preference, err := strconv.ParseInt(preferenceRaw, 10, 32)
+	preference, err := provider.ParseInt64OrError(preferenceRaw)
 	if err != nil {
 		return T{}, fmt.Errorf("invalid preference specified")
 	}
