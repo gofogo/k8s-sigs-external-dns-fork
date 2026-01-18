@@ -59,28 +59,29 @@ const (
 //     and updates ObservedGeneration.
 func setCondition(
 	input *DNSEndpoint,
-	conditionType string,
+	conditionType DNSEndpointConditionType,
 	conditionStatus metav1.ConditionStatus,
-	reason, message string) {
+	reason ConditionReason,
+	message string) {
 	status := &input.Status
 	var existingCondition *metav1.Condition
 	for i := range status.Conditions {
-		if status.Conditions[i].Type == conditionType {
+		if status.Conditions[i].Type == string(conditionType) {
 			existingCondition = &status.Conditions[i]
 			break
 		}
 	}
 	// Create new condition
 	newCondition := metav1.Condition{
-		Type:               conditionType,
+		Type:               string(conditionType),
 		Status:             conditionStatus,
-		Reason:             reason,
+		Reason:             string(reason),
 		Message:            message,
 		ObservedGeneration: input.Generation,
 		LastTransitionTime: metav1.NewTime(metav1.Now().Time),
 	}
 
-	if conditionType == string(DNSEndpointAccepted) {
+	if conditionType == DNSEndpointAccepted {
 		if status.Records == "0/0" {
 			setRecords(status, 0, len(input.Spec.Endpoints))
 		} else {
@@ -90,7 +91,7 @@ func setCondition(
 		if status.RecordsProvisioned != len(input.Spec.Endpoints) {
 			updateProgrammedStatus(status, metav1.ConditionUnknown, string(ReasonPending), input.Generation)
 		}
-	} else if conditionType == string(DNSEndpointProgrammed) && conditionStatus == metav1.ConditionTrue {
+	} else if conditionType == DNSEndpointProgrammed && conditionStatus == metav1.ConditionTrue {
 		setRecords(status, len(input.Spec.Endpoints), len(input.Spec.Endpoints))
 		status.ObservedGeneration = input.Generation
 	}
@@ -102,7 +103,7 @@ func setCondition(
 		}
 		// Replace existing condition
 		for i := range status.Conditions {
-			if status.Conditions[i].Type == conditionType {
+			if status.Conditions[i].Type == string(conditionType) {
 				status.Conditions[i] = newCondition
 				break
 			}
@@ -117,20 +118,17 @@ func setCondition(
 // SetAccepted marks the endpoint as accepted by the controller with Unknown status.
 // Use this when the endpoint is first seen and validated, but not yet processed.
 func SetAccepted(input *DNSEndpoint, message string) {
-	setCondition(input, string(DNSEndpointAccepted), metav1.ConditionUnknown,
-		string(ReasonAccepted), message)
+	setCondition(input, DNSEndpointAccepted, metav1.ConditionUnknown, ReasonAccepted, message)
 }
 
 // SetProgrammed marks the endpoint as successfully programmed to the DNS provider.
 func SetProgrammed(input *DNSEndpoint, message string) {
-	setCondition(input, string(DNSEndpointProgrammed), metav1.ConditionTrue,
-		string(ReasonProgrammed), message)
+	setCondition(input, DNSEndpointProgrammed, metav1.ConditionTrue, ReasonProgrammed, message)
 }
 
 // SetFailed marks the endpoint as failed to program to the DNS provider.
 func SetFailed(input *DNSEndpoint, message string) {
-	setCondition(input, string(DNSEndpointDegraded), metav1.ConditionFalse,
-		string(ReasonFailed), message)
+	setCondition(input, DNSEndpointDegraded, metav1.ConditionFalse, ReasonFailed, message)
 }
 
 // setRecords updates the records count fields in the status.

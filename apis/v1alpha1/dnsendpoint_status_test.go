@@ -108,7 +108,7 @@ func TestSetCondition_AcceptedSetsRecordsFromZero(t *testing.T) {
 		},
 	}
 
-	setCondition(input, string(DNSEndpointAccepted), metav1.ConditionUnknown, string(ReasonAccepted), "Accepted")
+	setCondition(input, DNSEndpointAccepted, metav1.ConditionUnknown, ReasonAccepted, "Accepted")
 
 	assert.Equal(t, "0/3", input.Status.Records)
 	assert.Equal(t, 0, input.Status.RecordsProvisioned)
@@ -128,7 +128,7 @@ func TestSetCondition_AcceptedPreservesRecordsProvisioned(t *testing.T) {
 		},
 	}
 
-	setCondition(input, string(DNSEndpointAccepted), metav1.ConditionUnknown, string(ReasonAccepted), "Accepted")
+	setCondition(input, DNSEndpointAccepted, metav1.ConditionUnknown, ReasonAccepted, "Accepted")
 
 	assert.Equal(t, "2/4", input.Status.Records)
 	assert.Equal(t, 2, input.Status.RecordsProvisioned)
@@ -147,7 +147,7 @@ func TestSetCondition_AcceptedSetsProgrammedUnknownWhenNotAllProvisioned(t *test
 		},
 	}
 
-	setCondition(input, string(DNSEndpointAccepted), metav1.ConditionUnknown, string(ReasonAccepted), "Accepted")
+	setCondition(input, DNSEndpointAccepted, metav1.ConditionUnknown, ReasonAccepted, "Accepted")
 
 	// Find Programmed condition
 	var programmedCondition *metav1.Condition
@@ -176,7 +176,7 @@ func TestSetCondition_ProgrammedTrueSetsAllRecordsProvisioned(t *testing.T) {
 		},
 	}
 
-	setCondition(input, string(DNSEndpointProgrammed), metav1.ConditionTrue, string(ReasonProgrammed), "Programmed")
+	setCondition(input, DNSEndpointProgrammed, metav1.ConditionTrue, ReasonProgrammed, "Programmed")
 
 	assert.Equal(t, "5/5", input.Status.Records)
 	assert.Equal(t, 5, input.Status.RecordsProvisioned)
