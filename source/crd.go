@@ -173,7 +173,7 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 		}
 
 		// Accepted the DNSEndpoint by updating its status, not making changes to .Status.ObservedGeneration yet
-		apiv1alpha1.SetAccepted(dnsEndpoint, fmt.Sprintf("Accepted (%d) endpoints by controller", len(dnsEndpoint.Spec.Endpoints)), dnsEndpoint.Generation)
+		apiv1alpha1.SetAccepted(dnsEndpoint, fmt.Sprintf("Accepted (%d) endpoints by controller", len(dnsEndpoint.Spec.Endpoints)))
 
 		// dnsEndpoint.Status.ObservedGeneration = dnsEndpoint.Generation
 		// Update the ObservedGeneration
