@@ -43,6 +43,7 @@ const (
 // TODO:
 // error messages?
 // Addresses - current record DNS and corresponding TXT record
+// UnknownAddress - records that are not yet provisioned
 
 // setCondition adds or updates a condition in the DNSEndpointStatus.
 //

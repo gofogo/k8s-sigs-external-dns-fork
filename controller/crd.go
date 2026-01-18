@@ -69,11 +69,11 @@ func syncStatus(cl crd.DNSEndpointClient, ep []*endpoint.Endpoint, reason apiv1a
 			continue
 		}
 
+		// TODO: provide as well all TXT records info
 		// Accepted the DNSEndpoint by updating its status, not making changes to .Status.ObservedGeneration yet
 		apiv1alpha1.SetProgrammed(
 			dnsEndpoint,
-			fmt.Sprintf("All (%d) records successfully provisioned", len(dnsEndpoint.Spec.Endpoints)),
-			dnsEndpoint.Generation)
+			fmt.Sprintf("All (%d) records successfully provisioned", len(dnsEndpoint.Spec.Endpoints)))
 
 		// dnsEndpoint.Status.ObservedGeneration = dnsEndpoint.Generation
 		// Update the ObservedGeneration
