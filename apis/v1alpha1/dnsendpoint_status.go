@@ -16,9 +16,10 @@ type ConditionReason string
 const (
 	// DNSEndpointAccepted indicates the endpoint has been accepted by the controller
 	DNSEndpointAccepted DNSEndpointConditionType = "Accepted"
-
 	// DNSEndpointProgrammed indicates the endpoint has been successfully programmed to the DNS provider
 	DNSEndpointProgrammed DNSEndpointConditionType = "Programmed"
+	// DNSEndpointDegraded indicates the endpoint is in a degraded state
+	DNSEndpointDegraded DNSEndpointConditionType = "Degraded"
 )
 
 // Condition reasons for DNSEndpoint status
@@ -38,6 +39,10 @@ const (
 	// ReasonFailed indicates one or more records failed to provision
 	ReasonFailed ConditionReason = "Failed"
 )
+
+// TODO:
+// error messages?
+// Addresses - current record DNS and corresponding TXT record
 
 // setCondition adds or updates a condition in the DNSEndpointStatus.
 //
@@ -110,20 +115,20 @@ func setCondition(
 
 // SetAccepted marks the endpoint as accepted by the controller with Unknown status.
 // Use this when the endpoint is first seen and validated, but not yet processed.
-func SetAccepted(input *DNSEndpoint, message string, observedGeneration int64) {
+func SetAccepted(input *DNSEndpoint, message string) {
 	setCondition(input, string(DNSEndpointAccepted), metav1.ConditionUnknown,
 		string(ReasonAccepted), message)
 }
 
 // SetProgrammed marks the endpoint as successfully programmed to the DNS provider.
-func SetProgrammed(input *DNSEndpoint, message string, observedGeneration int64) {
+func SetProgrammed(input *DNSEndpoint, message string) {
 	setCondition(input, string(DNSEndpointProgrammed), metav1.ConditionTrue,
 		string(ReasonProgrammed), message)
 }
 
 // SetFailed marks the endpoint as failed to program to the DNS provider.
 func SetFailed(input *DNSEndpoint, message string) {
-	setCondition(input, string(DNSEndpointProgrammed), metav1.ConditionFalse,
+	setCondition(input, string(DNSEndpointDegraded), metav1.ConditionFalse,
 		string(ReasonFailed), message)
 }
 

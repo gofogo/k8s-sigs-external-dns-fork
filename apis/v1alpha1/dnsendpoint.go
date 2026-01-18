@@ -70,7 +70,7 @@ type DNSEndpointStatus struct {
 	//
 	// * "Accepted"
 	// * "Programmed"
-	// * "Error"
+	// * "Degraded"
 	//
 	// +optional
 	// +listType=map

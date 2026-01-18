@@ -208,7 +208,7 @@ func TestSetAccepted(t *testing.T) {
 		},
 	}
 
-	SetAccepted(input, "Endpoint accepted", 1)
+	SetAccepted(input, "Endpoint accepted")
 
 	// Find Accepted condition
 	var acceptedCondition *metav1.Condition
@@ -234,7 +234,7 @@ func TestSetProgrammed(t *testing.T) {
 		Status: DNSEndpointStatus{},
 	}
 
-	SetProgrammed(input, "Successfully programmed", 1)
+	SetProgrammed(input, "Successfully programmed")
 
 	// Find Programmed condition
 	var programmedCondition *metav1.Condition
@@ -336,12 +336,16 @@ func TestSetFailed(t *testing.T) {
 		},
 	}
 
-	SetFailed(input, "Failed to create record: timeout")
+	SetFailed(input, `
+Failure in zone example.com. when submitting change batch: operation error Route 53:
+ChangeResourceRecordSets, https response error StatusCode: 400, RequestID: a3cc6956-91ee-46c4-b08e-f0933c976725, InvalidChangeBatch:
+Tried to create resource record set [name='aaaa-dnsendpoint-aaaa.example.com.', type='TXT'] but it already exists
+profile=default zoneID=/hostedzone/AX4UG zoneName=example.com.`)
 
 	// Find Programmed condition
 	var programmedCondition *metav1.Condition
 	for i := range input.Status.Conditions {
-		if input.Status.Conditions[i].Type == string(DNSEndpointProgrammed) {
+		if input.Status.Conditions[i].Type == string(DNSEndpointDegraded) {
 			programmedCondition = &input.Status.Conditions[i]
 			break
 		}
@@ -350,7 +354,7 @@ func TestSetFailed(t *testing.T) {
 	assert.NotNil(t, programmedCondition)
 	assert.Equal(t, metav1.ConditionFalse, programmedCondition.Status)
 	assert.Equal(t, string(ReasonFailed), programmedCondition.Reason)
-	assert.Equal(t, "Failed to create record: timeout", programmedCondition.Message)
+	assert.Contains(t, programmedCondition.Message, "Tried to create resource record set")
 	// Records should not be modified by SetFailed
 	assert.Equal(t, "0/3", input.Status.Records)
 }
