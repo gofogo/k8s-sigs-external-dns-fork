@@ -18,19 +18,18 @@ type DNSEndpointClient interface {
 	Get(ctx context.Context, namespace, name string) (*apiv1alpha1.DNSEndpoint, error)
 
 	// List retrieves all DNSEndpoints matching the given options
-	List(ctx context.Context, opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error)
+	List(ctx context.Context, namespace string, opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error)
 
 	// UpdateStatus updates the status subresource of a DNSEndpoint
 	UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error)
 
 	// Watch returns a watch interface for DNSEndpoint changes
-	Watch(ctx context.Context, opts *metav1.ListOptions) (watch.Interface, error)
+	Watch(ctx context.Context, namespace string, opts *metav1.ListOptions) (watch.Interface, error)
 }
 
 // dnsEndpointClient implements DNSEndpointClient interface
 type dnsEndpointClient struct {
 	restClient rest.Interface
-	namespace  string
 	resource   string
 	codec      runtime.ParameterCodec
 }
@@ -41,43 +40,50 @@ type dnsEndpointClient struct {
 //   - namespace: Namespace to operate in (empty string for all namespaces)
 //   - kind: The Kind name (e.g., "DNSEndpoint") - will be pluralized to resource name
 //   - codec: Parameter codec for encoding list options
-func NewDNSEndpointClient(restClient rest.Interface, namespace, kind string, codec runtime.ParameterCodec) DNSEndpointClient {
+func NewDNSEndpointClient(
+	restClient rest.Interface,
+	kind string,
+	codec runtime.ParameterCodec) DNSEndpointClient {
 	return &dnsEndpointClient{
 		restClient: restClient,
-		namespace:  namespace,
 		resource:   strings.ToLower(kind) + "s", // e.g., "DNSEndpoint" -> "dnsendpoints"
 		codec:      codec,
 	}
 }
 
 // Get retrieves a single DNSEndpoint by namespace and name
-func (c *dnsEndpointClient) Get(ctx context.Context, namespace, name string) (*apiv1alpha1.DNSEndpoint, error) {
+func (c *dnsEndpointClient) Get(
+	ctx context.Context,
+	namespace, name string) (*apiv1alpha1.DNSEndpoint, error) {
 	result := &apiv1alpha1.DNSEndpoint{}
-	err := c.restClient.Get().
+	return result, c.restClient.Get().
 		Namespace(namespace).
 		Resource(c.resource).
 		Name(name).
 		Do(ctx).
 		Into(result)
-	return result, err
 }
 
 // List retrieves all DNSEndpoints matching the given options
-func (c *dnsEndpointClient) List(ctx context.Context, opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error) {
+func (c *dnsEndpointClient) List(
+	ctx context.Context,
+	namespace string,
+	opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error) {
 	result := &apiv1alpha1.DNSEndpointList{}
-	err := c.restClient.Get().
-		Namespace(c.namespace).
+	return result, c.restClient.Get().
+		Namespace(namespace).
 		Resource(c.resource).
 		VersionedParams(opts, c.codec).
 		Do(ctx).
 		Into(result)
-	return result, err
 }
 
 // UpdateStatus updates the status subresource of a DNSEndpoint
-func (c *dnsEndpointClient) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error) {
+func (c *dnsEndpointClient) UpdateStatus(
+	ctx context.Context,
+	dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error) {
 	result := &apiv1alpha1.DNSEndpoint{}
-	err := c.restClient.Put().
+	return result, c.restClient.Put().
 		Namespace(dnsEndpoint.Namespace).
 		Resource(c.resource).
 		Name(dnsEndpoint.Name).
@@ -85,14 +91,16 @@ func (c *dnsEndpointClient) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1
 		Body(dnsEndpoint).
 		Do(ctx).
 		Into(result)
-	return result, err
 }
 
 // Watch returns a watch interface for DNSEndpoint changes
-func (c *dnsEndpointClient) Watch(ctx context.Context, opts *metav1.ListOptions) (watch.Interface, error) {
+func (c *dnsEndpointClient) Watch(
+	ctx context.Context,
+	ns string,
+	opts *metav1.ListOptions) (watch.Interface, error) {
 	opts.Watch = true
 	return c.restClient.Get().
-		Namespace(c.namespace).
+		Namespace(ns).
 		Resource(c.resource).
 		VersionedParams(opts, c.codec).
 		Watch(ctx)

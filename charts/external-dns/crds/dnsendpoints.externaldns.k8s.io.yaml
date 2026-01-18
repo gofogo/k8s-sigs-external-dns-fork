@@ -13,7 +13,20 @@ spec:
     singular: dnsendpoint
   scope: Namespaced
   versions:
-    - name: v1alpha1
+    - additionalPrinterColumns:
+        - jsonPath: .status.conditions[?(@.type=='Programmed')].status
+          name: READY
+          type: string
+        - jsonPath: .status.records
+          name: RECORDS
+          type: string
+        - jsonPath: .status.lastStatusChange
+          name: LAST CHANGE
+          type: date
+        - jsonPath: .metadata.creationTimestamp
+          name: AGE
+          type: date
+      name: v1alpha1
       schema:
         openAPIV3Schema:
           description: |-
@@ -84,9 +97,127 @@ spec:
             status:
               description: DNSEndpointStatus defines the observed state of DNSEndpoint
               properties:
+                conditions:
+                  default:
+                    - lastTransitionTime: "1970-01-01T00:00:00Z"
+                      message: Waiting for controller
+                      observedGeneration: 0
+                      reason: Pending
+                      status: Unknown
+                      type: Programmed
+                  description: |-
+                    Conditions describe the current conditions of the DNSEndpoint.
+
+                    Known condition types are:
+
+                    * "Accepted"
+                    * "Programmed"
+
+                    <externaldns:util:excludeFromCRD>
+                    Notes for implementors:
+
+                    Conditions are a listType `map`, which means that they function like a
+                    map with a key of the `type` field _in the k8s apiserver_.
+
+                    This means that implementations must obey some rules when updating this
+                    section.
+
+                    * Implementations MUST perform a read-modify-write cycle on this field
+                      before modifying it. That is, when modifying this field, implementations
+                      must be confident they have fetched the most recent version of this field,
+                      and ensure that changes they make are on that recent version.
+                    * Implementations MUST NOT remove or reorder Conditions that they are not
+                      directly responsible for. For example, if an implementation sees a Condition
+                      with type `special.io/SomeField`, it MUST NOT remove, change or update that
+                      Condition.
+                    * If the `observedGeneration` of a Condition is _greater than_ the value the
+                      implementation knows about, then it MUST NOT perform the update on that Condition,
+                      but must wait for a future reconciliation and status update. (The assumption is that
+                      the implementation's copy of the object is stale and an update will be re-triggered
+                      if relevant.)
+
+                    </externaldns:util:excludeFromCRD>
+                  items:
+                    description: Condition contains details for one aspect of the current state of this API Resource.
+                    properties:
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is the last time the condition transitioned from one status to another.
+                          This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                        format: date-time
+                        type: string
+                      message:
+                        description: |-
+                          message is a human readable message indicating details about the transition.
+                          This may be an empty string.
+                        maxLength: 32768
+                        type: string
+                      observedGeneration:
+                        description: |-
+                          observedGeneration represents the .metadata.generation that the condition was set based upon.
+                          For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                          with respect to the current state of the instance.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      reason:
+                        description: |-
+                          reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                          Producers of specific condition types may define expected values and meanings for this field,
+                          and whether the values are considered a guaranteed API.
+                          The value should be a CamelCase string.
+                          This field may not be empty.
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                        type: string
+                      status:
+                        description: status of the condition, one of True, False, Unknown.
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    type: object
+                  maxItems: 8
+                  type: array
+                  x-kubernetes-list-map-keys:
+                    - type
+                  x-kubernetes-list-type: map
+                lastStatusChange:
+                  default: "1970-01-01T00:00:00Z"
+                  description: LastStatusChange is the timestamp of the most recent status update.
+                  format: date-time
+                  type: string
                 observedGeneration:
+                  default: 0
                   description: The generation observed by the external-dns controller.
                   format: int64
+                  type: integer
+                records:
+                  default: 0/0
+                  description: |-
+                    Records shows provisioned/total records (e.g., "3/5").
+                    This field is for display purposes in kubectl output.
+                  type: string
+                recordsProvisioned:
+                  default: 0
+                  description: RecordsProvisioned is the number of records successfully provisioned.
+                  type: integer
+                recordsTotal:
+                  default: 0
+                  description: RecordsTotal is the total number of records defined in spec.
                   type: integer
               type: object
           type: object
