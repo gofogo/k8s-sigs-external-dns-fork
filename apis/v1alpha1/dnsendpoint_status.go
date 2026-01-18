@@ -47,10 +47,8 @@ const (
 //   - ObservedGeneration is set from input.Generation
 //
 // Side effects for specific condition types:
-//
 //   - DNSEndpointAccepted: Updates Records count and syncs Programmed condition status.
-//     If all records are provisioned, sets Programmed=True; otherwise Programmed=Unknown.
-//
+//     If not all records are provisioned, sets Programmed=Unknown.
 //   - DNSEndpointProgrammed (with ConditionTrue): Sets all records as provisioned
 //     and updates ObservedGeneration.
 func setCondition(
@@ -83,9 +81,7 @@ func setCondition(
 			setRecords(status, status.RecordsProvisioned, len(input.Spec.Endpoints))
 		}
 		// Update Programmed condition status based on whether all records are provisioned
-		if status.RecordsProvisioned == len(input.Spec.Endpoints) {
-			updateProgrammedStatus(status, metav1.ConditionTrue, string(ReasonProgrammed), input.Generation)
-		} else {
+		if status.RecordsProvisioned != len(input.Spec.Endpoints) {
 			updateProgrammedStatus(status, metav1.ConditionUnknown, string(ReasonPending), input.Generation)
 		}
 	} else if conditionType == string(DNSEndpointProgrammed) && conditionStatus == metav1.ConditionTrue {

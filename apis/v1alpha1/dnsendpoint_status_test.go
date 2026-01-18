@@ -163,35 +163,6 @@ func TestSetCondition_AcceptedSetsProgrammedUnknownWhenNotAllProvisioned(t *test
 	assert.Equal(t, string(ReasonPending), programmedCondition.Reason)
 }
 
-func TestSetCondition_AcceptedSetsProgrammedTrueWhenAllProvisioned(t *testing.T) {
-	input := &DNSEndpoint{
-		ObjectMeta: metav1.ObjectMeta{Generation: 1},
-		Spec: DNSEndpointSpec{
-			Endpoints: []*endpoint.Endpoint{{}, {}, {}}, // 3 endpoints
-		},
-		Status: DNSEndpointStatus{
-			Records:            "3/3",
-			RecordsProvisioned: 3,
-			RecordsTotal:       3,
-		},
-	}
-
-	setCondition(input, string(DNSEndpointAccepted), metav1.ConditionUnknown, string(ReasonAccepted), "Accepted")
-
-	// Find Programmed condition
-	var programmedCondition *metav1.Condition
-	for i := range input.Status.Conditions {
-		if input.Status.Conditions[i].Type == string(DNSEndpointProgrammed) {
-			programmedCondition = &input.Status.Conditions[i]
-			break
-		}
-	}
-
-	assert.NotNil(t, programmedCondition)
-	assert.Equal(t, metav1.ConditionTrue, programmedCondition.Status)
-	assert.Equal(t, string(ReasonProgrammed), programmedCondition.Reason)
-}
-
 func TestSetCondition_ProgrammedTrueSetsAllRecordsProvisioned(t *testing.T) {
 	input := &DNSEndpoint{
 		ObjectMeta: metav1.ObjectMeta{Generation: 1},
