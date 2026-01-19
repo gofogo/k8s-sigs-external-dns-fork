@@ -3,6 +3,7 @@
 ## Current Implementation
 
 The function in `pkg/client/config.go` has this priority:
+
 1. Use explicit `kubeConfig` path if provided
 2. Fall back to `~/.kube/config` if it exists
 3. Use in-cluster config as last resort
@@ -30,6 +31,7 @@ func GetRestConfig(kubeConfig, apiServerURL string) (*rest.Config, error) {
 ```
 
 **Pros:**
+
 - Respects `KUBECONFIG` environment variable automatically
 - Handles multiple kubeconfig files (colon-separated in `KUBECONFIG`)
 - Standard pattern used throughout Kubernetes ecosystem
@@ -37,6 +39,7 @@ func GetRestConfig(kubeConfig, apiServerURL string) (*rest.Config, error) {
 - Eliminates the manual `os.Stat(clientcmd.RecommendedHomeFile)` check
 
 **Cons:**
+
 - Slightly different behavior (respects `KUBECONFIG` env var which current code ignores)
 
 **Test compatibility:** Existing tests that modify `clientcmd.RecommendedHomeFile` still work, but may need to also clear `KUBECONFIG` env var:
@@ -60,11 +63,13 @@ func GetRestConfig(kubeConfig, apiServerURL string) (*rest.Config, error) {
 ```
 
 **Pros:**
+
 - Simplest implementation
 - No magic file detection
 - Cleaner for production services running in-cluster
 
 **Cons:**
+
 - Users running locally must explicitly pass `--kubeconfig ~/.kube/config`
 - Breaking change in behavior
 
@@ -73,6 +78,7 @@ func GetRestConfig(kubeConfig, apiServerURL string) (*rest.Config, error) {
 ## Recommendation
 
 **Option A** is recommended because:
+
 1. It follows Kubernetes conventions
 2. It's more robust and handles edge cases
 3. It maintains backward compatibility with existing behavior
