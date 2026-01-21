@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -30,7 +31,10 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+	kubeclient "sigs.k8s.io/external-dns/pkg/client"
+	"sigs.k8s.io/external-dns/pkg/crd"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
@@ -387,6 +391,14 @@ func buildController(
 		eventCtrl.Run(ctx)
 		eventEmitter = eventCtrl
 	}
+	var crdClient crd.DNSEndpointClient
+	if slices.Contains(cfg.Sources, "crd") {
+		crdClient, err = BuildCRD(cfg)
+		if err != nil {
+			// TODO: review message
+			return nil, fmt.Errorf("failed to build CRD client: %v", err)
+		}
+	}
 
 	return &Controller{
 		Source:               src,
@@ -399,6 +411,7 @@ func buildController(
 		MinEventSyncInterval: cfg.MinEventSyncInterval,
 		TXTOwnerOld:          cfg.TXTOwnerOld,
 		EventEmitter:         eventEmitter,
+		CrdClient:            crdClient,
 	}, nil
 }
 
@@ -459,4 +472,22 @@ func serveMetrics(address string) {
 	http.Handle("/metrics", promhttp.Handler())
 
 	log.Fatal(http.ListenAndServe(address, nil))
+}
+
+func BuildCRD(cfg *externaldns.Config) (crd.DNSEndpointClient, error) {
+	client, err := kubeclient.NewKubeClient(cfg.KubeConfig, cfg.APIServerURL, cfg.RequestTimeout)
+	if err != nil {
+		return nil, err
+	}
+	crdClient, _, err := kubeclient.NewCRDClientForAPIVersionKind(client, cfg.KubeConfig, cfg.APIServerURL, cfg.CRDSourceAPIVersion, cfg.CRDSourceKind)
+	if err != nil {
+		return nil, err
+	}
+	// Create DNSEndpoint client
+	// Use metav1.ParameterCodec for URL parameter encoding (ListOptions, etc.)
+	return crd.NewDNSEndpointClient(
+		crdClient,
+		cfg.CRDSourceKind,
+		metav1.ParameterCodec,
+	), nil
 }

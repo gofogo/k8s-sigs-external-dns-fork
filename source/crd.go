@@ -19,12 +19,14 @@ package source
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
+	"sigs.k8s.io/external-dns/pkg/crd"
+	"sigs.k8s.io/external-dns/pkg/events"
+	"sigs.k8s.io/external-dns/source/types"
 
 	"sigs.k8s.io/external-dns/source/annotations"
 
@@ -32,11 +34,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
 	"sigs.k8s.io/external-dns/endpoint"
@@ -54,7 +51,7 @@ import (
 // +externaldns:source:fqdn-template=false
 // +externaldns:source:events=false
 type crdSource struct {
-	crdClient        rest.Interface
+	client           crd.DNSEndpointClient
 	namespace        string
 	crdResource      string
 	codec            runtime.ParameterCodec
@@ -63,56 +60,9 @@ type crdSource struct {
 	informer         cache.SharedInformer
 }
 
-// NewCRDClientForAPIVersionKind return rest client for the given apiVersion and kind of the CRD
-func NewCRDClientForAPIVersionKind(client kubernetes.Interface, kubeConfig, apiServerURL, apiVersion, kind string) (*rest.RESTClient, *runtime.Scheme, error) {
-	if kubeConfig == "" {
-		if _, err := os.Stat(clientcmd.RecommendedHomeFile); err == nil {
-			kubeConfig = clientcmd.RecommendedHomeFile
-		}
-	}
-
-	config, err := clientcmd.BuildConfigFromFlags(apiServerURL, kubeConfig)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	groupVersion, err := schema.ParseGroupVersion(apiVersion)
-	if err != nil {
-		return nil, nil, err
-	}
-	apiResourceList, err := client.Discovery().ServerResourcesForGroupVersion(groupVersion.String())
-	if err != nil {
-		return nil, nil, fmt.Errorf("error listing resources in GroupVersion %q: %w", groupVersion.String(), err)
-	}
-
-	var crdAPIResource *metav1.APIResource
-	for _, apiResource := range apiResourceList.APIResources {
-		if apiResource.Kind == kind {
-			crdAPIResource = &apiResource
-			break
-		}
-	}
-	if crdAPIResource == nil {
-		return nil, nil, fmt.Errorf("unable to find Resource Kind %q in GroupVersion %q", kind, apiVersion)
-	}
-
-	scheme := runtime.NewScheme()
-	_ = apiv1alpha1.AddToScheme(scheme)
-
-	config.GroupVersion = &groupVersion
-	config.APIPath = "/apis"
-	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
-
-	crdClient, err := rest.UnversionedRESTClientFor(config)
-	if err != nil {
-		return nil, nil, err
-	}
-	return crdClient, scheme, nil
-}
-
 // NewCRDSource creates a new crdSource with the given config.
 func NewCRDSource(
-	crdClient rest.Interface,
+	client crd.DNSEndpointClient,
 	namespace, kind, annotationFilter string,
 	labelSelector labels.Selector,
 	scheme *runtime.Scheme,
@@ -122,7 +72,7 @@ func NewCRDSource(
 		namespace:        namespace,
 		annotationFilter: annotationFilter,
 		labelSelector:    labelSelector,
-		crdClient:        crdClient,
+		client:           client,
 		codec:            runtime.NewParameterCodec(scheme),
 	}
 	if startInformer {
@@ -131,10 +81,10 @@ func NewCRDSource(
 		sourceCrd.informer = cache.NewSharedInformer(
 			&cache.ListWatch{
 				ListWithContextFunc: func(ctx context.Context, lo metav1.ListOptions) (runtime.Object, error) {
-					return sourceCrd.List(ctx, &lo)
+					return sourceCrd.client.List(ctx, namespace, &lo)
 				},
 				WatchFuncWithContext: func(ctx context.Context, lo metav1.ListOptions) (watch.Interface, error) {
-					return sourceCrd.watch(ctx, &lo)
+					return sourceCrd.client.Watch(ctx, namespace, &lo)
 				},
 			},
 			&apiv1alpha1.DNSEndpoint{},
@@ -174,7 +124,7 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 		err    error
 	)
 
-	result, err = cs.List(ctx, &metav1.ListOptions{LabelSelector: cs.labelSelector.String()})
+	result, err = cs.client.List(ctx, cs.namespace, &metav1.ListOptions{LabelSelector: cs.labelSelector.String()})
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +162,7 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 			}
 
 			ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("crd/%s/%s", dnsEndpoint.Namespace, dnsEndpoint.Name))
+			ep.WithRefObject(events.NewObjectReference(dnsEndpoint, types.CRD))
 
 			crdEndpoints = append(crdEndpoints, ep)
 		}
@@ -222,44 +173,16 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 			continue
 		}
 
-		dnsEndpoint.Status.ObservedGeneration = dnsEndpoint.Generation
+		// Accepted the DNSEndpoint by updating its status, not making changes to .Status.ObservedGeneration yet
+		apiv1alpha1.SetAccepted(dnsEndpoint, fmt.Sprintf("Accepted (%d) endpoints by controller", len(dnsEndpoint.Spec.Endpoints)))
+
+		// dnsEndpoint.Status.ObservedGeneration = dnsEndpoint.Generation
 		// Update the ObservedGeneration
-		_, err = cs.UpdateStatus(ctx, dnsEndpoint)
+		_, err = cs.client.UpdateStatus(ctx, dnsEndpoint)
 		if err != nil {
-			log.Warnf("Could not update ObservedGeneration of the CRD: %v", err)
+			log.Warnf("Could not update status of the CRD: %v", err)
 		}
 	}
 
 	return endpoints, nil
-}
-
-func (cs *crdSource) watch(ctx context.Context, opts *metav1.ListOptions) (watch.Interface, error) {
-	opts.Watch = true
-	return cs.crdClient.Get().
-		Namespace(cs.namespace).
-		Resource(cs.crdResource).
-		VersionedParams(opts, cs.codec).
-		Watch(ctx)
-}
-
-func (cs *crdSource) List(ctx context.Context, opts *metav1.ListOptions) (*apiv1alpha1.DNSEndpointList, error) {
-	result := &apiv1alpha1.DNSEndpointList{}
-	return result, cs.crdClient.Get().
-		Namespace(cs.namespace).
-		Resource(cs.crdResource).
-		VersionedParams(opts, cs.codec).
-		Do(ctx).
-		Into(result)
-}
-
-func (cs *crdSource) UpdateStatus(ctx context.Context, dnsEndpoint *apiv1alpha1.DNSEndpoint) (*apiv1alpha1.DNSEndpoint, error) {
-	result := &apiv1alpha1.DNSEndpoint{}
-	return result, cs.crdClient.Put().
-		Namespace(dnsEndpoint.Namespace).
-		Resource(cs.crdResource).
-		Name(dnsEndpoint.Name).
-		SubResource("status").
-		Body(dnsEndpoint).
-		Do(ctx).
-		Into(result)
 }

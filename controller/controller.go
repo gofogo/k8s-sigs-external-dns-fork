@@ -24,6 +24,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
+	"sigs.k8s.io/external-dns/pkg/crd"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/pkg/events"
@@ -63,6 +65,7 @@ type Controller struct {
 	MinEventSyncInterval time.Duration
 	// Old txt-owner value we need to migrate from
 	TXTOwnerOld string
+	CrdClient   crd.DNSEndpointClient
 }
 
 // RunOnce runs a single iteration of a reconciliation loop.
@@ -129,6 +132,8 @@ func (c *Controller) RunOnce(ctx context.Context) error {
 	} else {
 		controllerNoChangesTotal.Counter.Inc()
 		log.Info("All records are already up to date")
+		// in case of no changes, we still want to sync the status of the CRD objects
+		syncStatus(c.CrdClient, endpoints, apiv1alpha1.ReasonProgrammed)
 	}
 
 	lastSyncTimestamp.Gauge.SetToCurrentTime()
