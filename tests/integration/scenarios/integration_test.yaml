@@ -1,0 +1,332 @@
+# Integration Test Scenarios
+#
+# Schema Summary:
+# | Field                      | Type     | Description                              |
+# |----------------------------|----------|------------------------------------------|
+# | name                       | string   | Test scenario name                       |
+# | sources                    | []string | Sources to create: ingress, service      |
+# | config.defaultTargets      | []string | --default-targets flag values            |
+# | config.forceDefaultTargets | bool     | --force-default-targets flag             |
+# | resources                  | []object | K8s resources (Ingress, Service)         |
+# | expected                   | []object | Expected endpoints                       |
+
+scenarios:
+  - name: ingress-with-ip-no-defaults
+    sources:
+      - ingress
+    config:
+      defaultTargets: []
+      forceDefaultTargets: false
+    resources:
+      - apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: test-ingress
+          namespace: default
+          annotations:
+            external-dns.alpha.kubernetes.io/hostname: test.example.com
+        status:
+          loadBalancer:
+            ingress:
+              - ip: 1.2.3.4
+    expected:
+      - dnsName: test.example.com
+        targets: ["1.2.3.4"]
+        recordType: A
+
+#  - name: ingress-with-ip-defaults-not-forced
+#    sources:
+#      - ingress
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: false
+#    resources:
+#      - apiVersion: networking.k8s.io/v1
+#        kind: Ingress
+#        metadata:
+#          name: test-ingress
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: test.example.com
+#        status:
+#          loadBalancer:
+#            ingress:
+#              - ip: 1.2.3.4
+#    expected:
+#      - dnsName: test.example.com
+#        targets: ["1.2.3.4"]
+#        recordType: A
+#
+#  - name: ingress-with-ip-defaults-forced
+#    sources:
+#      - ingress
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: true
+#    resources:
+#      - apiVersion: networking.k8s.io/v1
+#        kind: Ingress
+#        metadata:
+#          name: test-ingress
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: test.example.com
+#        status:
+#          loadBalancer:
+#            ingress:
+#              - ip: 1.2.3.4
+#    expected:
+#      - dnsName: test.example.com
+#        targets: ["10.0.0.1"]
+#        recordType: A
+#
+#  - name: ingress-empty-status-defaults-applied
+#    sources:
+#      - ingress
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: false
+#    resources:
+#      - apiVersion: networking.k8s.io/v1
+#        kind: Ingress
+#        metadata:
+#          name: test-ingress
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: test.example.com
+#        status:
+#          loadBalancer:
+#            ingress: []
+#    expected:
+#      - dnsName: test.example.com
+#        targets: ["10.0.0.1"]
+#        recordType: A
+#
+#  - name: ingress-with-hostname-defaults-not-forced
+#    sources:
+#      - ingress
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: false
+#    resources:
+#      - apiVersion: networking.k8s.io/v1
+#        kind: Ingress
+#        metadata:
+#          name: test-ingress
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: test.example.com
+#        status:
+#          loadBalancer:
+#            ingress:
+#              - hostname: lb.example.com
+#    expected:
+#      - dnsName: test.example.com
+#        targets: ["lb.example.com"]
+#        recordType: CNAME
+#
+#  - name: ingress-with-hostname-defaults-forced
+#    sources:
+#      - ingress
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: true
+#    resources:
+#      - apiVersion: networking.k8s.io/v1
+#        kind: Ingress
+#        metadata:
+#          name: test-ingress
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: test.example.com
+#        status:
+#          loadBalancer:
+#            ingress:
+#              - hostname: lb.example.com
+#    expected:
+#      - dnsName: test.example.com
+#        targets: ["10.0.0.1"]
+#        recordType: A
+#
+#  - name: service-loadbalancer-with-ip-no-defaults
+#    sources:
+#      - service
+#    config:
+#      defaultTargets: []
+#      forceDefaultTargets: false
+#    resources:
+#      - apiVersion: v1
+#        kind: Service
+#        metadata:
+#          name: test-service
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: svc.example.com
+#        spec:
+#          type: LoadBalancer
+#        status:
+#          loadBalancer:
+#            ingress:
+#              - ip: 1.2.3.4
+#    expected:
+#      - dnsName: svc.example.com
+#        targets: ["1.2.3.4"]
+#        recordType: A
+#
+#  - name: service-loadbalancer-with-ip-defaults-not-forced
+#    sources:
+#      - service
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: false
+#    resources:
+#      - apiVersion: v1
+#        kind: Service
+#        metadata:
+#          name: test-service
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: svc.example.com
+#        spec:
+#          type: LoadBalancer
+#        status:
+#          loadBalancer:
+#            ingress:
+#              - ip: 1.2.3.4
+#    expected:
+#      - dnsName: svc.example.com
+#        targets: ["1.2.3.4"]
+#        recordType: A
+#
+#  - name: service-loadbalancer-with-ip-defaults-forced
+#    sources:
+#      - service
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: true
+#    resources:
+#      - apiVersion: v1
+#        kind: Service
+#        metadata:
+#          name: test-service
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: svc.example.com
+#        spec:
+#          type: LoadBalancer
+#        status:
+#          loadBalancer:
+#            ingress:
+#              - ip: 1.2.3.4
+#    expected:
+#      - dnsName: svc.example.com
+#        targets: ["10.0.0.1"]
+#        recordType: A
+#
+#  - name: service-loadbalancer-pending-defaults-applied
+#    sources:
+#      - service
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: false
+#    resources:
+#      - apiVersion: v1
+#        kind: Service
+#        metadata:
+#          name: test-service
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: svc.example.com
+#        spec:
+#          type: LoadBalancer
+#        status:
+#          loadBalancer:
+#            ingress: []
+#    expected:
+#      - dnsName: svc.example.com
+#        targets: ["10.0.0.1"]
+#        recordType: A
+#
+#  - name: service-externalname-defaults-not-forced
+#    sources:
+#      - service
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: false
+#    resources:
+#      - apiVersion: v1
+#        kind: Service
+#        metadata:
+#          name: test-service
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: svc.example.com
+#        spec:
+#          type: ExternalName
+#          externalName: external.example.com
+#    expected:
+#      - dnsName: svc.example.com
+#        targets: ["external.example.com"]
+#        recordType: CNAME
+#
+#  - name: service-externalname-defaults-forced
+#    sources:
+#      - service
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: true
+#    resources:
+#      - apiVersion: v1
+#        kind: Service
+#        metadata:
+#          name: test-service
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: svc.example.com
+#        spec:
+#          type: ExternalName
+#          externalName: external.example.com
+#    expected:
+#      - dnsName: svc.example.com
+#        targets: ["10.0.0.1"]
+#        recordType: A
+#
+#  - name: mixed-sources-with-forced-defaults
+#    sources:
+#      - ingress
+#      - service
+#    config:
+#      defaultTargets: ["10.0.0.1"]
+#      forceDefaultTargets: true
+#    resources:
+#      - apiVersion: networking.k8s.io/v1
+#        kind: Ingress
+#        metadata:
+#          name: test-ingress
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: ingress.example.com
+#        status:
+#          loadBalancer:
+#            ingress:
+#              - ip: 1.2.3.4
+#      - apiVersion: v1
+#        kind: Service
+#        metadata:
+#          name: test-service
+#          namespace: default
+#          annotations:
+#            external-dns.alpha.kubernetes.io/hostname: svc.example.com
+#        spec:
+#          type: LoadBalancer
+#        status:
+#          loadBalancer:
+#            ingress:
+#              - ip: 5.6.7.8
+#    expected:
+#      - dnsName: ingress.example.com
+#        targets: ["10.0.0.1"]
+#        recordType: A
+#      - dnsName: svc.example.com
+#        targets: ["10.0.0.1"]
+#        recordType: A
