@@ -64,8 +64,8 @@ func TestEndpointGeneration(t *testing.T) {
 func BenchmarkProviderSpecificRandomAccess(b *testing.B) {
 	// setProps: how many properties are actually set on the endpoint
 	// The provider will still check all 16 keys
-	setPropsOptions := []int{0, 1, 5, 9, 16}
-	endpointCounts := []int{100, 1000, 10000, 50000, 100000, 200000}
+	setPropsOptions := []int{0, 1, 2, 5, 9, 16}
+	endpointCounts := []int{100, 1000, 10000}
 
 	keys := []string{
 		"provider/weight",
@@ -87,13 +87,24 @@ func BenchmarkProviderSpecificRandomAccess(b *testing.B) {
 					}
 				}
 			})
+
+			b.Run(fmt.Sprintf("map/set=%d/endpoints=%d", setProps, epCount), func(b *testing.B) {
+				for b.Loop() {
+					for _, ep := range endpoints {
+						// Provider checks random supported properties
+						for _, key := range keys {
+							ep.GetProviderSpecificPropertyM(key)
+						}
+					}
+				}
+			})
 		}
 	}
 }
 
 func BenchmarkProviderSpecificDelete(b *testing.B) {
-	propertyCounts := []int{0, 5, 10}
-	endpointCounts := []int{100, 300, 1000, 10000, 50000}
+	propertyCounts := []int{0, 1, 2, 5, 10}
+	endpointCounts := []int{100, 300, 1000, 10000}
 
 	keys := []string{
 		"provider/weight",
@@ -112,6 +123,20 @@ func BenchmarkProviderSpecificDelete(b *testing.B) {
 					for _, ep := range endpoints {
 						for _, key := range keys {
 							ep.DeleteProviderSpecificProperty(key)
+						}
+					}
+				}
+			})
+			b.Run(fmt.Sprintf("map/props=%d/endpoints=%d", propCount, epCount), func(b *testing.B) {
+				template := generateBenchmarkEndpoints(epCount, propCount)
+				b.ResetTimer()
+				for b.Loop() {
+					// Shallow copy is enough if we only care about the slice structure
+					endpoints := make([]*Endpoint, len(template))
+					copy(endpoints, template)
+					for _, ep := range endpoints {
+						for _, key := range keys {
+							ep.DeleteProviderSpecificPropertyM(key)
 						}
 					}
 				}
