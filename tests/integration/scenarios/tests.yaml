@@ -1,0 +1,77 @@
+# Integration Test Scenarios
+#
+# Schema Summary:
+# | Field                                  | Type     | Description                              |
+# |----------------------------------------|----------|------------------------------------------|
+# | name                                   | string   | Test scenario name                       |
+# | config.sources                         | []string | Sources to create: ingress, service      |
+# | config.defaultTargets                  | []string | --default-targets flag values            |
+# | config.forceDefaultTargets             | bool     | --force-default-targets flag             |
+# | config.targetNetFilter                 | []string | --target-net-filter flag values          |
+# | config.serviceTypeFilter               | []string | --service-type-filter flag values        |
+# | resources                              | []object | K8s resources with optional dependencies |
+# | resources[].resource                   | object   | K8s resource (Ingress, Service, etc.)    |
+# | resources[].dependencies               | object   | Auto-generated dependent resources       |
+# | resources[].dependencies.pods.replicas | int      | Number of pods to generate               |
+# | expected                               | []object | Expected endpoints                       |
+
+scenarios:
+  - name: headless-service-with-pods
+    config:
+      sources: ["service"]
+      targetNetFilter: ["10.0.0.1/32", "10.0.0.2/32"]
+      serviceTypeFilter: ["ClusterIP"]
+    resources:
+      - resource:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: headless-svc
+            namespace: default
+            labels:
+              app: myapp
+            annotations:
+              external-dns.alpha.kubernetes.io/hostname: headless.example.com
+          spec:
+            type: ClusterIP
+            clusterIP: None
+            selector:
+              app: myapp
+        dependencies:
+          pods:
+            replicas: 3
+    expected:
+      - dnsName: headless.example.com
+        targets: ["10.0.0.1", "10.0.0.2"]
+        recordType: A
+      - dnsName: headless-svc-0.headless.example.com
+        targets: ["10.0.0.1"]
+        recordType: A
+      - dnsName: headless-svc-1.headless.example.com
+        targets: ["10.0.0.2"]
+        recordType: A
+
+  - name: service-loadbalancer-with-ip
+    config:
+      sources: ["service"]
+    resources:
+      - resource:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: test-service
+            namespace: default
+            annotations:
+              external-dns.alpha.kubernetes.io/hostname: svc.example.com
+          spec:
+            selector:
+              app.kubernetes.io/name: MyApp
+            type: LoadBalancer
+          status:
+            loadBalancer:
+              ingress:
+                - ip: 1.2.3.4
+    expected:
+      - dnsName: svc.example.com
+        targets: ["1.2.3.4"]
+        recordType: A
