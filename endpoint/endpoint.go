@@ -213,6 +213,8 @@ type ProviderSpecificProperty struct {
 	Value string `json:"value,omitempty"`
 }
 
+type ProviderSpecificMap map[string]string
+
 // ProviderSpecific holds configuration which is specific to individual DNS providers
 type ProviderSpecific []ProviderSpecificProperty
 
@@ -244,7 +246,8 @@ type Endpoint struct {
 	Labels Labels `json:"labels,omitempty"`
 	// ProviderSpecific stores provider specific config
 	// +optional
-	ProviderSpecific ProviderSpecific `json:"providerSpecific,omitempty"`
+	ProviderSpecific  ProviderSpecific    `json:"providerSpecific,omitempty"`
+	ProviderSpecificM ProviderSpecificMap `json:"-"`
 	// refObject stores reference object
 	// TODO: should be an array, as endpoints merged from multiple sources may have multiple ref objects
 	// +optional
@@ -305,6 +308,9 @@ func (e *Endpoint) WithProviderSpecific(key, value string) *Endpoint {
 
 // GetProviderSpecificProperty returns the value of a ProviderSpecificProperty if the property exists.
 func (e *Endpoint) GetProviderSpecificProperty(key string) (string, bool) {
+	if len(e.ProviderSpecific) == 0 {
+		return "", false
+	}
 	for _, providerSpecific := range e.ProviderSpecific {
 		if providerSpecific.Name == key {
 			return providerSpecific.Value, true
@@ -346,6 +352,9 @@ func (e *Endpoint) SetProviderSpecificProperty(key string, value string) {
 
 // DeleteProviderSpecificProperty deletes any ProviderSpecificProperty of the specified name.
 func (e *Endpoint) DeleteProviderSpecificProperty(key string) {
+	if len(e.ProviderSpecific) == 0 {
+		return
+	}
 	for i, providerSpecific := range e.ProviderSpecific {
 		if providerSpecific.Name == key {
 			e.ProviderSpecific = append(e.ProviderSpecific[:i], e.ProviderSpecific[i+1:]...)
@@ -399,6 +408,33 @@ func (e *Endpoint) String() string {
 
 func (e *Endpoint) Describe() string {
 	return fmt.Sprintf("record:%s, owner:%s, type:%s, targets:%s", e.DNSName, e.SetIdentifier, e.RecordType, strings.Join(e.Targets, ", "))
+}
+
+// GetProviderSpecificPropertyM returns the value of a provider-specific property from the map if it exists.
+func (e *Endpoint) GetProviderSpecificPropertyM(key string) (string, bool) {
+	if e.ProviderSpecificM == nil {
+		return "", false
+	}
+	if len(e.ProviderSpecificM) == 0 {
+		return "", false
+	}
+	val, ok := e.ProviderSpecificM[key]
+	return val, ok
+}
+
+// SetProviderSpecificPropertyM sets the value of a provider-specific property in the map.
+func (e *Endpoint) SetProviderSpecificPropertyM(key, value string) {
+	if e.ProviderSpecificM == nil {
+		e.ProviderSpecificM = make(ProviderSpecificMap)
+	}
+	e.ProviderSpecificM[key] = value
+}
+
+// DeleteProviderSpecificPropertyM deletes a provider-specific property from the map.
+func (e *Endpoint) DeleteProviderSpecificPropertyM(key string) {
+	if len(e.ProviderSpecificM) != 0 {
+		delete(e.ProviderSpecificM, key)
+	}
 }
 
 // FilterEndpointsByOwnerID Apply filter to slice of endpoints and return new filtered slice that includes
