@@ -14,11 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package toolkit
 
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -26,22 +27,16 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
-	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 	"sigs.k8s.io/yaml"
 
-	"sigs.k8s.io/external-dns/internal/testutils"
+	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 
-	openshift "github.com/openshift/client-go/route/clientset/versioned"
-	istioclient "istio.io/client-go/pkg/clientset/versioned"
-	gateway "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
+	"sigs.k8s.io/external-dns/internal/testutils"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source"
@@ -49,7 +44,8 @@ import (
 )
 
 // LoadScenarios loads test scenarios from the YAML file.
-func LoadScenarios(filename string) (*TestScenarios, error) {
+func LoadScenarios(dir string) (*TestScenarios, error) {
+	filename := filepath.Join(dir, "/scenarios/tests.yaml")
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -63,9 +59,9 @@ func LoadScenarios(filename string) (*TestScenarios, error) {
 	return &scenarios, nil
 }
 
-// GetScenariosPath returns the absolute path to the scenarios directory.
-func GetScenariosPath() string {
-	_, currentFile, _, _ := runtime.Caller(0)
+// getScenariosPath returns the absolute path to the scenarios directory.
+func getScenariosPath() string {
+	_, currentFile, _, _ := runtime.Caller(0) //nolint:dogsled
 	return filepath.Join(filepath.Dir(currentFile), "scenarios")
 }
 
@@ -158,9 +154,7 @@ func generatePodsAndEndpointSlice(svc *corev1.Service, deps *PodDependencies) ([
 
 	// Create EndpointSlice with the service name label
 	endpointSliceLabels := make(map[string]string)
-	for k, v := range svc.Spec.Selector {
-		endpointSliceLabels[k] = v
-	}
+	maps.Copy(endpointSliceLabels, svc.Spec.Selector)
 	endpointSliceLabels[discoveryv1.LabelServiceName] = svc.Name
 
 	endpointSlice := &discoveryv1.EndpointSlice{
@@ -255,62 +249,8 @@ func LoadResources(ctx context.Context, scenario Scenario) (*fake.Clientset, err
 	return client, nil
 }
 
-// MockClientGenerator implements source.ClientGenerator for testing.
-type MockClientGenerator struct {
-	mock.Mock
-	kubeClient kubernetes.Interface
-}
-
-func (m *MockClientGenerator) KubeClient() (kubernetes.Interface, error) {
-	args := m.Called()
-	if args.Error(1) == nil {
-		m.kubeClient = args.Get(0).(kubernetes.Interface)
-		return m.kubeClient, nil
-	}
-	return nil, args.Error(1)
-}
-
-func (m *MockClientGenerator) GatewayClient() (gateway.Interface, error) {
-	args := m.Called()
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(gateway.Interface), nil
-}
-
-func (m *MockClientGenerator) IstioClient() (istioclient.Interface, error) {
-	args := m.Called()
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(istioclient.Interface), nil
-}
-
-func (m *MockClientGenerator) DynamicKubernetesClient() (dynamic.Interface, error) {
-	args := m.Called()
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(dynamic.Interface), nil
-}
-
-func (m *MockClientGenerator) OpenShiftClient() (openshift.Interface, error) {
-	args := m.Called()
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(openshift.Interface), nil
-}
-
-// NewMockClientGenerator creates a MockClientGenerator that returns the provided fake client.
-func NewMockClientGenerator(client *fake.Clientset) *MockClientGenerator {
-	m := new(MockClientGenerator)
-	m.On("KubeClient").Return(client, nil)
-	return m
-}
-
-// CreateSourceConfig creates a source.Config for testing with the scenario config.
-func CreateSourceConfig(scenarioCfg ScenarioConfig) *source.Config {
+// scenarioToConfig creates a source.Config for testing with the scenario config.
+func scenarioToConfig(scenarioCfg ScenarioConfig) *source.Config {
 	return source.NewSourceConfig(&externaldns.Config{
 		Sources:             scenarioCfg.Sources,
 		ServiceTypeFilter:   scenarioCfg.ServiceTypeFilter,
@@ -325,8 +265,8 @@ func CreateWrappedSource(
 	ctx context.Context,
 	client *fake.Clientset,
 	scenarioCfg ScenarioConfig) (source.Source, error) {
-	clientGen := NewMockClientGenerator(client)
-	cfg := CreateSourceConfig(scenarioCfg)
+	clientGen := newMockClientGenerator(client)
+	cfg := scenarioToConfig(scenarioCfg)
 
 	// TODO: review controller/execute.go#buildSources
 	sources, err := source.ByNames(ctx, cfg, clientGen)
@@ -345,7 +285,7 @@ func CreateWrappedSource(
 }
 
 // TODO: copied from source/wrappers/source_test.go - unify
-func validateEndpoints(t *testing.T, endpoints, expected []*endpoint.Endpoint) {
+func ValidateEndpoints(t *testing.T, endpoints, expected []*endpoint.Endpoint) {
 	t.Helper()
 
 	if len(endpoints) != len(expected) {

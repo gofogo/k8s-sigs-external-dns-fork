@@ -18,7 +18,7 @@
 scenarios:
   - name: headless-service-with-pods
     config:
-      sources: [service]
+      sources: ["service"]
       targetNetFilter: ["10.0.0.1/32", "10.0.0.2/32"]
       serviceTypeFilter: ["ClusterIP"]
     resources:
@@ -51,30 +51,27 @@ scenarios:
         targets: ["10.0.0.2"]
         recordType: A
 
-#  - name: service-loadbalancer-with-ip
-#    sources:
-#      - service
-#    config:
-#      defaultTargets: []
-#      forceDefaultTargets: false
-#    resources:
-#      - resource:
-#          apiVersion: v1
-#          kind: Service
-#          metadata:
-#            name: test-service
-#            namespace: default
-#            annotations:
-#              external-dns.alpha.kubernetes.io/hostname: svc.example.com
-#          spec:
-#            selector:
-#              app.kubernetes.io/name: MyApp
-#            type: LoadBalancer
-#          status:
-#            loadBalancer:
-#              ingress:
-#                - ip: 1.2.3.4
-#    expected:
-#      - dnsName: svc.example.com
-#        targets: ["1.2.3.4"]
-#        recordType: A
+  - name: service-loadbalancer-with-ip
+    config:
+      sources: ["service"]
+    resources:
+      - resource:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: test-service
+            namespace: default
+            annotations:
+              external-dns.alpha.kubernetes.io/hostname: svc.example.com
+          spec:
+            selector:
+              app.kubernetes.io/name: MyApp
+            type: LoadBalancer
+          status:
+            loadBalancer:
+              ingress:
+                - ip: 1.2.3.4
+    expected:
+      - dnsName: svc.example.com
+        targets: ["1.2.3.4"]
+        recordType: A

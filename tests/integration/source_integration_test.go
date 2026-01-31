@@ -18,98 +18,35 @@ package integration
 
 import (
 	"context"
-	"path/filepath"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/external-dns/source/annotations"
+	"sigs.k8s.io/external-dns/tests/integration/toolkit"
 )
 
 func TestParseResources(t *testing.T) {
-	scenariosPath := filepath.Join(GetScenariosPath(), "integration_test.yaml")
-	scenarios, err := LoadScenarios(scenariosPath)
+	dir, _ := os.Getwd()
+	scenarios, err := toolkit.LoadScenarios(dir)
 	require.NoError(t, err, "failed to load scenarios")
 	require.NotEmpty(t, scenarios.Scenarios, "no scenarios found")
 
-	// Test first scenario
+	assert.Len(t, scenarios.Scenarios, 2, "unexpected number of scenarios")
 	scenario := scenarios.Scenarios[0]
-	t.Logf("Scenario: %s", scenario.Name)
-	t.Logf("Sources: %v", scenario.Config.Sources)
-	t.Logf("Resources count: %d", len(scenario.Resources))
 
-	resources, err := ParseResources(scenario.Resources)
+	_, err = toolkit.ParseResources(scenario.Resources)
 	require.NoError(t, err, "failed to parse resources")
-
-	t.Logf("Parsed ingresses: %d", len(resources.Ingresses))
-	for _, ing := range resources.Ingresses {
-		t.Logf("  Ingress: %s/%s", ing.Namespace, ing.Name)
-		t.Logf("  Annotations: %v", ing.Annotations)
-		t.Logf("  Status: %+v", ing.Status)
-	}
-}
-
-func TestSourceDirect(t *testing.T) {
-	ctx := context.Background()
-
-	// Create fake client
-	client := CreateFakeClient()
-
-	// Create ingress directly using API
-	ing, err := client.NetworkingV1().Ingresses("default").Create(ctx, &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-ingress",
-			Namespace: "default",
-			Annotations: map[string]string{
-				"external-dns.alpha.kubernetes.io/hostname": "test.example.com",
-			},
-		},
-		Status: networkingv1.IngressStatus{
-			LoadBalancer: networkingv1.IngressLoadBalancerStatus{
-				Ingress: []networkingv1.IngressLoadBalancerIngress{
-					{IP: "1.2.3.4"},
-				},
-			},
-		},
-	}, metav1.CreateOptions{})
-	require.NoError(t, err)
-	t.Logf("Created ingress: %s/%s", ing.Namespace, ing.Name)
-	t.Logf("Ingress status after create: %+v", ing.Status)
-
-	// Update status
-	ing.Status.LoadBalancer.Ingress = []networkingv1.IngressLoadBalancerIngress{{IP: "1.2.3.4"}}
-	updated, err := client.NetworkingV1().Ingresses("default").UpdateStatus(ctx, ing, metav1.UpdateOptions{})
-	require.NoError(t, err)
-	t.Logf("Ingress status after update: %+v", updated.Status)
-
-	// List to verify
-	list, err := client.NetworkingV1().Ingresses("default").List(ctx, metav1.ListOptions{})
-	require.NoError(t, err)
-	t.Logf("Listed %d ingresses", len(list.Items))
-	for _, i := range list.Items {
-		t.Logf("  - %s/%s annotations=%v status=%+v", i.Namespace, i.Name, i.Annotations, i.Status)
-	}
-
-	// Now create wrapped source
-	wrappedSource, err := CreateWrappedSource(ctx, client, ScenarioConfig{Sources: []string{"ingress"}})
-	require.NoError(t, err)
-	t.Logf("Created wrapped source")
-
-	// Get endpoints
-	endpoints, err := wrappedSource.Endpoints(ctx)
-	require.NoError(t, err)
-	t.Logf("Got %d endpoints", len(endpoints))
-	for _, ep := range endpoints {
-		t.Logf("  - %s %s -> %v", ep.DNSName, ep.RecordType, ep.Targets)
-	}
 }
 
 func TestSourceIntegration(t *testing.T) {
 	// TODO: this is required to ensure annotation parsing works as expected. Ideally, should be set differently.
 	annotations.SetAnnotationPrefix(annotations.DefaultAnnotationPrefix)
-	scenarios, err := LoadScenarios(filepath.Join(GetScenariosPath(), "integration_test.yaml"))
+
+	dir, _ := os.Getwd()
+	scenarios, err := toolkit.LoadScenarios(dir)
 	require.NoError(t, err, "failed to load scenarios")
 	require.NotEmpty(t, scenarios.Scenarios, "no scenarios found")
 
@@ -118,17 +55,17 @@ func TestSourceIntegration(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			client, err := LoadResources(ctx, scenario)
+			client, err := toolkit.LoadResources(ctx, scenario)
 			require.NoError(t, err, "failed to populate resources")
 
 			// Create wrapped source
-			wrappedSource, err := CreateWrappedSource(ctx, client, scenario.Config)
+			wrappedSource, err := toolkit.CreateWrappedSource(ctx, client, scenario.Config)
 			require.NoError(t, err, "failed to create wrapped source")
 
 			// Get endpoints
 			endpoints, err := wrappedSource.Endpoints(ctx)
 			require.NoError(t, err)
-			validateEndpoints(t, endpoints, scenario.Expected)
+			toolkit.ValidateEndpoints(t, endpoints, scenario.Expected)
 		})
 	}
 }

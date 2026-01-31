@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package integration
+package toolkit
 
 import (
 	"testing"
@@ -44,7 +44,7 @@ func TestLoadResources_updatesStatusWhenProvided(t *testing.T) {
 			},
 		}
 
-		client, err := LoadResources(ctx, Scenario{Resources: []ResourceWithDependencies{
+		client, err := loadResources(ctx, Scenario{Resources: []ResourceWithDependencies{
 			{Resource: toRawObject(t, ing)},
 		}})
 		require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestLoadResources_updatesStatusWhenProvided(t *testing.T) {
 			},
 		}
 
-		client, err := LoadResources(ctx, Scenario{Resources: []ResourceWithDependencies{
+		client, err := loadResources(ctx, Scenario{Resources: []ResourceWithDependencies{
 			{Resource: toRawObject(t, svc)},
 		}})
 		require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestLoadResources_updatesStatusWhenProvided(t *testing.T) {
 		ing := &networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Name: "ing-empty", Namespace: "default"}}
 		svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "svc-empty", Namespace: "default"}}
 
-		client, err := LoadResources(ctx, Scenario{Resources: []ResourceWithDependencies{
+		client, err := loadResources(ctx, Scenario{Resources: []ResourceWithDependencies{
 			{Resource: toRawObject(t, ing)},
 			{Resource: toRawObject(t, svc)},
 		}})
@@ -89,10 +89,10 @@ func TestLoadResources_updatesStatusWhenProvided(t *testing.T) {
 
 		gotIng, err := client.NetworkingV1().Ingresses("default").Get(ctx, "ing-empty", metav1.GetOptions{})
 		require.NoError(t, err)
-		assert.Len(t, gotIng.Status.LoadBalancer.Ingress, 0)
+		assert.Empty(t, gotIng.Status.LoadBalancer.Ingress)
 
 		gotSvc, err := client.CoreV1().Services("default").Get(ctx, "svc-empty", metav1.GetOptions{})
 		require.NoError(t, err)
-		assert.Len(t, gotSvc.Status.LoadBalancer.Ingress, 0)
+		assert.Empty(t, gotSvc.Status.LoadBalancer.Ingress)
 	})
 }

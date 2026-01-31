@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(go run:*)",
+      "Bash(tee:*)",
+      "Bash(benchstat:*)",
+      "Bash(go install:*)"
+    ]
+  }
+}
