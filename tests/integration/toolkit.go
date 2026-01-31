@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -27,14 +28,16 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 	"sigs.k8s.io/yaml"
+
+	"sigs.k8s.io/external-dns/internal/testutils"
 
 	openshift "github.com/openshift/client-go/route/clientset/versioned"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
@@ -44,26 +47,6 @@ import (
 	"sigs.k8s.io/external-dns/source"
 	"sigs.k8s.io/external-dns/source/wrappers"
 )
-
-// TestScenarios represents the root structure of the YAML file.
-type TestScenarios struct {
-	Scenarios []Scenario `json:"scenarios"`
-}
-
-// Scenario represents a single test scenario.
-type Scenario struct {
-	Name      string                    `json:"name"`
-	Sources   []string                  `json:"sources"`
-	Config    ScenarioConfig            `json:"config"`
-	Resources []k8sruntime.RawExtension `json:"resources"`
-	Expected  []*endpoint.Endpoint      `json:"expected"`
-}
-
-// ScenarioConfig holds the wrapper configuration for a scenario.
-type ScenarioConfig struct {
-	DefaultTargets      []string `json:"defaultTargets"`
-	ForceDefaultTargets bool     `json:"forceDefaultTargets"`
-}
 
 // LoadScenarios loads test scenarios from the YAML file.
 func LoadScenarios(filename string) (*TestScenarios, error) {
@@ -86,17 +69,13 @@ func GetScenariosPath() string {
 	return filepath.Join(filepath.Dir(currentFile), "scenarios")
 }
 
-// ParsedResources holds the parsed Kubernetes resources from a scenario.
-type ParsedResources struct {
-	Ingresses []*networkingv1.Ingress
-	Services  []*corev1.Service
-}
-
 // ParseResources parses the raw resources from a scenario into typed objects.
-func ParseResources(resources []k8sruntime.RawExtension) (*ParsedResources, error) {
+func ParseResources(resources []ResourceWithDependencies) (*ParsedResources, error) {
 	parsed := &ParsedResources{}
 
-	for _, raw := range resources {
+	for _, item := range resources {
+		raw := item.Resource
+
 		// First unmarshal to get the kind
 		var typeMeta metav1.TypeMeta
 		if err := yaml.Unmarshal(raw.Raw, &typeMeta); err != nil {
@@ -116,10 +95,85 @@ func ParseResources(resources []k8sruntime.RawExtension) (*ParsedResources, erro
 				return nil, err
 			}
 			parsed.Services = append(parsed.Services, &svc)
+
+			// Auto-generate Pods and EndpointSlice if dependencies are specified
+			if item.Dependencies != nil && item.Dependencies.Pods != nil {
+				pods, endpointSlice := generatePodsAndEndpointSlice(&svc, item.Dependencies.Pods)
+				parsed.Pods = append(parsed.Pods, pods...)
+				parsed.EndpointSlices = append(parsed.EndpointSlices, endpointSlice)
+			}
+		case "EndpointSlice":
+			var eps discoveryv1.EndpointSlice
+			if err := yaml.Unmarshal(raw.Raw, &eps); err != nil {
+				return nil, err
+			}
+			parsed.EndpointSlices = append(parsed.EndpointSlices, &eps)
+		case "Pod":
+			var pod corev1.Pod
+			if err := yaml.Unmarshal(raw.Raw, &pod); err != nil {
+				return nil, err
+			}
+			parsed.Pods = append(parsed.Pods, &pod)
 		}
 	}
 
 	return parsed, nil
+}
+
+// generatePodsAndEndpointSlice creates Pods and an EndpointSlice for a headless service.
+func generatePodsAndEndpointSlice(svc *corev1.Service, deps *PodDependencies) ([]*corev1.Pod, *discoveryv1.EndpointSlice) {
+	var pods []*corev1.Pod
+	var endpoints []discoveryv1.Endpoint
+
+	for i := 0; i < deps.Replicas; i++ {
+		podName := fmt.Sprintf("%s-%d", svc.Name, i)
+		podIP := fmt.Sprintf("10.0.0.%d", i+1)
+
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: svc.Namespace,
+				Labels:    svc.Spec.Selector,
+			},
+			Spec: corev1.PodSpec{
+				Hostname: podName,
+			},
+			Status: corev1.PodStatus{
+				PodIP: podIP,
+			},
+		}
+		pods = append(pods, pod)
+
+		endpoints = append(endpoints, discoveryv1.Endpoint{
+			Addresses: []string{podIP},
+			TargetRef: &corev1.ObjectReference{
+				Kind: "Pod",
+				Name: podName,
+			},
+			Conditions: discoveryv1.EndpointConditions{
+				Ready: testutils.ToPtr(true),
+			},
+		})
+	}
+
+	// Create EndpointSlice with the service name label
+	endpointSliceLabels := make(map[string]string)
+	for k, v := range svc.Spec.Selector {
+		endpointSliceLabels[k] = v
+	}
+	endpointSliceLabels[discoveryv1.LabelServiceName] = svc.Name
+
+	endpointSlice := &discoveryv1.EndpointSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-slice", svc.Name),
+			Namespace: svc.Namespace,
+			Labels:    endpointSliceLabels,
+		},
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints:   endpoints,
+	}
+
+	return pods, endpointSlice
 }
 
 // CreateFakeClient creates a fake Kubernetes client.
@@ -127,38 +181,78 @@ func CreateFakeClient() *fake.Clientset {
 	return fake.NewClientset()
 }
 
-// PopulateResources creates the resources in the fake client using the API.
-// This must be called BEFORE creating sources so the informers can see the resources.
-func PopulateResources(ctx context.Context, client *fake.Clientset, resources *ParsedResources) error {
-	for _, ing := range resources.Ingresses {
-		created, err := client.NetworkingV1().Ingresses(ing.Namespace).Create(ctx, ing, metav1.CreateOptions{})
+func createIngressWithOptionalStatus(ctx context.Context, client *fake.Clientset, ing *networkingv1.Ingress) error {
+	created, err := client.NetworkingV1().Ingresses(ing.Namespace).Create(ctx, ing, metav1.CreateOptions{})
+	if err != nil {
+		return err
+	}
+
+	// Update status separately since Create doesn't set status in the fake client.
+	if len(ing.Status.LoadBalancer.Ingress) > 0 {
+		created.Status = ing.Status
+		_, err = client.NetworkingV1().Ingresses(ing.Namespace).UpdateStatus(ctx, created, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
-		// Update status separately since Create doesn't set status
-		if len(ing.Status.LoadBalancer.Ingress) > 0 {
-			created.Status = ing.Status
-			_, err = client.NetworkingV1().Ingresses(ing.Namespace).UpdateStatus(ctx, created, metav1.UpdateOptions{})
-			if err != nil {
-				return err
-			}
+	}
+
+	return nil
+}
+
+func createServiceWithOptionalStatus(ctx context.Context, client *fake.Clientset, svc *corev1.Service) error {
+	created, err := client.CoreV1().Services(svc.Namespace).Create(ctx, svc, metav1.CreateOptions{})
+	if err != nil {
+		return err
+	}
+
+	// Update status separately since Create doesn't set status in the fake client.
+	if len(svc.Status.LoadBalancer.Ingress) > 0 {
+		created.Status = svc.Status
+		_, err = client.CoreV1().Services(svc.Namespace).UpdateStatus(ctx, created, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// LoadResources creates the resources in the fake client using the API.
+// This must be called BEFORE creating sources so the informers can see the resources.
+// Populate resources BEFORE creating sources (so informers see them)
+func LoadResources(ctx context.Context, scenario Scenario) (*fake.Clientset, error) {
+	// Create fake Kubernetes client
+	client := CreateFakeClient()
+
+	// Parse resources from scenario
+	resources, err := ParseResources(scenario.Resources)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ing := range resources.Ingresses {
+		if err := createIngressWithOptionalStatus(ctx, client, ing); err != nil {
+			return nil, err
 		}
 	}
 	for _, svc := range resources.Services {
-		created, err := client.CoreV1().Services(svc.Namespace).Create(ctx, svc, metav1.CreateOptions{})
-		if err != nil {
-			return err
-		}
-		// Update status separately since Create doesn't set status
-		if len(svc.Status.LoadBalancer.Ingress) > 0 {
-			created.Status = svc.Status
-			_, err = client.CoreV1().Services(svc.Namespace).UpdateStatus(ctx, created, metav1.UpdateOptions{})
-			if err != nil {
-				return err
-			}
+		if err := createServiceWithOptionalStatus(ctx, client, svc); err != nil {
+			return nil, err
 		}
 	}
-	return nil
+	for _, pod := range resources.Pods {
+		_, err := client.CoreV1().Pods(pod.Namespace).Create(ctx, pod, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, eps := range resources.EndpointSlices {
+		_, err := client.DiscoveryV1().EndpointSlices(eps.Namespace).Create(ctx, eps, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return client, nil
 }
 
 // MockClientGenerator implements source.ClientGenerator for testing.
@@ -215,34 +309,37 @@ func NewMockClientGenerator(client *fake.Clientset) *MockClientGenerator {
 	return m
 }
 
-// CreateSourceConfig creates a source.Config for testing with the given sources and scenario config.
-func CreateSourceConfig(sourceTypes []string, scenarioCfg ScenarioConfig) *source.Config {
-	return &source.Config{
-		ServiceTypeFilter:   []string{"LoadBalancer", "ExternalName"},
-		LabelFilter:         labels.Everything(),
+// CreateSourceConfig creates a source.Config for testing with the scenario config.
+func CreateSourceConfig(scenarioCfg ScenarioConfig) *source.Config {
+	return source.NewSourceConfig(&externaldns.Config{
+		Sources:             scenarioCfg.Sources,
+		ServiceTypeFilter:   scenarioCfg.ServiceTypeFilter,
 		DefaultTargets:      scenarioCfg.DefaultTargets,
 		ForceDefaultTargets: scenarioCfg.ForceDefaultTargets,
-	}
+		TargetNetFilter:     scenarioCfg.TargetNetFilter,
+	})
 }
 
 // CreateWrappedSource creates sources using source.BuildWithConfig and wraps them with wrappers.WrapSources.
-func CreateWrappedSource(ctx context.Context, client *fake.Clientset, sourceTypes []string, scenarioCfg ScenarioConfig) (source.Source, error) {
+func CreateWrappedSource(
+	ctx context.Context,
+	client *fake.Clientset,
+	scenarioCfg ScenarioConfig) (source.Source, error) {
 	clientGen := NewMockClientGenerator(client)
-	cfg := CreateSourceConfig(sourceTypes, scenarioCfg)
+	cfg := CreateSourceConfig(scenarioCfg)
 
-	var sources []source.Source
-	for _, name := range sourceTypes {
-		src, err := source.BuildWithConfig(ctx, name, clientGen, cfg)
-		if err != nil {
-			return nil, err
-		}
-		sources = append(sources, src)
+	// TODO: review controller/execute.go#buildSources
+	sources, err := source.ByNames(ctx, cfg, clientGen)
+	if err != nil {
+		return nil, err
 	}
-
 	opts := wrappers.NewConfig(
 		wrappers.WithDefaultTargets(cfg.DefaultTargets),
 		wrappers.WithForceDefaultTargets(cfg.ForceDefaultTargets),
-	)
+		wrappers.WithNAT64Networks(cfg.NAT64Networks),
+		wrappers.WithTargetNetFilter(cfg.TargetNetFilter),
+		wrappers.WithExcludeTargetNets(cfg.ExcludeTargetNets),
+		wrappers.WithMinTTL(cfg.MinTTL))
 
 	return wrappers.WrapSources(sources, opts)
 }

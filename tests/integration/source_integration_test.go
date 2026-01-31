@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/external-dns/source/annotations"
 )
 
 func TestParseResources(t *testing.T) {
@@ -36,12 +37,8 @@ func TestParseResources(t *testing.T) {
 	// Test first scenario
 	scenario := scenarios.Scenarios[0]
 	t.Logf("Scenario: %s", scenario.Name)
-	t.Logf("Sources: %v", scenario.Sources)
+	t.Logf("Sources: %v", scenario.Config.Sources)
 	t.Logf("Resources count: %d", len(scenario.Resources))
-
-	for i, raw := range scenario.Resources {
-		t.Logf("Resource %d raw: %s", i, string(raw.Raw))
-	}
 
 	resources, err := ParseResources(scenario.Resources)
 	require.NoError(t, err, "failed to parse resources")
@@ -96,7 +93,7 @@ func TestSourceDirect(t *testing.T) {
 	}
 
 	// Now create wrapped source
-	wrappedSource, err := CreateWrappedSource(ctx, client, []string{"ingress"}, ScenarioConfig{})
+	wrappedSource, err := CreateWrappedSource(ctx, client, ScenarioConfig{Sources: []string{"ingress"}})
 	require.NoError(t, err)
 	t.Logf("Created wrapped source")
 
@@ -110,8 +107,9 @@ func TestSourceDirect(t *testing.T) {
 }
 
 func TestSourceIntegration(t *testing.T) {
-	scenariosPath := filepath.Join(GetScenariosPath(), "integration_test.yaml")
-	scenarios, err := LoadScenarios(scenariosPath)
+	// TODO: this is required to ensure annotation parsing works as expected. Ideally, should be set differently.
+	annotations.SetAnnotationPrefix(annotations.DefaultAnnotationPrefix)
+	scenarios, err := LoadScenarios(filepath.Join(GetScenariosPath(), "integration_test.yaml"))
 	require.NoError(t, err, "failed to load scenarios")
 	require.NotEmpty(t, scenarios.Scenarios, "no scenarios found")
 
@@ -120,19 +118,11 @@ func TestSourceIntegration(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			// Parse resources from scenario
-			resources, err := ParseResources(scenario.Resources)
-			require.NoError(t, err, "failed to parse resources")
-
-			// Create fake Kubernetes client
-			client := CreateFakeClient()
-
-			// Populate resources BEFORE creating sources (so informers see them)
-			err = PopulateResources(ctx, client, resources)
+			client, err := LoadResources(ctx, scenario)
 			require.NoError(t, err, "failed to populate resources")
 
 			// Create wrapped source
-			wrappedSource, err := CreateWrappedSource(ctx, client, scenario.Sources, scenario.Config)
+			wrappedSource, err := CreateWrappedSource(ctx, client, scenario.Config)
 			require.NoError(t, err, "failed to create wrapped source")
 
 			// Get endpoints
