@@ -1,0 +1,23 @@
+# ref: https://kind.sigs.k8s.io/docs/user/quick-start/
+# https://kind.sigs.k8s.io/docs/user/configuration/#extra-port-mappings
+
+# kind create cluster --config=docs/snippets/tutorials/rfc2136/kind.yaml
+# kind delete cluster --name rfc2136
+# kubectl cluster-info --context rfc2136
+# kubectl get nodes -o wide
+---
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: rfc2136
+nodes:
+- role: control-plane
+  extraPortMappings:
+    - containerPort: 80
+      hostPort: 8080
+      listenAddress: "0.0.0.0"
+      protocol: TCP
+    - containerPort: 43
+      hostPort: 4443
+      listenAddress: "0.0.0.0"
+      protocol: TCP
+- role: worker
