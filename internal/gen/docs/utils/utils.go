@@ -18,7 +18,6 @@ package utils
 
 import (
 	"bytes"
-	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -29,16 +28,7 @@ import (
 )
 
 func WriteToFile(filename string, content string) error {
-	file, fileErr := os.Create(filename)
-	if fileErr != nil {
-		_ = fmt.Errorf("failed to create file: %w", fileErr)
-	}
-	defer file.Close()
-	_, writeErr := file.WriteString(content)
-	if writeErr != nil {
-		_ = fmt.Errorf("failed to write to file: %s", filename)
-	}
-	return nil
+	return os.WriteFile(filename, []byte(content), 0644)
 }
 
 // RenderTemplate parses and executes a named Go template from the given filesystem.
