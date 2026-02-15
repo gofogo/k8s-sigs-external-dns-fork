@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"bytes"
 	"embed"
 	"fmt"
 	"go/ast"
@@ -28,7 +27,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"text/template"
 
 	"sigs.k8s.io/external-dns/internal/gen/docs/utils"
 )
@@ -107,15 +105,7 @@ func discoverSources(dir string) (Sources, error) {
 }
 
 func (s *Sources) generateMarkdown() (string, error) {
-	tmpl := template.New("").Funcs(utils.FuncMap())
-	template.Must(tmpl.ParseFS(templates, "templates/*.gotpl"))
-
-	var b bytes.Buffer
-	err := tmpl.ExecuteTemplate(&b, "sources.gotpl", s)
-	if err != nil {
-		return "", err
-	}
-	return b.String(), nil
+	return utils.RenderTemplate(templates, "sources.gotpl", s)
 }
 
 // parseSourceAnnotations parses all Go files in the source directory

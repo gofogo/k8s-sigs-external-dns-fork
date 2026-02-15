@@ -17,12 +17,10 @@ limitations under the License.
 package main
 
 import (
-	"bytes"
 	"embed"
 	"fmt"
 	"os"
 	"strings"
-	"text/template"
 
 	"sigs.k8s.io/external-dns/internal/gen/docs/utils"
 	cfg "sigs.k8s.io/external-dns/pkg/apis/externaldns"
@@ -88,13 +86,5 @@ func computeFlags() Flags {
 }
 
 func (f *Flags) generateMarkdownTable() (string, error) {
-	tmpl := template.New("").Funcs(utils.FuncMap())
-	template.Must(tmpl.ParseFS(templates, "templates/*.gotpl"))
-
-	var b bytes.Buffer
-	err := tmpl.ExecuteTemplate(&b, "flags.gotpl", f)
-	if err != nil {
-		return "", err
-	}
-	return b.String(), nil
+	return utils.RenderTemplate(templates, "flags.gotpl", f)
 }

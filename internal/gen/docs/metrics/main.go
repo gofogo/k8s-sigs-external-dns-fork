@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"bytes"
 	"embed"
 	"fmt"
 	"os"
@@ -25,7 +24,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"text/template"
 	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -59,9 +57,6 @@ func main() {
 }
 
 func generateMarkdownTable(m *metrics.MetricRegistry, withRuntime bool) (string, error) {
-	tmpl := template.New("").Funcs(utils.FuncMap())
-	template.Must(tmpl.ParseFS(templates, "templates/*.gotpl"))
-
 	sortMetrics(m.Metrics)
 	var runtimeMetrics []string
 	if withRuntime {
@@ -77,19 +72,13 @@ func generateMarkdownTable(m *metrics.MetricRegistry, withRuntime bool) (string,
 		runtimeMetrics = []string{}
 	}
 
-	var b bytes.Buffer
-	err := tmpl.ExecuteTemplate(&b, "metrics.gotpl", struct {
+	return utils.RenderTemplate(templates, "metrics.gotpl", struct {
 		Metrics        []*metrics.Metric
 		RuntimeMetrics []string
 	}{
 		Metrics:        m.Metrics,
 		RuntimeMetrics: runtimeMetrics,
 	})
-
-	if err != nil {
-		return "", err
-	}
-	return b.String(), nil
 }
 
 // sortMetrics sorts the given slice of metrics by their subsystem and name.

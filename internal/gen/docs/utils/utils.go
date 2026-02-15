@@ -17,7 +17,9 @@ limitations under the License.
 package utils
 
 import (
+	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"text/template"
@@ -37,6 +39,18 @@ func WriteToFile(filename string, content string) error {
 		_ = fmt.Errorf("failed to write to file: %s", filename)
 	}
 	return nil
+}
+
+// RenderTemplate parses and executes a named Go template from the given filesystem.
+func RenderTemplate(fsys fs.FS, name string, data any) (string, error) {
+	tmpl := template.New("").Funcs(FuncMap())
+	template.Must(tmpl.ParseFS(fsys, "templates/*.gotpl"))
+
+	var b bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&b, name, data); err != nil {
+		return "", err
+	}
+	return b.String(), nil
 }
 
 // FuncMap returns a mapping of all of the functions that Engine has.
