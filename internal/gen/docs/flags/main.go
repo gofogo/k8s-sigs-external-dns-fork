@@ -37,14 +37,14 @@ type Flag struct {
 }
 type Flags []Flag
 
-// AddFlag adds a new flag to the Flags struct
+// addFlag adds a new flag to the Flags slice.
 func (f *Flags) addFlag(name, description string) {
 	*f = append(*f, Flag{Name: name, Description: description})
 }
 
-// It generates a markdown file
-// with the supported flags and writes it to the 'docs/flags.md' file.
-// to re-generate `docs/flags.md` execute 'go run internal/gen/docs/flags/main.go'
+// main generates a markdown file with the supported flags
+// and writes it to the 'docs/flags.md' file.
+// To re-generate, execute 'go run internal/gen/docs/flags/main.go'.
 func main() {
 	testPath, _ := os.Getwd()
 	path := fmt.Sprintf("%s/docs/flags.md", testPath)

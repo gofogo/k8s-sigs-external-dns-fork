@@ -66,9 +66,9 @@ type Source struct {
 
 type Sources []Source
 
-// It generates a markdown file
-// with the supported sources and writes it to the 'docs/sources/index.md' file.
-// to re-generate `docs/sources/index.md` execute 'go run internal/gen/docs/sources/main.go'
+// main generates a markdown file with the supported sources
+// and writes it to the 'docs/sources/index.md' file.
+// To re-generate, execute 'go run internal/gen/docs/sources/main.go'.
 func main() {
 	cPath, _ := os.Getwd()
 	path := fmt.Sprintf("%s/docs/sources/index.md", cPath)
@@ -96,7 +96,7 @@ func discoverSources(dir string) (Sources, error) {
 		return nil, err
 	}
 
-	// Sort sources by category, then by name
+	// Sort sources by name
 	slices.SortFunc(sources, func(a, b Source) int {
 		return strings.Compare(a.Name, b.Name)
 	})
