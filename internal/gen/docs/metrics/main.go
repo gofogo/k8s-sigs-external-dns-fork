@@ -20,11 +20,9 @@ import (
 	"embed"
 	"fmt"
 	"os"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
-	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -60,7 +58,7 @@ func generateMarkdownTable(m *metrics.MetricRegistry, withRuntime bool) (string,
 	sortMetrics(m.Metrics)
 	var runtimeMetrics []string
 	if withRuntime {
-		runtimeMetrics = getRuntimeMetrics(prometheus.DefaultRegisterer)
+		runtimeMetrics = getRuntimeMetrics(prometheus.DefaultGatherer)
 		// available when promhttp.Handler() is activated
 		runtimeMetrics = append(runtimeMetrics, []string{
 			"process_network_receive_bytes_total",
@@ -92,23 +90,19 @@ func sortMetrics(metrics []*metrics.Metric) {
 	})
 }
 
-// getRuntimeMetrics retrieves the list of runtime metrics from the Prometheus library.
-func getRuntimeMetrics(reg prometheus.Registerer) []string {
+// getRuntimeMetrics retrieves the list of runtime metrics from the Prometheus registry.
+func getRuntimeMetrics(gatherer prometheus.Gatherer) []string {
+	mfs, err := gatherer.Gather()
+	if err != nil {
+		return nil
+	}
+
 	var runtimeMetrics []string
-
-	// hacks to get the runtime metrics from prometheus library
-	// safe to do because it's a just a documentation generator
-	values := reflect.ValueOf(reg).Elem().FieldByName("dimHashesByName")
-	values = reflect.NewAt(values.Type(), unsafe.Pointer(values.UnsafeAddr())).Elem()
-
-	switch v := values.Interface().(type) {
-	case map[string]uint64:
-		for k := range v {
-			if !strings.HasPrefix(k, "external_dns") {
-				runtimeMetrics = append(runtimeMetrics, k)
-			}
+	for _, mf := range mfs {
+		name := mf.GetName()
+		if !strings.HasPrefix(name, "external_dns") {
+			runtimeMetrics = append(runtimeMetrics, name)
 		}
-	default:
 	}
 	sort.Strings(runtimeMetrics)
 	return runtimeMetrics

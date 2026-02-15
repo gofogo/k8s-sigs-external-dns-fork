@@ -125,8 +125,7 @@ func TestGetRuntimeMetricsForNewRegistry(t *testing.T) {
 }
 
 func TestGetRuntimeMetricsForDefaultRegistry(t *testing.T) {
-	reg := prometheus.DefaultRegisterer
-	runtimeMetrics := getRuntimeMetrics(reg)
+	runtimeMetrics := getRuntimeMetrics(prometheus.DefaultGatherer)
 	if len(runtimeMetrics) == 0 {
 		t.Errorf("Expected not empty runtime metrics, got %d", len(runtimeMetrics))
 	}

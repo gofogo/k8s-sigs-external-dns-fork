@@ -114,13 +114,13 @@ func parseSourceAnnotations(sourceDir string) (Sources, error) {
 	var sources Sources
 
 	// Walk through the source directory
-	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(sourceDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
 		// Skip directories and non-Go files
-		if info.IsDir() || !strings.HasSuffix(path, ".go") {
+		if d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
 
