@@ -716,20 +716,12 @@ func helperCrdSourceBuilder(t *testing.T, namespace, annotationFilter string, la
 		cache.Indexers{},
 	)
 
-	// Start the informer before adding indexers (required before objects are added)
-	go informer.RunWithContext(ctx)
-
-	// Add DNSEndpoint objects to the informer
+	// Add objects before starting so they appear in the initial LIST.
 	for i := range dnsEndpoints {
 		watcher.Add(&dnsEndpoints[i])
 	}
 
-	// Wait for cache to sync
-	require.Eventually(t, func() bool {
-		return cache.WaitForCacheSync(ctx.Done(), informer.HasSynced)
-	}, 2*time.Second, 10*time.Millisecond)
-
-	cs, err := newCRDSource(informer, fakeClient, annotationFilter, labelSelector, namespace)
+	cs, err := newCRDSource(ctx, informer, fakeClient, annotationFilter, labelSelector, namespace)
 	require.NoError(t, err)
 
 	return &crdSourceTest{

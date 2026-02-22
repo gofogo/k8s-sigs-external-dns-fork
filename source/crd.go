@@ -86,22 +86,20 @@ func NewCRDSource(
 		return nil, err
 	}
 
-	if err := informers.StartAndWaitForCacheSync(ctx, crCache); err != nil {
-		return nil, err
-	}
-
 	inf, err := crCache.GetInformer(ctx, &apiv1alpha1.DNSEndpoint{})
 	if err != nil {
 		return nil, err
 	}
+
 	// controller-runtime's cache.GetInformer always returns a SharedIndexInformer.
-	return newCRDSource(inf.(tools.SharedIndexInformer), crClient, cfg.AnnotationFilter, cfg.LabelFilter, cfg.Namespace)
+	return newCRDSource(ctx, inf.(tools.SharedIndexInformer), crClient, cfg.AnnotationFilter, cfg.LabelFilter, cfg.Namespace)
 }
 
 // newCRDSource wires a SharedIndexInformer and client into a crdSource.
 // It is called by NewCRDSource (production) and the test helper so both share
 // the same indexer setup and struct construction.
 func newCRDSource(
+	ctx context.Context,
 	inf tools.SharedIndexInformer,
 	crClient client.Client,
 	annotationFilter string,
@@ -113,6 +111,11 @@ func newCRDSource(
 		informers.IndexSelectorWithNamespace(namespace))); err != nil {
 		return nil, err
 	}
+
+	if err := informers.RunAndWaitForCacheSync(ctx, inf); err != nil {
+		return nil, err
+	}
+
 	return &crdSource{
 		crClient: crClient,
 		informer: inf,
@@ -183,7 +186,6 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 		}
 
 		el.Status.ObservedGeneration = el.Generation
-		// Update the ObservedGeneration
 		if err := cs.crClient.Status().Update(ctx, el); err != nil {
 			log.Warnf("Could not update ObservedGeneration of the CRD: %v", err)
 		}

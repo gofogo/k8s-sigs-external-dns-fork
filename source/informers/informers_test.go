@@ -18,9 +18,9 @@ package informers
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -85,30 +85,6 @@ func TestWaitForCacheSync(t *testing.T) {
 	}
 }
 
-type mockControllerRuntimeCache struct {
-	startErr error
-	synced   bool
-	started  chan struct{} // closed when Start has been called
-}
-
-func newMockCRCache(synced bool, startErr error) *mockControllerRuntimeCache {
-	return &mockControllerRuntimeCache{
-		startErr: startErr,
-		synced:   synced,
-		started:  make(chan struct{}),
-	}
-}
-
-func (m *mockControllerRuntimeCache) Start(_ context.Context) error {
-	close(m.started)
-	return m.startErr
-}
-
-func (m *mockControllerRuntimeCache) WaitForCacheSync(_ context.Context) bool {
-	<-m.started // ensure Start goroutine has run
-	return m.synced
-}
-
 func TestWaitForDynamicCacheSync(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -151,34 +127,36 @@ func TestWaitForDynamicCacheSync(t *testing.T) {
 	}
 }
 
-func TestStartAndWaitForCacheSync(t *testing.T) {
+type mockRunnableInformer struct {
+	hasSynced bool
+}
+
+func (m *mockRunnableInformer) RunWithContext(_ context.Context) {}
+func (m *mockRunnableInformer) HasSynced() bool                  { return m.hasSynced }
+
+func TestRunAndWaitForCacheSync(t *testing.T) {
 	t.Run("successful sync", func(t *testing.T) {
-		c := newMockCRCache(true, nil)
-		err := StartAndWaitForCacheSync(t.Context(), c)
+		inf := &mockRunnableInformer{hasSynced: true}
+		err := RunAndWaitForCacheSync(t.Context(), inf)
 		require.NoError(t, err)
-	})
-
-	t.Run("sync fails with no start error", func(t *testing.T) {
-		c := newMockCRCache(false, nil)
-		err := StartAndWaitForCacheSync(t.Context(), c)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to sync controller-runtime cache")
-	})
-
-	t.Run("start returns error", func(t *testing.T) {
-		c := newMockCRCache(false, fmt.Errorf("already started"))
-		err := StartAndWaitForCacheSync(t.Context(), c)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to start controller-runtime cache")
-		assert.Contains(t, err.Error(), "already started")
 	})
 
 	t.Run("context cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		c := newMockCRCache(false, nil)
-		err := StartAndWaitForCacheSync(ctx, c)
+		inf := &mockRunnableInformer{hasSynced: false}
+		err := RunAndWaitForCacheSync(ctx, inf)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("sync times out", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+		defer cancel()
+		inf := &mockRunnableInformer{hasSynced: false}
+		err := RunAndWaitForCacheSync(ctx, inf)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Contains(t, err.Error(), "timed out waiting for informer cache to sync")
 	})
 }
