@@ -17,6 +17,8 @@ limitations under the License.
 package toolkit
 
 import (
+	"fmt"
+
 	openshift "github.com/openshift/client-go/route/clientset/versioned"
 	"github.com/stretchr/testify/mock"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
@@ -30,21 +32,18 @@ import (
 // MockClientGenerator implements source.ClientGenerator for testing.
 type MockClientGenerator struct {
 	mock.Mock
-	kubeClient kubernetes.Interface
 }
 
 func (m *MockClientGenerator) RESTConfig() (*rest.Config, error) {
-	// TODO implement me
-	panic("implement me")
+	return nil, fmt.Errorf("RESTConfig: not implemented")
 }
 
 func (m *MockClientGenerator) KubeClient() (kubernetes.Interface, error) {
 	args := m.Called()
-	if args.Error(1) == nil {
-		m.kubeClient = args.Get(0).(kubernetes.Interface)
-		return m.kubeClient, nil
+	if args.Error(1) != nil {
+		return nil, args.Error(1)
 	}
-	return nil, args.Error(1)
+	return args.Get(0).(kubernetes.Interface), nil
 }
 
 func (m *MockClientGenerator) GatewayClient() (gateway.Interface, error) {

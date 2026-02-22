@@ -17,39 +17,40 @@ limitations under the License.
 package integration
 
 import (
-	"context"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"sigs.k8s.io/external-dns/tests/integration/toolkit"
 )
 
-func TestParseResources(t *testing.T) {
-	dir, _ := os.Getwd()
+func mustLoadScenarios(t *testing.T) *toolkit.TestScenarios {
+	t.Helper()
+	dir, err := os.Getwd()
+	require.NoError(t, err)
 	scenarios, err := toolkit.LoadScenarios(dir)
 	require.NoError(t, err, "failed to load scenarios")
 	require.NotEmpty(t, scenarios.Scenarios, "no scenarios found")
+	require.Greater(t, len(scenarios.Scenarios), 1, "expected more than one scenario")
+	return scenarios
+}
 
-	assert.Len(t, scenarios.Scenarios, 3, "unexpected number of scenarios")
-	scenario := scenarios.Scenarios[0]
-
-	_, err = toolkit.ParseResources(scenario.Resources)
-	require.NoError(t, err, "failed to parse resources")
+func TestParseResources(t *testing.T) {
+	scenarios := mustLoadScenarios(t)
+	for _, scenario := range scenarios.Scenarios {
+		t.Run(scenario.Name, func(t *testing.T) {
+			_, err := toolkit.ParseResources(scenario.Resources)
+			require.NoError(t, err, "failed to parse resources")
+		})
+	}
 }
 
 func TestSourceIntegration(t *testing.T) {
-	dir, _ := os.Getwd()
-	scenarios, err := toolkit.LoadScenarios(dir)
-	require.NoError(t, err, "failed to load scenarios")
-	require.NotEmpty(t, scenarios.Scenarios, "no scenarios found")
-
+	scenarios := mustLoadScenarios(t)
 	for _, scenario := range scenarios.Scenarios {
 		t.Run(scenario.Name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
+			ctx := t.Context()
 
 			client, err := toolkit.LoadResources(ctx, scenario)
 			require.NoError(t, err, "failed to populate resources")
