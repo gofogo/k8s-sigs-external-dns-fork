@@ -22,13 +22,13 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	tools "k8s.io/client-go/tools/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
 	"sigs.k8s.io/external-dns/endpoint"
@@ -48,7 +48,7 @@ import (
 // +externaldns:source:events=false
 type crdSource struct {
 	crClient client.Client
-	informer cache.Informer
+	informer tools.SharedIndexInformer
 	indexer  tools.Indexer
 }
 
@@ -63,43 +63,60 @@ func NewCRDSource(
 		return nil, err
 	}
 
-	// Build cache options with label selector and optional namespace filter
-	byObject := cache.ByObject{Label: cfg.LabelFilter}
-	if cfg.Namespace != "" {
-		byObject.Namespaces = map[string]cache.Config{cfg.Namespace: {}}
-	}
+	// Build a REST client scoped to the externaldns.k8s.io/v1alpha1 API group.
+	// We use a raw client-go SharedIndexInformer rather than the controller-runtime
+	// cache to avoid the multiNamespaceInformer wrapper that controller-runtime
+	// inserts when namespace-scoping is applied. That wrapper does not implement
+	// SharedIndexInformer, breaking GetIndexer(). A client-go informer with a
+	// namespace-scoped ListWatch is RBAC-compatible with a Role (not ClusterRole)
+	// when --namespace is set, and falls back to a cluster-wide watch otherwise.
+	gv := apiv1alpha1.GroupVersion
+	rCfg := *restConfig
+	rCfg.APIPath = "/apis"
+	rCfg.GroupVersion = &gv
+	rCfg.NegotiatedSerializer = serializer.NewCodecFactory(scheme).WithoutConversion()
 
-	crCache, err := cache.New(restConfig, cache.Options{
-		Scheme:           scheme,
-		DefaultTransform: cache.TransformStripManagedFields(),
-		ByObject:         map[client.Object]cache.ByObject{&apiv1alpha1.DNSEndpoint{}: byObject},
-	})
+	restClient, err := rest.RESTClientFor(&rCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	crClient, err := client.New(restConfig, client.Options{
-		Scheme: scheme,
-		Cache:  &client.CacheOptions{Reader: crCache},
-	})
+	// NewFilteredListWatchFromClient pushes the label selector to the API server
+	// so only matching DNSEndpoint objects enter the informer store.
+	lw := tools.NewFilteredListWatchFromClient(
+		restClient,
+		"dnsendpoints",
+		cfg.Namespace, // empty string = all namespaces
+		func(opts *metav1.ListOptions) {
+			if cfg.LabelFilter != nil && !cfg.LabelFilter.Empty() {
+				opts.LabelSelector = cfg.LabelFilter.String()
+			}
+		},
+	)
+
+	inf := tools.NewSharedIndexInformer(lw, &apiv1alpha1.DNSEndpoint{}, 0, tools.Indexers{})
+
+	// crClient is used only for status writes; reads come from the indexer.
+	crClient, err := client.New(restConfig, client.Options{Scheme: scheme})
 	if err != nil {
 		return nil, err
 	}
 
-	inf, err := crCache.GetInformer(ctx, &apiv1alpha1.DNSEndpoint{})
+	cs, err := newCRDSource(inf, crClient, cfg.AnnotationFilter, cfg.LabelFilter, cfg.Namespace)
 	if err != nil {
 		return nil, err
 	}
 
-	// controller-runtime's cache.GetInformer always returns a SharedIndexInformer.
-	return newCRDSource(ctx, inf.(tools.SharedIndexInformer), crClient, cfg.AnnotationFilter, cfg.LabelFilter, cfg.Namespace)
+	go inf.Run(ctx.Done())
+	if !tools.WaitForCacheSync(ctx.Done(), inf.HasSynced) {
+		return nil, fmt.Errorf("cache failed to sync")
+	}
+
+	return cs, nil
 }
 
-// newCRDSource wires a SharedIndexInformer and client into a crdSource.
-// It is called by NewCRDSource (production) and the test helper so both share
-// the same indexer setup and struct construction.
+// newCRDSource wires an informer and client into a crdSource with indexer setup.
 func newCRDSource(
-	ctx context.Context,
 	inf tools.SharedIndexInformer,
 	crClient client.Client,
 	annotationFilter string,
@@ -112,9 +129,7 @@ func newCRDSource(
 		return nil, err
 	}
 
-	if err := informers.RunAndWaitForCacheSync(ctx, inf); err != nil {
-		return nil, err
-	}
+	// TODO: add event handlers to update the CRD for debugging purposes
 
 	return &crdSource{
 		crClient: crClient,
@@ -143,13 +158,16 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 
 	for _, key := range indexKeys {
 		el, err := informers.GetByKey[*apiv1alpha1.DNSEndpoint](cs.indexer, key)
-		if err != nil {
+		// el may be nil (with no error) if the object was deleted between
+		// ListIndexFuncValues and GetByKey (TOCTOU race on the store).
+		if err != nil || el == nil {
 			log.Debugf("Failed to get DNSEndpoint for key %s: %v", key, err)
 			continue
 		}
 
 		// Compute resource label once per DNSEndpoint
 		resourceLabel := fmt.Sprintf("crd/%s/%s", el.Namespace, el.Name)
+		fmt.Println("resourcelabel", resourceLabel)
 
 		for _, ep := range el.Spec.Endpoints {
 			if (ep.RecordType == endpoint.RecordTypeCNAME || ep.RecordType == endpoint.RecordTypeA || ep.RecordType == endpoint.RecordTypeAAAA) && len(ep.Targets) < 1 {

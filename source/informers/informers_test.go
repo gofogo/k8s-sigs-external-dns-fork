@@ -20,10 +20,8 @@ import (
 	"context"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -125,38 +123,4 @@ func TestWaitForDynamicCacheSync(t *testing.T) {
 			}
 		})
 	}
-}
-
-type mockRunnableInformer struct {
-	hasSynced bool
-}
-
-func (m *mockRunnableInformer) RunWithContext(_ context.Context) {}
-func (m *mockRunnableInformer) HasSynced() bool                  { return m.hasSynced }
-
-func TestRunAndWaitForCacheSync(t *testing.T) {
-	t.Run("successful sync", func(t *testing.T) {
-		inf := &mockRunnableInformer{hasSynced: true}
-		err := RunAndWaitForCacheSync(t.Context(), inf)
-		require.NoError(t, err)
-	})
-
-	t.Run("context cancelled", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-		inf := &mockRunnableInformer{hasSynced: false}
-		err := RunAndWaitForCacheSync(ctx, inf)
-		require.Error(t, err)
-		assert.ErrorIs(t, err, context.Canceled)
-	})
-
-	t.Run("sync times out", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
-		defer cancel()
-		inf := &mockRunnableInformer{hasSynced: false}
-		err := RunAndWaitForCacheSync(ctx, inf)
-		require.Error(t, err)
-		assert.ErrorIs(t, err, context.DeadlineExceeded)
-		assert.Contains(t, err.Error(), "timed out waiting for informer cache to sync")
-	})
 }

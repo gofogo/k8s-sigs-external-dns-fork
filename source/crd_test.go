@@ -66,7 +66,7 @@ type CRDSuite struct {
 	suite.Suite
 }
 
-func newFakeClient(scheme *runtime.Scheme, objects ...runtime.Object) *fake.ClientBuilder {
+func newFakeClientBuilder(scheme *runtime.Scheme, objects ...runtime.Object) *fake.ClientBuilder {
 	return fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...)
 }
 
@@ -397,7 +397,7 @@ func testCRDSourceEndpoints(t *testing.T) {
 				},
 			}
 
-			fakeClient := newFakeClient(scheme, dnsEndpoint).
+			fakeClient := newFakeClientBuilder(scheme, dnsEndpoint).
 				WithStatusSubresource(&apiv1alpha1.DNSEndpoint{}).
 				Build()
 
@@ -680,7 +680,7 @@ func TestDNSEndpointsWithAnnotationFilter(t *testing.T) {
 	}
 }
 
-func helperCreateWatcherWithInformer(t *testing.T) (*cachetesting.FakeControllerSource, crdSource) {
+func helperCreateWatcherWithInformer(t *testing.T) (*cachetesting.FakeControllerSource, *crdSource) {
 	t.Helper()
 	ctx := t.Context()
 
@@ -699,7 +699,7 @@ func helperCreateWatcherWithInformer(t *testing.T) (*cachetesting.FakeController
 		indexer:  informer.GetIndexer(),
 	}
 
-	return watcher, *cs
+	return watcher, cs
 }
 
 // helperCrdSourceBuilder creates a crdSource with a test informer populated with DNSEndpoint objects.
@@ -721,8 +721,13 @@ func helperCrdSourceBuilder(t *testing.T, namespace, annotationFilter string, la
 		watcher.Add(&dnsEndpoints[i])
 	}
 
-	cs, err := newCRDSource(ctx, informer, fakeClient, annotationFilter, labelSelector, namespace)
+	cs, err := newCRDSource(informer, fakeClient, annotationFilter, labelSelector, namespace)
 	require.NoError(t, err)
+
+	go informer.RunWithContext(ctx)
+	require.Eventually(t, func() bool {
+		return cache.WaitForCacheSync(ctx.Done(), informer.HasSynced)
+	}, 2*time.Second, 10*time.Millisecond)
 
 	return &crdSourceTest{
 		crdSource:    cs,
@@ -739,7 +744,7 @@ func newFakeClientFromFixtures(t *testing.T, fixtures []apiv1alpha1.DNSEndpoint)
 	for i := range fixtures {
 		objects[i] = &fixtures[i]
 	}
-	return newFakeClient(scheme, objects...).
+	return newFakeClientBuilder(scheme, objects...).
 		WithStatusSubresource(&apiv1alpha1.DNSEndpoint{}).
 		Build()
 }
