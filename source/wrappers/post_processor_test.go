@@ -29,10 +29,10 @@ import (
 
 func TestWithProviderLabel(t *testing.T) {
 	tests := []struct {
-		name         string
-		input        string
+		name           string
+		input          string
 		expectProvider string
-		isConfigured bool
+		isConfigured   bool
 	}{
 		{
 			name:           "valid provider",
