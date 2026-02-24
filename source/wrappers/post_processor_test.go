@@ -303,6 +303,31 @@ func TestPostProcessorEndpointsWithProviderFilter(t *testing.T) {
 			},
 		},
 		{
+			title:    "provider agnostic properties without prefix are retained",
+			provider: "aws",
+			endpoints: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "alias", Value: "true"},
+						{Name: "aws/evaluate-target-health", Value: "true"},
+						{Name: "coredns/group", Value: "my-group"},
+					},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "alias", Value: "true"},
+						{Name: "aws/evaluate-target-health", Value: "true"},
+					},
+				},
+			},
+		},
+		{
 			title:    "nil endpoint is skipped",
 			provider: "aws",
 			endpoints: []*endpoint.Endpoint{

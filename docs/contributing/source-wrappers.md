@@ -66,7 +66,7 @@ Applies post-processing to all endpoints after they are collected from sources.
 📌 **Use case**: Ensure a minimum TTL across all records and strip irrelevant provider-specific properties when multiple providers' annotations are present on the same resource.
 
 ```yaml
---min-event-sync-interval=5m
+--min-ttl=60s
 --provider=aws
 ```
 

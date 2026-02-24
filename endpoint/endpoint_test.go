@@ -446,7 +446,7 @@ func TestDeleteProviderSpecificProperty(t *testing.T) {
 	}
 }
 
-func TestFilterProviderSpecificProperties(t *testing.T) {
+func TestRetainProviderProperties(t *testing.T) {
 	cases := []struct {
 		name     string
 		endpoint Endpoint
@@ -544,10 +544,8 @@ func TestFilterProviderSpecificProperties(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			c.endpoint.FilterProviderSpecificProperties(c.provider)
-			if !reflect.DeepEqual([]ProviderSpecificProperty(c.endpoint.ProviderSpecific), c.expected) {
-				t.Errorf("unexpected ProviderSpecific:\nGot:      %#v\nExpected: %#v", c.endpoint.ProviderSpecific, c.expected)
-			}
+			c.endpoint.RetainProviderProperties(c.provider)
+			require.Equal(t, c.expected, []ProviderSpecificProperty(c.endpoint.ProviderSpecific))
 		})
 	}
 }

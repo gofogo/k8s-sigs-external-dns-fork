@@ -17,8 +17,10 @@ limitations under the License.
 package endpoint
 
 import (
+	"cmp"
 	"fmt"
 	"net/netip"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -368,10 +370,11 @@ func (e *Endpoint) DeleteProviderSpecificProperty(key string) {
 	}
 }
 
-// FilterProviderSpecificProperties retains only properties whose name is
-// prefixed with "provider/" (e.g. "aws/evaluate-target-health" for provider "aws").
+// RetainProviderProperties retains only properties whose name is prefixed with
+// "provider/" (e.g. "aws/evaluate-target-health" for provider "aws").
 // Properties belonging to other providers are dropped.
-func (e *Endpoint) FilterProviderSpecificProperties(provider string) {
+// Properties with no provider prefix (e.g. "alias") are provider-agnostic and always retained.
+func (e *Endpoint) RetainProviderProperties(provider string) {
 	if provider == "" || len(e.ProviderSpecific) == 0 {
 		return
 	}
@@ -382,8 +385,8 @@ func (e *Endpoint) FilterProviderSpecificProperties(provider string) {
 			result = append(result, prop)
 		}
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Name < result[j].Name
+	slices.SortFunc(result, func(a, b ProviderSpecificProperty) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
 	e.ProviderSpecific = result
 }

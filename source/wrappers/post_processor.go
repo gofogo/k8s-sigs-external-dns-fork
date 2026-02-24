@@ -81,7 +81,7 @@ func (pp *postProcessor) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, e
 			continue
 		}
 		ep.WithMinTTL(pp.cfg.ttl)
-		ep.FilterProviderSpecificProperties(pp.cfg.provider)
+		ep.RetainProviderProperties(pp.cfg.provider)
 	}
 
 	return endpoints, nil
