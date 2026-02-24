@@ -27,6 +27,7 @@ import (
 type Config struct {
 	defaultTargets      []string
 	forceDefaultTargets bool
+	provider            string
 	nat64Networks       []string
 	targetNetFilter     []string
 	excludeTargetNets   []string
@@ -80,6 +81,12 @@ func WithMinTTL(ttl time.Duration) Option {
 	}
 }
 
+func WithProvider(input string) Option {
+	return func(o *Config) {
+		o.provider = input
+	}
+}
+
 // addSourceWrapper registers a source wrapper by name in the Config.
 // It initializes the sourceWrappers map if it is nil.
 func (o *Config) addSourceWrapper(name string) {
@@ -120,7 +127,7 @@ func WrapSources(
 		combinedSource = NewTargetFilterSource(combinedSource, targetFilter)
 		opts.addSourceWrapper("target-filter")
 	}
-	combinedSource = NewPostProcessor(combinedSource, WithTTL(opts.minTTL))
+	combinedSource = NewPostProcessor(combinedSource, WithTTL(opts.minTTL), WithProviderLabel(opts.provider))
 	opts.addSourceWrapper("post-processor")
 	return combinedSource, nil
 }

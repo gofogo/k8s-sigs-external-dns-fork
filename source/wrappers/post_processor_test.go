@@ -162,6 +162,143 @@ func TestPostProcessorEndpointsWithTTL(t *testing.T) {
 	}
 }
 
+func TestPostProcessorEndpointsWithProviderFilter(t *testing.T) {
+	tests := []struct {
+		title     string
+		provider  string
+		endpoints []*endpoint.Endpoint
+		expected  []*endpoint.Endpoint
+	}{
+		{
+			title:    "no provider configured, properties untouched",
+			provider: "",
+			endpoints: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "aws/evaluate-target-health", Value: "true"},
+						{Name: "coredns/group", Value: "my-group"},
+					},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "aws/evaluate-target-health", Value: "true"},
+						{Name: "coredns/group", Value: "my-group"},
+					},
+				},
+			},
+		},
+		{
+			title:    "provider configured, all properties match",
+			provider: "aws",
+			endpoints: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "aws/evaluate-target-health", Value: "true"},
+						{Name: "aws/weight", Value: "10"},
+					},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "aws/evaluate-target-health", Value: "true"},
+						{Name: "aws/weight", Value: "10"},
+					},
+				},
+			},
+		},
+		{
+			title:    "provider configured, mixed properties, only provider retained",
+			provider: "aws",
+			endpoints: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "aws/evaluate-target-health", Value: "true"},
+						{Name: "coredns/group", Value: "my-group"},
+					},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "aws/evaluate-target-health", Value: "true"},
+					},
+				},
+			},
+		},
+		{
+			title:    "provider configured, no matching properties, empty result",
+			provider: "aws",
+			endpoints: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "coredns/group", Value: "my-group"},
+					},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+				},
+			},
+		},
+		{
+			title:    "nil endpoint is skipped",
+			provider: "aws",
+			endpoints: []*endpoint.Endpoint{
+				nil,
+				{
+					DNSName: "foo-2",
+					Targets: endpoint.Targets{"1.2.3.5"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "aws/weight", Value: "10"},
+						{Name: "coredns/group", Value: "my-group"},
+					},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				nil,
+				{
+					DNSName: "foo-2",
+					Targets: endpoint.Targets{"1.2.3.5"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "aws/weight", Value: "10"},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.title, func(t *testing.T) {
+			ms := new(testutils.MockSource)
+			ms.On("Endpoints").Return(tt.endpoints, nil)
+			src := NewPostProcessor(ms, WithProviderLabel(tt.provider))
+
+			endpoints, err := src.Endpoints(context.Background())
+			require.NoError(t, err)
+			validateEndpoints(t, endpoints, tt.expected)
+		})
+	}
+}
+
 func TestPostProcessor_AddEventHandler(t *testing.T) {
 	tests := []struct {
 		title string

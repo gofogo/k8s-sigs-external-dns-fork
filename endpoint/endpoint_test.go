@@ -446,6 +446,83 @@ func TestDeleteProviderSpecificProperty(t *testing.T) {
 	}
 }
 
+func TestFilterProviderSpecificProperties(t *testing.T) {
+	cases := []struct {
+		name     string
+		endpoint Endpoint
+		provider string
+		expected []ProviderSpecificProperty
+	}{
+		{
+			name:     "empty provider specific",
+			endpoint: Endpoint{},
+			provider: "aws",
+			expected: nil,
+		},
+		{
+			name: "all properties match provider",
+			endpoint: Endpoint{
+				ProviderSpecific: []ProviderSpecificProperty{
+					{Name: "aws/evaluate-target-health", Value: "true"},
+					{Name: "aws/weight", Value: "10"},
+				},
+			},
+			provider: "aws",
+			expected: []ProviderSpecificProperty{
+				{Name: "aws/evaluate-target-health", Value: "true"},
+				{Name: "aws/weight", Value: "10"},
+			},
+		},
+		{
+			name: "no properties match provider",
+			endpoint: Endpoint{
+				ProviderSpecific: []ProviderSpecificProperty{
+					{Name: "coredns/group", Value: "my-group"},
+				},
+			},
+			provider: "aws",
+			expected: []ProviderSpecificProperty{},
+		},
+		{
+			name: "mixed providers, only configured provider retained",
+			endpoint: Endpoint{
+				ProviderSpecific: []ProviderSpecificProperty{
+					{Name: "aws/evaluate-target-health", Value: "true"},
+					{Name: "coredns/group", Value: "my-group"},
+					{Name: "aws/weight", Value: "10"},
+				},
+			},
+			provider: "aws",
+			expected: []ProviderSpecificProperty{
+				{Name: "aws/evaluate-target-health", Value: "true"},
+				{Name: "aws/weight", Value: "10"},
+			},
+		},
+		{
+			name: "provider prefix must match exactly, not as substring",
+			endpoint: Endpoint{
+				ProviderSpecific: []ProviderSpecificProperty{
+					{Name: "aws-extended/some-prop", Value: "val"},
+					{Name: "aws/weight", Value: "10"},
+				},
+			},
+			provider: "aws",
+			expected: []ProviderSpecificProperty{
+				{Name: "aws/weight", Value: "10"},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			c.endpoint.FilterProviderSpecificProperties(c.provider)
+			if !reflect.DeepEqual([]ProviderSpecificProperty(c.endpoint.ProviderSpecific), c.expected) {
+				t.Errorf("unexpected ProviderSpecific:\nGot:      %#v\nExpected: %#v", c.endpoint.ProviderSpecific, c.expected)
+			}
+		})
+	}
+}
+
 func TestFilterEndpointsByOwnerIDWithRecordTypeA(t *testing.T) {
 	foo1 := &Endpoint{
 		DNSName:    "foo.com",

@@ -33,6 +33,7 @@ type postProcessor struct {
 
 type PostProcessorConfig struct {
 	ttl          int64
+	provider     string
 	isConfigured bool
 }
 
@@ -43,6 +44,15 @@ func WithTTL(ttl time.Duration) PostProcessorOption {
 		if int64(ttl.Seconds()) > 0 {
 			cfg.isConfigured = true
 			cfg.ttl = int64(ttl.Seconds())
+		}
+	}
+}
+
+func WithProviderLabel(input string) PostProcessorOption {
+	return func(cfg *PostProcessorConfig) {
+		if input != "" {
+			cfg.isConfigured = true
+			cfg.provider = input
 		}
 	}
 }
@@ -70,7 +80,9 @@ func (pp *postProcessor) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, e
 			continue
 		}
 		ep.WithMinTTL(pp.cfg.ttl)
-		// Additional post-processing can be added here.
+		if pp.cfg.provider != "" {
+			ep.FilterProviderSpecificProperties(pp.cfg.provider)
+		}
 	}
 
 	return endpoints, nil

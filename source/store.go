@@ -73,6 +73,7 @@ type Config struct {
 	GatewayNamespace               string
 	GatewayLabelFilter             string
 	Compatibility                  string
+	Provider                       string
 	PodSourceDomain                string
 	PublishInternal                bool
 	PublishHostIP                  bool
@@ -129,6 +130,7 @@ func NewSourceConfig(cfg *externaldns.Config) *Config {
 		PodSourceDomain:                cfg.PodSourceDomain,
 		PublishInternal:                cfg.PublishInternal,
 		PublishHostIP:                  cfg.PublishHostIP,
+		Provider:                       cfg.Provider,
 		AlwaysPublishNotReadyAddresses: cfg.AlwaysPublishNotReadyAddresses,
 		ConnectorServer:                cfg.ConnectorSourceServer,
 		CRDSourceAPIVersion:            cfg.CRDSourceAPIVersion,

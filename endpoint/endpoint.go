@@ -368,6 +368,26 @@ func (e *Endpoint) DeleteProviderSpecificProperty(key string) {
 	}
 }
 
+// FilterProviderSpecificProperties retains only properties whose name is
+// prefixed with "provider/" (e.g. "aws/evaluate-target-health" for provider "aws").
+// Properties belonging to other providers are dropped.
+func (e *Endpoint) FilterProviderSpecificProperties(provider string) {
+	if len(e.ProviderSpecific) == 0 {
+		return
+	}
+	prefix := provider + "/"
+	result := make(ProviderSpecific, 0, len(e.ProviderSpecific))
+	for _, prop := range e.ProviderSpecific {
+		if strings.HasPrefix(prop.Name, prefix) {
+			result = append(result, prop)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+	e.ProviderSpecific = result
+}
+
 // WithLabel adds or updates a label for the Endpoint.
 //
 // Example usage:
