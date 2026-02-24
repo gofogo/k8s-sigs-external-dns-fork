@@ -372,13 +372,13 @@ func (e *Endpoint) DeleteProviderSpecificProperty(key string) {
 // prefixed with "provider/" (e.g. "aws/evaluate-target-health" for provider "aws").
 // Properties belonging to other providers are dropped.
 func (e *Endpoint) FilterProviderSpecificProperties(provider string) {
-	if len(e.ProviderSpecific) == 0 {
+	if provider == "" || len(e.ProviderSpecific) == 0 {
 		return
 	}
 	prefix := provider + "/"
 	result := make(ProviderSpecific, 0, len(e.ProviderSpecific))
 	for _, prop := range e.ProviderSpecific {
-		if strings.HasPrefix(prop.Name, prefix) {
+		if !strings.Contains(prop.Name, "/") || strings.HasPrefix(prop.Name, prefix) {
 			result = append(result, prop)
 		}
 	}

@@ -460,6 +460,20 @@ func TestFilterProviderSpecificProperties(t *testing.T) {
 			expected: nil,
 		},
 		{
+			name: "empty provider, properties untouched",
+			endpoint: Endpoint{
+				ProviderSpecific: []ProviderSpecificProperty{
+					{Name: "aws/evaluate-target-health", Value: "true"},
+					{Name: "coredns/group", Value: "my-group"},
+				},
+			},
+			provider: "",
+			expected: []ProviderSpecificProperty{
+				{Name: "aws/evaluate-target-health", Value: "true"},
+				{Name: "coredns/group", Value: "my-group"},
+			},
+		},
+		{
 			name: "all properties match provider",
 			endpoint: Endpoint{
 				ProviderSpecific: []ProviderSpecificProperty{
@@ -496,6 +510,21 @@ func TestFilterProviderSpecificProperties(t *testing.T) {
 			expected: []ProviderSpecificProperty{
 				{Name: "aws/evaluate-target-health", Value: "true"},
 				{Name: "aws/weight", Value: "10"},
+			},
+		},
+		{
+			name: "provider agnostic properties without prefix are retained",
+			endpoint: Endpoint{
+				ProviderSpecific: []ProviderSpecificProperty{
+					{Name: "alias", Value: "true"},
+					{Name: "aws/evaluate-target-health", Value: "true"},
+					{Name: "coredns/group", Value: "my-group"},
+				},
+			},
+			provider: "aws",
+			expected: []ProviderSpecificProperty{
+				{Name: "alias", Value: "true"},
+				{Name: "aws/evaluate-target-health", Value: "true"},
 			},
 		},
 		{

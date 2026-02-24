@@ -18,6 +18,7 @@ package wrappers
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -50,9 +51,9 @@ func WithTTL(ttl time.Duration) PostProcessorOption {
 
 func WithProviderLabel(input string) PostProcessorOption {
 	return func(cfg *PostProcessorConfig) {
-		if input != "" {
+		if p := strings.TrimSpace(input); p != "" {
 			cfg.isConfigured = true
-			cfg.provider = input
+			cfg.provider = p
 		}
 	}
 }
@@ -80,9 +81,7 @@ func (pp *postProcessor) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, e
 			continue
 		}
 		ep.WithMinTTL(pp.cfg.ttl)
-		if pp.cfg.provider != "" {
-			ep.FilterProviderSpecificProperties(pp.cfg.provider)
-		}
+		ep.FilterProviderSpecificProperties(pp.cfg.provider)
 	}
 
 	return endpoints, nil

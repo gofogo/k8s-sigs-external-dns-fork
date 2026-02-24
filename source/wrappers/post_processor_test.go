@@ -27,6 +27,49 @@ import (
 	"sigs.k8s.io/external-dns/internal/testutils"
 )
 
+func TestWithProviderLabel(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		expectProvider string
+		isConfigured bool
+	}{
+		{
+			name:           "valid provider",
+			input:          "aws",
+			expectProvider: "aws",
+			isConfigured:   true,
+		},
+		{
+			name:         "empty string",
+			input:        "",
+			isConfigured: false,
+		},
+		{
+			name:         "whitespace only",
+			input:        "   ",
+			isConfigured: false,
+		},
+		{
+			name:           "provider with surrounding whitespace",
+			input:          "  aws  ",
+			expectProvider: "aws",
+			isConfigured:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &PostProcessorConfig{}
+			opt := WithProviderLabel(tt.input)
+			opt(cfg)
+
+			require.Equal(t, tt.isConfigured, cfg.isConfigured, "isConfigured mismatch")
+			require.Equal(t, tt.expectProvider, cfg.provider, "provider mismatch")
+		})
+	}
+}
+
 func TestWithTTL(t *testing.T) {
 	tests := []struct {
 		name         string
