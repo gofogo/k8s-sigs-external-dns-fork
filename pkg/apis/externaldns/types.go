@@ -220,6 +220,7 @@ type Config struct {
 	EmitEvents                                    []string
 	ForceDefaultTargets                           bool
 	UnstructuredResources                         []string
+	PreferAlias                                   bool
 }
 
 var defaultConfig = &Config{
@@ -388,6 +389,7 @@ var defaultConfig = &Config{
 	ZoneIDFilter:                 []string{},
 	ForceDefaultTargets:          false,
 	UnstructuredResources:        []string{},
+	PreferAlias:                  false,
 }
 
 var providerNames = []string{
@@ -520,6 +522,7 @@ func bindFlags(b flags.FlagBinder, cfg *Config) {
 	b.StringVar("crd-source-kind", "Kind of the CRD for the crd source in API group and version specified by crd-source-apiversion", defaultConfig.CRDSourceKind, &cfg.CRDSourceKind)
 	b.StringsVar("default-targets", "Set globally default host/IP that will apply as a target instead of source addresses. Specify multiple times for multiple targets (optional)", nil, &cfg.DefaultTargets)
 	b.BoolVar("force-default-targets", "Force the application of --default-targets, overriding any targets provided by the source (DEPRECATED: This reverts to (improved) legacy behavior which allows empty CRD targets for migration to new state)", defaultConfig.ForceDefaultTargets, &cfg.ForceDefaultTargets)
+	b.BoolVar("prefer-alias", "When enabled, CNAME records will have the alias annotation set, signaling providers that support ALIAS records to use them instead of CNAMEs. Supported by: PowerDNS, AWS (with --aws-prefer-cname disabled)", defaultConfig.PreferAlias, &cfg.PreferAlias)
 	b.StringsVar("exclude-record-types", "Record types to exclude from management; specify multiple times to exclude many; (optional)", nil, &cfg.ExcludeDNSRecordTypes)
 	b.StringsVar("exclude-target-net", "Exclude target nets (optional)", nil, &cfg.ExcludeTargetNets)
 	b.BoolVar("exclude-unschedulable", "Exclude nodes that are considered unschedulable (default: true)", defaultConfig.ExcludeUnschedulable, &cfg.ExcludeUnschedulable)

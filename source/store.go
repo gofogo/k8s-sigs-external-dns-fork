@@ -102,6 +102,7 @@ type Config struct {
 	NAT64Networks                  []string
 	MinTTL                         time.Duration
 	UnstructuredResources          []string
+	PreferAlias                    bool
 
 	sources []string
 
@@ -158,6 +159,7 @@ func NewSourceConfig(cfg *externaldns.Config) *Config {
 		FQDNTemplate:                   cfg.FQDNTemplate,
 		TargetTemplate:                 cfg.TargetTemplate,
 		FQDNTargetTemplate:             cfg.FQDNTargetTemplate,
+		PreferAlias:                    cfg.PreferAlias,
 		sources:                        cfg.Sources,
 	}
 }
