@@ -32,6 +32,7 @@ type Config struct {
 	targetNetFilter     []string
 	excludeTargetNets   []string
 	minTTL              time.Duration
+	preferAlias         bool
 	sourceWrappers      map[string]bool // map of source wrappers, e.g. "targetfilter", "nat64"
 }
 
@@ -84,6 +85,12 @@ func WithMinTTL(ttl time.Duration) Option {
 func WithProvider(input string) Option {
 	return func(o *Config) {
 		o.provider = input
+  }
+}
+
+func WithPreferAlias(enabled bool) Option {
+	return func(o *Config) {
+		o.preferAlias = enabled
 	}
 }
 
@@ -127,7 +134,8 @@ func WrapSources(
 		combinedSource = NewTargetFilterSource(combinedSource, targetFilter)
 		opts.addSourceWrapper("target-filter")
 	}
-	combinedSource = NewPostProcessor(combinedSource, WithTTL(opts.minTTL), WithProviderLabel(opts.provider))
+	combinedSource = NewPostProcessor(combinedSource, WithTTL(opts.minTTL), WithPostProcessorPreferAlias(opts.preferAlias),
+                                    WithProviderLabel(opts.provider))
 	opts.addSourceWrapper("post-processor")
 	return combinedSource, nil
 }
