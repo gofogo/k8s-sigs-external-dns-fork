@@ -36,9 +36,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	log "github.com/sirupsen/logrus"
+
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/informers"
+	"sigs.k8s.io/external-dns/internal/testutils"
 )
 
 var (
@@ -288,6 +291,27 @@ func testCRDSourceEndpoints(t *testing.T) {
 					RecordTTL:  180,
 				},
 			},
+			expectEndpoints: true,
+		},
+		{
+			title:                "CNAME target without trailing dot (relative name)",
+			registeredAPIVersion: apiv1alpha1.GroupVersion.String(),
+			apiVersion:           apiv1alpha1.GroupVersion.String(),
+			registeredKind:       apiv1alpha1.DNSEndpointKind,
+			kind:                 apiv1alpha1.DNSEndpointKind,
+			namespace:            "foo",
+			registeredNamespace:  "foo",
+			labels:               map[string]string{"test": "that"},
+			labelFilter:          "test=that",
+			endpoints: []*endpoint.Endpoint{
+				{
+					DNSName:    "internal.example.com",
+					Targets:    endpoint.Targets{"backend.cluster.local"},
+					RecordType: endpoint.RecordTypeCNAME,
+					RecordTTL:  300,
+				},
+			},
+			expectEndpoints: true,
 		},
 		{
 			title:           "illegal target NAPTR",
