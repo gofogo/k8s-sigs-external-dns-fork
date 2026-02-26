@@ -85,7 +85,7 @@ func WithMinTTL(ttl time.Duration) Option {
 func WithProvider(input string) Option {
 	return func(o *Config) {
 		o.provider = input
-  }
+	}
 }
 
 func WithPreferAlias(enabled bool) Option {
@@ -135,7 +135,7 @@ func WrapSources(
 		opts.addSourceWrapper("target-filter")
 	}
 	combinedSource = NewPostProcessor(combinedSource, WithTTL(opts.minTTL), WithPostProcessorPreferAlias(opts.preferAlias),
-                                    WithProviderLabel(opts.provider))
+		WithProviderLabel(opts.provider))
 	opts.addSourceWrapper("post-processor")
 	return combinedSource, nil
 }
