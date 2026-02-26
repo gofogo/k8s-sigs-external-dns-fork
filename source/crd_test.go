@@ -43,8 +43,8 @@ import (
 	cachetesting "k8s.io/client-go/tools/cache/testing"
 	"sigs.k8s.io/external-dns/source/types"
 
-	k8stypes "k8s.io/apimachinery/pkg/types"
 	log "github.com/sirupsen/logrus"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 
 	apiv1alpha1 "sigs.k8s.io/external-dns/apis/v1alpha1"
 	"sigs.k8s.io/external-dns/endpoint"
