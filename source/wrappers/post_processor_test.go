@@ -328,6 +328,56 @@ func TestPostProcessorEndpointsWithProviderFilter(t *testing.T) {
 			},
 		},
 		{
+			title:    "cloudflare retains all properties regardless of prefix",
+			provider: "cloudflare",
+			endpoints: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "external-dns.alpha.kubernetes.io/cloudflare-tags", Value: "tag1"},
+						{Name: "aws/evaluate-target-health", Value: "true"},
+						{Name: "alias", Value: "false"},
+					},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "alias", Value: "false"},
+						{Name: "aws/evaluate-target-health", Value: "true"},
+						{Name: "external-dns.alpha.kubernetes.io/cloudflare-tags", Value: "tag1"},
+					},
+				},
+			},
+		},
+		{
+			title:    "cloudflare properties are sorted",
+			provider: "cloudflare",
+			endpoints: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "external-dns.alpha.kubernetes.io/cloudflare-tags", Value: "tag1"},
+						{Name: "external-dns.alpha.kubernetes.io/cloudflare-proxied", Value: "true"},
+					},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				{
+					DNSName: "foo-1",
+					Targets: endpoint.Targets{"1.2.3.4"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "external-dns.alpha.kubernetes.io/cloudflare-proxied", Value: "true"},
+						{Name: "external-dns.alpha.kubernetes.io/cloudflare-tags", Value: "tag1"},
+					},
+				},
+			},
+		},
+		{
 			title:    "nil endpoint is skipped",
 			provider: "aws",
 			endpoints: []*endpoint.Endpoint{

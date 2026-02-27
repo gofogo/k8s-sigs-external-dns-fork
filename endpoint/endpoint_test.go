@@ -540,6 +540,38 @@ func TestRetainProviderProperties(t *testing.T) {
 				{Name: "aws/weight", Value: "10"},
 			},
 		},
+		// cloudflare uses annotation-style names (e.g. "external-dns.alpha.kubernetes.io/cloudflare-*")
+		// rather than the standard "provider/" prefix, so all properties are retained and only sorted.
+		{
+			name: "cloudflare retains all properties",
+			endpoint: Endpoint{
+				ProviderSpecific: []ProviderSpecificProperty{
+					{Name: "external-dns.alpha.kubernetes.io/cloudflare-tags", Value: "tag1"},
+					{Name: "aws/evaluate-target-health", Value: "true"},
+					{Name: "alias", Value: "false"},
+				},
+			},
+			provider: "cloudflare",
+			expected: []ProviderSpecificProperty{
+				{Name: "alias", Value: "false"},
+				{Name: "aws/evaluate-target-health", Value: "true"},
+				{Name: "external-dns.alpha.kubernetes.io/cloudflare-tags", Value: "tag1"},
+			},
+		},
+		{
+			name: "cloudflare properties are sorted",
+			endpoint: Endpoint{
+				ProviderSpecific: []ProviderSpecificProperty{
+					{Name: "external-dns.alpha.kubernetes.io/cloudflare-proxied", Value: "true"},
+					{Name: "external-dns.alpha.kubernetes.io/cloudflare-tags", Value: "tag1"},
+				},
+			},
+			provider: "cloudflare",
+			expected: []ProviderSpecificProperty{
+				{Name: "external-dns.alpha.kubernetes.io/cloudflare-proxied", Value: "true"},
+				{Name: "external-dns.alpha.kubernetes.io/cloudflare-tags", Value: "tag1"},
+			},
+		},
 	}
 
 	for _, c := range cases {
