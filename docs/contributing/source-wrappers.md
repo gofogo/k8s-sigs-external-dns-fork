@@ -60,14 +60,16 @@ Converts IPv4 targets to IPv6 using NAT64 prefixes.
 
 Applies post-processing to all endpoints after they are collected from sources.
 
+📌 **Use case**
+
 - Sets a minimum TTL on endpoints that have no TTL or a TTL below the configured minimum.
 - Filters `ProviderSpecific` properties to retain only those belonging to the configured provider (e.g. `aws/evaluate-target-health` when provider is `aws`). Properties with no provider prefix (e.g. `alias`) are considered provider-agnostic and are always retained.
-
-📌 **Use case**: Ensure a minimum TTL across all records and strip irrelevant provider-specific properties when multiple providers' annotations are present on the same resource.
+- Sets the `alias=true` provider-specific property on `CNAME` endpoints when `--prefer-alias` is enabled, signalling providers that support ALIAS records (e.g. PowerDNS, AWS) to use them instead of CNAMEs. Per-resource annotations already present are not overwritten.
 
 ```yaml
 --min-ttl=60s
 --provider=aws
+--prefer-alias
 ```
 
 ---
