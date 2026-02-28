@@ -28,12 +28,16 @@ func TestMain(m *testing.M) {
 	// Since client-go v0.35, WatchListClient is enabled by default, but fake
 	// clients don't emit the required bookmark events, causing reflectors to
 	// stall for 10 seconds before falling back to the legacy list/watch path.
-	type featureGatesSetter interface {
-		features.Gates
-		Set(features.Feature, bool) error
-	}
-	if gates, ok := features.FeatureGates().(featureGatesSetter); ok {
-		_ = gates.Set(features.WatchListClient, false)
+	// Only disable if it is actually on; pre-v0.35 client-go defaults it to
+	// false so this is a no-op there, but makes the intent explicit.
+	if features.FeatureGates().Enabled(features.WatchListClient) {
+		type featureGatesSetter interface {
+			features.Gates
+			Set(features.Feature, bool) error
+		}
+		if gates, ok := features.FeatureGates().(featureGatesSetter); ok {
+			_ = gates.Set(features.WatchListClient, false)
+		}
 	}
 	os.Exit(m.Run())
 }
