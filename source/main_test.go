@@ -20,7 +20,7 @@ import (
 	"os"
 	"testing"
 
-	clientfeatures "k8s.io/client-go/features"
+	"k8s.io/client-go/features"
 )
 
 func TestMain(m *testing.M) {
@@ -28,12 +28,14 @@ func TestMain(m *testing.M) {
 	// Since client-go v0.35, WatchListClient is enabled by default, but fake
 	// clients don't emit the required bookmark events, causing reflectors to
 	// stall for 10 seconds before falling back to the legacy list/watch path.
-	type featureGatesSetter interface {
-		clientfeatures.Gates
-		Set(clientfeatures.Feature, bool) error
-	}
-	if gates, ok := clientfeatures.FeatureGates().(featureGatesSetter); ok {
-		_ = gates.Set(clientfeatures.WatchListClient, false)
+	if features.FeatureGates().Enabled(features.WatchListClient) {
+		type featureGatesSetter interface {
+			features.Gates
+			Set(features.Feature, bool) error
+		}
+		if gates, ok := features.FeatureGates().(featureGatesSetter); ok {
+			_ = gates.Set(features.WatchListClient, false)
+		}
 	}
 	os.Exit(m.Run())
 }
