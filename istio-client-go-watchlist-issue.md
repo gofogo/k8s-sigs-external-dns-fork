@@ -15,7 +15,7 @@ WatchList requires the server to emit a bookmark event to signal the end of the 
 stream. The `istio.io/client-go` fake clientset does not emit bookmark events, so the reflector
 stalls for **10 seconds per informer** before logging a warning and falling back:
 
-```
+```sh
 Warning: event bookmark expired
   err="awaiting required bookmark event for initial events stream,
        no events received for 10.001112875s"
