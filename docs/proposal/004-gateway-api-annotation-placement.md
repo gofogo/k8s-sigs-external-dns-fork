@@ -113,11 +113,11 @@ override targets on a per-Route basis.
 
 | Annotation Type                                            | Gateway Resource        | Route Resources (HTTPRoute, GRPCRoute, etc.) |
 |------------------------------------------------------------|-------------------------|----------------------------------------------|
-| `target`                                                   |  **Read from Gateway** | L Ignored                                    |
-| `hostname`                                                 | L Not used              |  **Read from Route**                        |
-| `ttl`                                                      | L Not used              |  **Read from Route**                        |
-| `controller`                                               | L Not used              |  **Read from Route**                        |
-| Provider-specific (`cloudflare-proxied`, `aws/*`, `scw/*`) | L Not used              |  **Read from Route**                        |
+| `target`                                                   |  **Read from Gateway**  | L Ignored                                    |
+| `hostname`                                                 | L Not used              |  **Read from Route**                         |
+| `ttl`                                                      | L Not used              |  **Read from Route**                         |
+| `controller`                                               | L Not used              |  **Read from Route**                         |
+| Provider-specific (`cloudflare-proxied`, `aws/*`, `scw/*`) | L Not used              |  **Read from Route**                         |
 
 #### Code References
 
