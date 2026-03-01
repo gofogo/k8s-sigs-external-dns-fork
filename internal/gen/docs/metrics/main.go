@@ -77,13 +77,20 @@ func generateMarkdownTable(m *metrics.MetricRegistry, withRuntime bool) (string,
 		runtimeMetrics = []string{}
 	}
 
+	colWidths := utils.ComputeColumnWidths(m.Metrics)
+	runtimeWidth := utils.ComputeRuntimeWidth(runtimeMetrics)
+
 	var b bytes.Buffer
 	err := tmpl.ExecuteTemplate(&b, "metrics.gotpl", struct {
 		Metrics        []*metrics.Metric
 		RuntimeMetrics []string
+		ColWidths      utils.ColumnWidths
+		RuntimeWidth   int
 	}{
 		Metrics:        m.Metrics,
 		RuntimeMetrics: runtimeMetrics,
+		ColWidths:      colWidths,
+		RuntimeWidth:   runtimeWidth,
 	})
 
 	if err != nil {
