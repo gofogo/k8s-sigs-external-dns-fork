@@ -21,9 +21,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/external-dns/endpoint"
-	"sigs.k8s.io/external-dns/internal/testutils"
+
 	"sigs.k8s.io/external-dns/pkg/events"
 	"sigs.k8s.io/external-dns/source/types"
+	logtest "sigs.k8s.io/external-dns/internal/testutils/log"
 )
 
 func TestSuitableType(t *testing.T) {
@@ -424,48 +425,48 @@ func TestMergeEndpoints_RefObjects(t *testing.T) {
 
 func TestMergeEndpointsLogging(t *testing.T) {
 	t.Run("warns on CNAME conflict", func(t *testing.T) {
-		hook := testutils.LogsUnderTestWithLogLevel(log.WarnLevel, t)
+		hook := logtest.LogsUnderTestWithLogLevel(log.WarnLevel, t)
 
 		MergeEndpoints([]*endpoint.Endpoint{
 			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "a.elb.com"),
 			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "b.elb.com"),
 		})
 
-		testutils.TestHelperLogContainsWithLogLevel("Only one CNAME per name", log.WarnLevel, hook, t)
-		testutils.TestHelperLogContains("example.com CNAME a.elb.com", hook, t)
-		testutils.TestHelperLogContains("example.com CNAME b.elb.com", hook, t)
+		logtest.TestHelperLogContainsWithLogLevel("Only one CNAME per name", log.WarnLevel, hook, t)
+		logtest.TestHelperLogContains("example.com CNAME a.elb.com", hook, t)
+		logtest.TestHelperLogContains("example.com CNAME b.elb.com", hook, t)
 	})
 
 	t.Run("no warning for identical CNAMEs", func(t *testing.T) {
-		hook := testutils.LogsUnderTestWithLogLevel(log.WarnLevel, t)
+		hook := logtest.LogsUnderTestWithLogLevel(log.WarnLevel, t)
 
 		MergeEndpoints([]*endpoint.Endpoint{
 			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "a.elb.com"),
 			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "a.elb.com"),
 		})
 
-		testutils.TestHelperLogNotContains("Only one CNAME per name", hook, t)
+		logtest.TestHelperLogNotContains("Only one CNAME per name", hook, t)
 	})
 
 	t.Run("no warning for same DNSName with different SetIdentifier", func(t *testing.T) {
-		hook := testutils.LogsUnderTestWithLogLevel(log.WarnLevel, t)
+		hook := logtest.LogsUnderTestWithLogLevel(log.WarnLevel, t)
 
 		MergeEndpoints([]*endpoint.Endpoint{
 			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "a.elb.com").WithSetIdentifier("weight-1"),
 			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "b.elb.com").WithSetIdentifier("weight-2"),
 		})
 
-		testutils.TestHelperLogNotContains("Only one CNAME per name", hook, t)
+		logtest.TestHelperLogNotContains("Only one CNAME per name", hook, t)
 	})
 
 	t.Run("debug log for CNAME with no targets", func(t *testing.T) {
-		hook := testutils.LogsUnderTestWithLogLevel(log.DebugLevel, t)
+		hook := logtest.LogsUnderTestWithLogLevel(log.DebugLevel, t)
 
 		MergeEndpoints([]*endpoint.Endpoint{
 			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME),
 		})
 
-		testutils.TestHelperLogContainsWithLogLevel("Skipping CNAME endpoint", log.DebugLevel, hook, t)
-		testutils.TestHelperLogContains("example.com", hook, t)
+		logtest.TestHelperLogContainsWithLogLevel("Skipping CNAME endpoint", log.DebugLevel, hook, t)
+		logtest.TestHelperLogContains("example.com", hook, t)
 	})
 }
