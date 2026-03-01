@@ -23,17 +23,20 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/pkg/events"
 	"sigs.k8s.io/external-dns/source"
 )
 
 // dedupSource is a Source that removes duplicate endpoints from its wrapped source.
 type dedupSource struct {
-	source source.Source
+	source  source.Source
+	emitter events.EventEmitter
 }
 
 // NewDedupSource creates a new dedupSource wrapping the provided Source.
-func NewDedupSource(source source.Source) source.Source {
-	return &dedupSource{source: source}
+// emitter is optional (nil disables Kubernetes event emission).
+func NewDedupSource(source source.Source, emitter events.EventEmitter) source.Source {
+	return &dedupSource{source: source, emitter: emitter}
 }
 
 // Endpoints collects endpoints from its wrapped source and returns them without duplicates.
@@ -47,6 +50,7 @@ func (ms *dedupSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, err
 		return nil, err
 	}
 
+	invalidEndpointsTotal.Gauge.Reset()
 	for _, ep := range endpoints {
 		if ep == nil {
 			continue
@@ -55,6 +59,10 @@ func (ms *dedupSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, err
 		// validate endpoint before normalization
 		if ok := ep.CheckEndpoint(); !ok {
 			log.Warnf("Skipping endpoint [%s:%s] due to invalid configuration [%s:%s]", ep.SetIdentifier, ep.DNSName, ep.RecordType, strings.Join(ep.Targets, ","))
+			invalidEndpointsTotal.AddWithLabels(1, ep.RecordType, endpointSource(ep))
+			if ms.emitter != nil {
+				ms.emitter.Add(events.NewEventFromEndpoint(ep, events.ActionFailed, events.RecordError))
+			}
 			continue
 		}
 
@@ -79,4 +87,14 @@ func (ms *dedupSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, err
 func (ms *dedupSource) AddEventHandler(ctx context.Context, handler func()) {
 	log.Debug("dedupSource: adding event handler")
 	ms.source.AddEventHandler(ctx, handler)
+}
+
+// endpointSource returns the source type from the endpoint's object reference,
+// or "unknown" if the reference is not set. Sources that set RefObject will
+// populate this with their name (e.g. "ingress", "service").
+func endpointSource(ep *endpoint.Endpoint) string {
+	if ref := ep.RefObject(); ref != nil && ref.Source != "" {
+		return ref.Source
+	}
+	return "unknown"
 }

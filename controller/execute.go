@@ -109,7 +109,13 @@ func Execute() {
 	go handleSigterm(cancel)
 
 	sCfg := source.NewSourceConfig(cfg)
-	endpointsSource, err := buildSource(ctx, sCfg)
+
+	eventEmitter, err := buildEventEmitter(ctx, cfg, sCfg)
+	if err != nil {
+		log.Fatal(err) // nolint: gocritic // exitAfterDefer
+	}
+
+	endpointsSource, err := buildSource(ctx, sCfg, eventEmitter)
 	if err != nil {
 		log.Fatal(err) // nolint: gocritic // exitAfterDefer
 	}
@@ -131,7 +137,7 @@ func Execute() {
 		os.Exit(0)
 	}
 
-	ctrl, err := buildController(ctx, cfg, sCfg, endpointsSource, prvdr, domainFilter)
+	ctrl, err := buildController(cfg, endpointsSource, prvdr, domainFilter, eventEmitter)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -360,12 +366,11 @@ func buildProvider(
 }
 
 func buildController(
-	ctx context.Context,
 	cfg *externaldns.Config,
-	sCfg *source.Config,
 	src source.Source,
 	p provider.Provider,
 	filter *endpoint.DomainFilter,
+	emitter events.EventEmitter,
 ) (*Controller, error) {
 	policy, ok := plan.Policies[cfg.Policy]
 	if !ok {
@@ -374,22 +379,6 @@ func buildController(
 	reg, err := registry.SelectRegistry(cfg, p)
 	if err != nil {
 		return nil, err
-	}
-	eventsCfg := events.NewConfig(
-		events.WithEmitEvents(cfg.EmitEvents),
-		events.WithDryRun(cfg.DryRun))
-	var eventEmitter events.EventEmitter
-	if eventsCfg.IsEnabled() {
-		kubeClient, err := sCfg.ClientGenerator().KubeClient()
-		if err != nil {
-			return nil, err
-		}
-		eventCtrl, err := events.NewEventController(kubeClient.EventsV1(), eventsCfg)
-		if err != nil {
-			return nil, err
-		}
-		eventCtrl.Run(ctx)
-		eventEmitter = eventCtrl
 	}
 
 	return &Controller{
@@ -402,8 +391,29 @@ func buildController(
 		ExcludeRecordTypes:   cfg.ExcludeDNSRecordTypes,
 		MinEventSyncInterval: cfg.MinEventSyncInterval,
 		TXTOwnerOld:          cfg.TXTOwnerOld,
-		EventEmitter:         eventEmitter,
+		EventEmitter:         emitter,
 	}, nil
+}
+
+// buildEventEmitter creates a Kubernetes EventEmitter if event emission is enabled in the
+// provided configuration. Returns nil (no-op) when events are not configured.
+func buildEventEmitter(ctx context.Context, cfg *externaldns.Config, sCfg *source.Config) (events.EventEmitter, error) {
+	eventsCfg := events.NewConfig(
+		events.WithEmitEvents(cfg.EmitEvents),
+		events.WithDryRun(cfg.DryRun))
+	if !eventsCfg.IsEnabled() {
+		return nil, nil
+	}
+	kubeClient, err := sCfg.ClientGenerator().KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	eventCtrl, err := events.NewEventController(kubeClient.EventsV1(), eventsCfg)
+	if err != nil {
+		return nil, err
+	}
+	eventCtrl.Run(ctx)
+	return eventCtrl, nil
 }
 
 // This function configures the logger format and level based on the provided configuration.
@@ -421,7 +431,7 @@ func configureLogger(cfg *externaldns.Config) {
 // buildSource creates and configures the source(s) for endpoint discovery based on the provided configuration.
 // It initializes the source configuration, generates the required sources, and combines them into a single,
 // deduplicated source. Returns the combined source or an error if source creation fails.
-func buildSource(ctx context.Context, cfg *source.Config) (source.Source, error) {
+func buildSource(ctx context.Context, cfg *source.Config, emitter events.EventEmitter) (source.Source, error) {
 	sources, err := source.ByNames(ctx, cfg, cfg.ClientGenerator())
 	if err != nil {
 		return nil, err
@@ -433,7 +443,8 @@ func buildSource(ctx context.Context, cfg *source.Config) (source.Source, error)
 		wrappers.WithTargetNetFilter(cfg.TargetNetFilter),
 		wrappers.WithExcludeTargetNets(cfg.ExcludeTargetNets),
 		wrappers.WithMinTTL(cfg.MinTTL),
-		wrappers.WithPreferAlias(cfg.PreferAlias))
+		wrappers.WithPreferAlias(cfg.PreferAlias),
+		wrappers.WithEventEmitter(emitter))
 	return wrappers.WrapSources(sources, opts)
 }
 

@@ -20,11 +20,17 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/internal/testutils"
 	logtest "sigs.k8s.io/external-dns/internal/testutils/log"
+	"sigs.k8s.io/external-dns/pkg/events"
+	"sigs.k8s.io/external-dns/pkg/events/fake"
 	"sigs.k8s.io/external-dns/source"
 )
 
@@ -146,7 +152,7 @@ func testDedupEndpoints(t *testing.T) {
 			mockSource.On("Endpoints").Return(tc.endpoints, nil)
 
 			// Create our object under test and get the endpoints.
-			source := NewDedupSource(mockSource)
+			source := NewDedupSource(mockSource, nil)
 
 			endpoints, err := source.Endpoints(context.Background())
 			if err != nil {
@@ -178,7 +184,7 @@ func TestDedupSource_AddEventHandler(t *testing.T) {
 		t.Run(tt.title, func(t *testing.T) {
 			mockSource := testutils.NewMockSource()
 
-			src := NewDedupSource(mockSource)
+			src := NewDedupSource(mockSource, nil)
 			src.AddEventHandler(t.Context(), func() {})
 
 			mockSource.AssertNumberOfCalls(t, "AddEventHandler", tt.times)
@@ -303,7 +309,7 @@ func TestDedupEndpointsValidation(t *testing.T) {
 			mockSource := new(testutils.MockSource)
 			mockSource.On("Endpoints").Return(tt.endpoints, nil)
 
-			sr := NewDedupSource(mockSource)
+			sr := NewDedupSource(mockSource, nil)
 			endpoints, err := sr.Endpoints(context.Background())
 			require.NoError(t, err)
 
@@ -348,11 +354,92 @@ func TestDedupSource_WarnsOnInvalidEndpoint(t *testing.T) {
 			mockSource := new(testutils.MockSource)
 			mockSource.On("Endpoints").Return([]*endpoint.Endpoint{tt.endpoint}, nil)
 
-			src := NewDedupSource(mockSource)
+			src := NewDedupSource(mockSource, nil)
 			_, err := src.Endpoints(context.Background())
 			require.NoError(t, err)
 
 			logtest.TestHelperLogContains(tt.wantLogMsg, hook, t)
 		})
 	}
+}
+
+func TestDedupSource_InvalidEndpointIncrementsMetric(t *testing.T) {
+	tests := []struct {
+		name           string
+		endpoint       *endpoint.Endpoint
+		wantRecordType string
+		wantSourceType string
+	}{
+		{
+			name: "invalid SRV without RefObject reports unknown source_type",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeSRV,
+				Targets:    endpoint.Targets{"10 mail.example.org"}, // missing weight/port — invalid
+			},
+			wantRecordType: "srv",
+			wantSourceType: "unknown",
+		},
+		{
+			name: "invalid MX without RefObject reports unknown source_type",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeMX,
+				Targets:    endpoint.Targets{"mail.example.org"}, // missing priority — invalid
+			},
+			wantRecordType: "mx",
+			wantSourceType: "unknown",
+		},
+		{
+			name: "invalid MX with RefObject reports source_type from ref",
+			endpoint: endpoint.NewEndpoint("example.org", endpoint.RecordTypeMX, "mail.example.org").
+				WithRefObject(&events.ObjectReference{Source: "ingress"}),
+			wantRecordType: "mx",
+			wantSourceType: "ingress",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockSource := new(testutils.MockSource)
+			mockSource.On("Endpoints").Return([]*endpoint.Endpoint{tt.endpoint}, nil)
+
+			src := NewDedupSource(mockSource, nil)
+			_, err := src.Endpoints(context.Background())
+			require.NoError(t, err)
+
+			value := testutil.ToFloat64(invalidEndpointsTotal.Gauge.With(
+				prometheus.Labels{"record_type": tt.wantRecordType, "source_type": tt.wantSourceType},
+			))
+			assert.Equal(t, 1.0, value)
+
+			mockSource.AssertExpectations(t)
+		})
+	}
+}
+
+func TestDedupSource_InvalidEndpointEmitsEvent(t *testing.T) {
+	// An endpoint with a non-nil RefObject so that NewEventFromEndpoint produces a real event.
+	ref := &events.ObjectReference{
+		Kind:      "Service",
+		Name:      "my-svc",
+		Namespace: "default",
+	}
+	ep := endpoint.NewEndpointWithTTL("example.org", endpoint.RecordTypeMX, 300,
+		"mail.example.org", // missing priority — invalid MX
+	).WithRefObject(ref)
+
+	mockSource := new(testutils.MockSource)
+	mockSource.On("Endpoints").Return([]*endpoint.Endpoint{ep}, nil)
+
+	fakeEmitter := fake.NewFakeEventEmitter()
+
+	src := NewDedupSource(mockSource, fakeEmitter)
+	_, err := src.Endpoints(context.Background())
+	require.NoError(t, err)
+
+	fakeEmitter.AssertCalled(t, "Add", mock.MatchedBy(func(e events.Event) bool {
+		return e.Action() == events.ActionFailed && e.Reason() == events.RecordError
+	}))
+	mockSource.AssertExpectations(t)
 }

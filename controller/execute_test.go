@@ -268,7 +268,7 @@ func TestBuildSourceWithWrappers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := buildSource(t.Context(), source.NewSourceConfig(tt.cfg))
+			_, err := buildSource(t.Context(), source.NewSourceConfig(tt.cfg), nil)
 			require.NoError(t, err)
 		})
 	}
@@ -449,7 +449,7 @@ func TestControllerRunCancelContextStopsLoop(t *testing.T) {
 	sCfg := source.NewSourceConfig(cfg)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := buildSource(ctx, sCfg)
+	src, err := buildSource(ctx, sCfg, nil)
 	require.NoError(t, err)
 	domainFilter := endpoint.NewDomainFilterWithOptions(
 		endpoint.WithDomainFilter(cfg.DomainFilter),
@@ -459,7 +459,7 @@ func TestControllerRunCancelContextStopsLoop(t *testing.T) {
 	)
 	p, err := buildProvider(ctx, cfg, domainFilter)
 	require.NoError(t, err)
-	ctrl, err := buildController(ctx, cfg, sCfg, src, p, domainFilter)
+	ctrl, err := buildController(cfg, src, p, domainFilter, nil)
 	require.NoError(t, err)
 
 	done := make(chan struct{})
