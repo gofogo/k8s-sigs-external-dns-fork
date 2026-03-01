@@ -139,10 +139,10 @@ Add a new option only when **all three** conditions hold:
 Always configure the informer in this order before starting the factory:
 
 ```go
-_ = myInformer.Informer().SetTransform(...)  // 1. how objects are stored
-_ = myInformer.Informer().AddIndexers(...)   // 2. how objects are looked up
-_, _ = myInformer.Informer().AddEventHandler(...) // 3. who is notified
-factory.Start(ctx.Done())                    // 4. start — SetTransform errors after this
+if err = myInformer.Informer().SetTransform(...); err != nil { return nil, err } // 1. how objects are stored
+if err = myInformer.Informer().AddIndexers(...); err != nil { return nil, err }  // 2. how objects are looked up
+_, _ = myInformer.Informer().AddEventHandler(...)                                // 3. who is notified
+factory.Start(ctx.Done())                                                        // 4. start — SetTransform errors after this
 ```
 
 ## Usage
