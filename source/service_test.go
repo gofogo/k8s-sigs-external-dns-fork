@@ -42,7 +42,7 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/internal/testutils"
 	"sigs.k8s.io/external-dns/source/annotations"
-	"sigs.k8s.io/external-dns/source/informers"
+	"sigs.k8s.io/external-dns/source/informers/fakes"
 )
 
 type ServiceSuite struct {
@@ -5068,28 +5068,22 @@ func TestPodTransformerInServiceSource(t *testing.T) {
 	// Metadata
 	assert.Equal(t, "test-name", retrieved.Name)
 	assert.Equal(t, "test-ns", retrieved.Namespace)
-	assert.Empty(t, retrieved.UID)
-	assert.Equal(t, map[string]string{
-		"label1": "value1",
-		"label2": "value2",
-		"label3": "value3",
-	}, retrieved.Labels)
-	// Filtered
+	assert.Equal(t, pod.UID, retrieved.UID)
+	assert.Equal(t, pod.Labels, retrieved.Labels)
+	// Annotations filtered to external-dns prefix only
 	assert.Equal(t, map[string]string{
 		"external-dns.alpha.kubernetes.io/hostname": "test-hostname",
 		"external-dns.alpha.kubernetes.io/random":   "value",
 	}, retrieved.Annotations)
 
-	// Spec
-	assert.Empty(t, retrieved.Spec.Containers)
+	// Spec — fully preserved
+	assert.NotEmpty(t, retrieved.Spec.Containers)
 	assert.Equal(t, "test-hostname", retrieved.Spec.Hostname)
 	assert.Equal(t, "test-node", retrieved.Spec.NodeName)
 
-	// Status
-	assert.Empty(t, retrieved.Status.ContainerStatuses)
-	assert.Empty(t, retrieved.Status.InitContainerStatuses)
+	// Status — fully preserved
 	assert.Equal(t, "127.0.0.2", retrieved.Status.HostIP)
-	assert.Empty(t, retrieved.Status.PodIP)
+	assert.Equal(t, "127.0.0.1", retrieved.Status.PodIP)
 	assert.ElementsMatch(t, []v1.PodCondition{{
 		Type:   v1.PodReady,
 		Status: v1.ConditionTrue,
@@ -5097,6 +5091,60 @@ func TestPodTransformerInServiceSource(t *testing.T) {
 		Type:   v1.ContainersReady,
 		Status: v1.ConditionFalse,
 	}}, retrieved.Status.Conditions)
+}
+
+func TestNodeTransformerInServiceSource(t *testing.T) {
+	ctx := t.Context()
+
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-node",
+			Labels: map[string]string{
+				"label1": "value1",
+			},
+			Annotations: map[string]string{
+				"user-annotation":              "value",
+				v1.LastAppliedConfigAnnotation: `{"apiVersion":"v1"}`,
+			},
+			UID: "someuid",
+			ManagedFields: []metav1.ManagedFieldsEntry{
+				{Manager: "kubectl", Operation: metav1.ManagedFieldsOperationApply},
+			},
+		},
+		Status: v1.NodeStatus{
+			Addresses: []v1.NodeAddress{
+				{Type: v1.NodeExternalIP, Address: "1.2.3.4"},
+			},
+			Conditions: []v1.NodeCondition{
+				{Type: v1.NodeReady, Status: v1.ConditionTrue},
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientset(node)
+
+	src, err := NewServiceSource(
+		ctx, fakeClient, "", "", "", false, "", false, false, false,
+		[]string{string(v1.ServiceTypeNodePort)},
+		false, labels.Everything(), false, false, false, false,
+	)
+	require.NoError(t, err)
+	ss, ok := src.(*serviceSource)
+	require.True(t, ok)
+
+	retrieved, err := ss.nodeInformer.Lister().Get(node.Name)
+	require.NoError(t, err)
+
+	assert.Equal(t, node.Name, retrieved.Name)
+	assert.Equal(t, node.Labels, retrieved.Labels)
+	assert.Equal(t, node.UID, retrieved.UID)
+	assert.Empty(t, retrieved.ManagedFields)
+	assert.NotContains(t, retrieved.Annotations, v1.LastAppliedConfigAnnotation)
+	assert.Contains(t, retrieved.Annotations, "user-annotation")
+	// Status.Addresses preserved — used for endpoint generation
+	assert.Equal(t, node.Status.Addresses, retrieved.Status.Addresses)
+	// Status.Conditions stripped
+	assert.Empty(t, retrieved.Status.Conditions)
 }
 
 // createTestServicesByType creates the requested number of services per type in the given namespace.
@@ -5172,9 +5220,9 @@ func TestServiceTypes_isNodeInformerRequired(t *testing.T) {
 }
 
 func TestServiceSource_AddEventHandler(t *testing.T) {
-	var fakeServiceInformer *informers.FakeServiceInformer
-	var fakeEdpInformer *informers.FakeEndpointSliceInformer
-	var fakeNodeInformer *informers.FakeNodeInformer
+	var fakeServiceInformer *fakes.FakeServiceInformer
+	var fakeEdpInformer *fakes.FakeEndpointSliceInformer
+	var fakeNodeInformer *fakes.FakeNodeInformer
 	tests := []struct {
 		name    string
 		filter  []string
@@ -5224,15 +5272,15 @@ func TestServiceSource_AddEventHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeServiceInformer = new(informers.FakeServiceInformer)
+			fakeServiceInformer = new(fakes.FakeServiceInformer)
 			infSvc := testInformer{}
 			fakeServiceInformer.On("Informer").Return(&infSvc)
 
-			fakeEdpInformer = new(informers.FakeEndpointSliceInformer)
+			fakeEdpInformer = new(fakes.FakeEndpointSliceInformer)
 			infEdp := testInformer{}
 			fakeEdpInformer.On("Informer").Return(&infEdp)
 
-			fakeNodeInformer = new(informers.FakeNodeInformer)
+			fakeNodeInformer = new(fakes.FakeNodeInformer)
 			infNode := testInformer{}
 			fakeNodeInformer.On("Informer").Return(&infNode)
 

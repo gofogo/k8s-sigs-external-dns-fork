@@ -31,6 +31,7 @@ const (
 type IndexSelectorOptions struct {
 	annotationFilter labels.Selector
 	labelSelector    labels.Selector
+	namespace        string
 }
 
 func IndexSelectorWithAnnotationFilter(input string) func(options *IndexSelectorOptions) {
@@ -49,6 +50,12 @@ func IndexSelectorWithAnnotationFilter(input string) func(options *IndexSelector
 func IndexSelectorWithLabelSelector(input labels.Selector) func(options *IndexSelectorOptions) {
 	return func(options *IndexSelectorOptions) {
 		options.labelSelector = input
+	}
+}
+
+func IndexSelectorWithNamespace(input string) func(options *IndexSelectorOptions) {
+	return func(options *IndexSelectorOptions) {
+		options.namespace = input
 	}
 }
 
