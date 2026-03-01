@@ -4935,65 +4935,6 @@ func TestFilterByServiceType_WithFixture(t *testing.T) {
 	}
 }
 
-func TestEndpointSlicesIndexer(t *testing.T) {
-	ctx := t.Context()
-	fakeClient := fake.NewClientset()
-
-	// Create a dummy EndpointSlice without the service name label
-	endpointSlice := &discoveryv1.EndpointSlice{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-slice",
-			Namespace: "default",
-			Labels:    map[string]string{}, // No discoveryv1.LabelServiceName
-		},
-	}
-	_, err := fakeClient.DiscoveryV1().EndpointSlices("default").Create(ctx, endpointSlice, metav1.CreateOptions{})
-	require.NoError(t, err)
-
-	// Should not error when creating the source
-	src, err := NewServiceSource(
-		ctx,
-		fakeClient,
-		"default",
-		"",
-		"{{.Name}}",
-		false,
-		"",
-		false,
-		false,
-		false,
-		[]string{},
-		false,
-		labels.Everything(),
-		false,
-		false,
-		false,
-		true,
-	)
-	require.NoError(t, err)
-	ss, ok := src.(*serviceSource)
-	require.True(t, ok)
-
-	// Try to get EndpointSlices by index; should not panic or error, should return empty slice
-	indexer := ss.endpointSlicesInformer.Informer().GetIndexer()
-	slices, err := indexer.ByIndex(serviceNameIndexKey, "default/foo")
-	require.NoError(t, err)
-	require.Empty(t, slices)
-
-	// Insert an object of the wrong type into the indexer; indexFunc should return an error and Add() should panic
-	require.PanicsWithError(t,
-		"unable to calculate an index entry for key \"default/not-an-endpointslice\" on index \"serviceName\": "+
-			"expected *v1.EndpointSlice but got *v1.Service instead",
-		func() {
-			_ = indexer.Add(&v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "not-an-endpointslice",
-					Namespace: "default",
-				},
-			})
-		})
-}
-
 func TestPodTransformerInServiceSource(t *testing.T) {
 	ctx := t.Context()
 	fakeClient := fake.NewClientset()

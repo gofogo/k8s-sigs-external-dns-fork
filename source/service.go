@@ -30,7 +30,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	apitypes "k8s.io/apimachinery/pkg/types"
 	kubeinformers "k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	discoveryinformers "k8s.io/client-go/informers/discovery/v1"
@@ -54,7 +53,6 @@ var (
 		v1.ServiceTypeLoadBalancer: {}, // Exposes the service externally using a cloud provider's load balancer.
 		v1.ServiceTypeExternalName: {}, // Maps the service to an external DNS name.
 	}
-	serviceNameIndexKey = "serviceName"
 )
 
 // serviceSource is an implementation of Source for Kubernetes service objects.
@@ -137,34 +135,17 @@ func NewServiceSource(
 		_, _ = podInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 
 		// Add an indexer to the EndpointSlice informer to index by the service name label
-		err = endpointSlicesInformer.Informer().AddIndexers(cache.Indexers{
-			serviceNameIndexKey: func(obj any) ([]string, error) {
-				endpointSlice, ok := obj.(*discoveryv1.EndpointSlice)
-				if !ok {
-					// This should never happen because the Informer should only contain EndpointSlice objects
-					return nil, fmt.Errorf("expected %T but got %T instead", endpointSlice, obj)
-				}
-				serviceName := endpointSlice.Labels[discoveryv1.LabelServiceName]
-				if serviceName == "" {
-					return nil, nil
-				}
-				key := apitypes.NamespacedName{Namespace: endpointSlice.Namespace, Name: serviceName}.String()
-				return []string{key}, nil
-			},
-		})
-		if err != nil {
+		if err = endpointSlicesInformer.Informer().AddIndexers(informers.IndexerWithOptions[*discoveryv1.EndpointSlice](
+			informers.IndexSelectorWithLabelKey(discoveryv1.LabelServiceName),
+		)); err != nil {
 			return nil, err
 		}
 
-		// Transformer is used to reduce the memory usage of the informer.
-		// The pod informer will otherwise store a full in-memory, go-typed copy of all pod schemas in the cluster.
-		// If watchList is not used it will not prevent memory bursts on the initial informer sync.
-		err = podInformer.Informer().SetTransform(informers.TransformerWithOptions[*v1.Pod](
+		if err = podInformer.Informer().SetTransform(informers.TransformerWithOptions[*v1.Pod](
 			informers.TransformRemoveManagedFields(),
 			informers.TransformRemoveLastAppliedConfig(),
 			informers.TransformKeepAnnotationPrefix(annotations.AnnotationKeyPrefix),
-		))
-		if err != nil {
+		)); err != nil {
 			return nil, err
 		}
 	}
@@ -172,12 +153,11 @@ func NewServiceSource(
 	var nodeInformer coreinformers.NodeInformer
 	if sTypesFilter.isRequired(v1.ServiceTypeNodePort) {
 		nodeInformer = informerFactory.Core().V1().Nodes()
-		err = nodeInformer.Informer().SetTransform(informers.TransformerWithOptions[*v1.Node](
+		if err = nodeInformer.Informer().SetTransform(informers.TransformerWithOptions[*v1.Node](
 			informers.TransformRemoveManagedFields(),
 			informers.TransformRemoveLastAppliedConfig(),
 			informers.TransformRemoveStatusConditions(),
-		))
-		if err != nil {
+		)); err != nil {
 			return nil, err
 		}
 		_, _ = nodeInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
@@ -320,7 +300,7 @@ func (sc *serviceSource) extractHeadlessEndpoints(svc *v1.Service, hostname stri
 	}
 
 	serviceKey := cache.ObjectName{Namespace: svc.Namespace, Name: svc.Name}.String()
-	rawEndpointSlices, err := sc.endpointSlicesInformer.Informer().GetIndexer().ByIndex(serviceNameIndexKey, serviceKey)
+	rawEndpointSlices, err := sc.endpointSlicesInformer.Informer().GetIndexer().ByIndex(informers.IndexWithSelectors, serviceKey)
 	if err != nil {
 		log.Errorf("Get EndpointSlices of service[%s] error:%v", svc.GetName(), err)
 		return nil
