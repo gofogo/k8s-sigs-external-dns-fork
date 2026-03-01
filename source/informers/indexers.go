@@ -31,7 +31,6 @@ const (
 type IndexSelectorOptions struct {
 	annotationFilter labels.Selector
 	labelSelector    labels.Selector
-	namespace        string
 	// indexByLabelKey, when set, uses the value of this label as the index key
 	// instead of the object's own name. Useful for indexing objects by a "parent"
 	// resource they reference via a label (e.g. EndpointSlices by Service name).
@@ -54,12 +53,6 @@ func IndexSelectorWithAnnotationFilter(input string) func(options *IndexSelector
 func IndexSelectorWithLabelSelector(input labels.Selector) func(options *IndexSelectorOptions) {
 	return func(options *IndexSelectorOptions) {
 		options.labelSelector = input
-	}
-}
-
-func IndexSelectorWithNamespace(input string) func(options *IndexSelectorOptions) {
-	return func(options *IndexSelectorOptions) {
-		options.namespace = input
 	}
 }
 

@@ -4939,6 +4939,23 @@ func TestPodTransformerInServiceSource(t *testing.T) {
 	ctx := t.Context()
 	fakeClient := fake.NewClientset()
 
+	es := &discoveryv1.EndpointSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "test-ns",
+			Name:      "test-slice",
+			Labels:    map[string]string{discoveryv1.LabelServiceName: "test-service"},
+			Annotations: map[string]string{
+				"some-annotation": "value",
+			},
+			UID: "esuid",
+			ManagedFields: []metav1.ManagedFieldsEntry{
+				{Manager: "endpointslice-controller", Operation: metav1.ManagedFieldsOperationUpdate},
+			},
+		},
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints:   []discoveryv1.Endpoint{{Addresses: []string{"10.0.0.1"}}},
+	}
+
 	pod := &v1.Pod{
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{{
@@ -4977,6 +4994,8 @@ func TestPodTransformerInServiceSource(t *testing.T) {
 	}
 
 	_, err := fakeClient.CoreV1().Pods(pod.Namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = fakeClient.DiscoveryV1().EndpointSlices(es.Namespace).Create(context.Background(), es, metav1.CreateOptions{})
 	require.NoError(t, err)
 
 	// Should not error when creating the source
@@ -5032,6 +5051,14 @@ func TestPodTransformerInServiceSource(t *testing.T) {
 		Type:   v1.ContainersReady,
 		Status: v1.ConditionFalse,
 	}}, retrieved.Status.Conditions)
+
+	// EndpointSlice — managedFields stripped, everything else preserved
+	retrievedES, err := ss.endpointSlicesInformer.Lister().EndpointSlices(es.Namespace).Get(es.Name)
+	require.NoError(t, err)
+	assert.Empty(t, retrievedES.ManagedFields)
+	assert.Equal(t, es.Labels, retrievedES.Labels)
+	assert.Equal(t, es.Annotations, retrievedES.Annotations)
+	assert.Equal(t, es.Endpoints, retrievedES.Endpoints)
 }
 
 func TestNodeTransformerInServiceSource(t *testing.T) {

@@ -106,21 +106,19 @@ func TransformerWithOptions[T interface {
 		if options.removeManagedFields {
 			entity.SetManagedFields(nil)
 		}
-		if len(options.keepAnnotationPrefixes) > 0 {
+		if len(options.keepAnnotationPrefixes) > 0 || options.removeLastAppliedConfig {
 			anns := entity.GetAnnotations()
-			maps.DeleteFunc(anns, func(k, _ string) bool {
-				return !slices.ContainsFunc(options.keepAnnotationPrefixes, func(prefix string) bool {
-					return strings.HasPrefix(k, prefix)
-				})
-			})
-			entity.SetAnnotations(anns)
-		}
-		if options.removeLastAppliedConfig {
-			anns := entity.GetAnnotations()
-			if _, exists := anns[corev1.LastAppliedConfigAnnotation]; exists {
+			if options.removeLastAppliedConfig {
 				delete(anns, corev1.LastAppliedConfigAnnotation)
-				entity.SetAnnotations(anns)
 			}
+			if len(options.keepAnnotationPrefixes) > 0 {
+				maps.DeleteFunc(anns, func(k, _ string) bool {
+					return !slices.ContainsFunc(options.keepAnnotationPrefixes, func(prefix string) bool {
+						return strings.HasPrefix(k, prefix)
+					})
+				})
+			}
+			entity.SetAnnotations(anns)
 		}
 		if options.removeStatusConditions {
 			clearStatusConditions(entity)

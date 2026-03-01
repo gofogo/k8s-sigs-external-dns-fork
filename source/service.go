@@ -131,12 +131,16 @@ func NewServiceSource(
 		endpointSlicesInformer = informerFactory.Discovery().V1().EndpointSlices()
 		podInformer = informerFactory.Core().V1().Pods()
 
-		_, _ = endpointSlicesInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
-		_, _ = podInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
-
 		// Add an indexer to the EndpointSlice informer to index by the service name label
 		if err = endpointSlicesInformer.Informer().AddIndexers(informers.IndexerWithOptions[*discoveryv1.EndpointSlice](
 			informers.IndexSelectorWithLabelKey(discoveryv1.LabelServiceName),
+		)); err != nil {
+			return nil, err
+		}
+
+		if err = endpointSlicesInformer.Informer().SetTransform(informers.TransformerWithOptions[*discoveryv1.EndpointSlice](
+			informers.TransformRemoveManagedFields(),
+			informers.TransformRemoveLastAppliedConfig(),
 		)); err != nil {
 			return nil, err
 		}
@@ -148,6 +152,9 @@ func NewServiceSource(
 		)); err != nil {
 			return nil, err
 		}
+
+		_, _ = endpointSlicesInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+		_, _ = podInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 	}
 
 	var nodeInformer coreinformers.NodeInformer
@@ -384,12 +391,7 @@ func (sc *serviceSource) processHeadlessEndpointsFromSlices(
 			}
 		}
 	}
-	// Return a copy of the map to prevent external modifications
-	result := make(map[endpoint.EndpointKey]endpoint.Targets, len(targetsByHeadlessDomainAndType))
-	for k, v := range targetsByHeadlessDomainAndType {
-		result[k] = append(endpoint.Targets(nil), v...)
-	}
-	return result
+	return targetsByHeadlessDomainAndType
 }
 
 // Helper to find pod for endpoint

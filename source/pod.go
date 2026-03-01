@@ -77,7 +77,6 @@ func NewPodSource(
 	if err := podInformer.Informer().AddIndexers(informers.IndexerWithOptions[*v1.Pod](
 		informers.IndexSelectorWithAnnotationFilter(annotationFilter),
 		informers.IndexSelectorWithLabelSelector(labelSelector),
-		informers.IndexSelectorWithNamespace(namespace),
 	)); err != nil {
 		return nil, err
 	}
