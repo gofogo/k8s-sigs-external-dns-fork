@@ -1,3 +1,13 @@
+---
+tags:
+  - contributing
+  - build
+  - testing
+  - integration-tests
+  - helm
+  - minikube
+---
+
 # Developer Reference
 
 The `external-dns` is the work of thousands of contributors, and is maintained by a small team within [kubernetes-sigs](https://github.com/kubernetes-sigs). This document covers basic needs to work with `external-dns` codebase. It contains instructions to build, run, and test `external-dns`.

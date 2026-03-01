@@ -89,8 +89,15 @@ scenarios:
 
   - name: multiple-sources-pointing-to-same-hostname-dedup
     description: >
-      Test that when multiple sources point to the same hostname,
-      the resulting DNS records are deduplicated correctly.
+      Documents a known limitation: when multiple ingresses share the same hostname,
+      ingressSource.Endpoints() merges their targets via MergeEndpoints() before the
+      dedupSource ever sees them. The resulting combined ingress endpoint
+      (["1.2.3.4","203.0.113.10"]) has different Targets.String() than the service
+      endpoint (["1.2.3.4"]), so the dedupSource keeps both — producing two A records
+      for the same hostname. Ideally the service endpoint would be absorbed into the
+      ingress one, but that would require cross-source target merging which does not
+      exist today. See the "service-and-ingress-same-hostname-and-ip-dedup" scenario
+      for a case where deduplication does work correctly.
     config:
       sources: ["service", "ingress"]
     resources:
@@ -159,9 +166,68 @@ scenarios:
               ingress:
                 - ip: 1.2.3.4
     expected:
+      # The ingress source merges all ingresses with the same hostname via MergeEndpoints(),
+      # so both ingresses (203.0.113.10 and 1.2.3.4) produce one combined endpoint.
+      - dnsName: example.local
+        targets: ["1.2.3.4", "203.0.113.10"]
+        recordType: A
+      # The service source produces a separate endpoint for the same hostname.
       - dnsName: example.local
         targets: ["1.2.3.4"]
         recordType: A
+
+  - name: service-and-ingress-same-hostname-and-ip-dedup
+    description: >
+      Test that dedupSource correctly removes an exact duplicate endpoint.
+      Both the Service and the Ingress resolve example.local to the same IP
+      (1.2.3.4), so each source emits an identical endpoint
+      (RecordType=A, DNSName=example.local, Targets=["1.2.3.4"]).
+      The dedupSource key is RecordType+DNSName+SetIdentifier+Targets.String(),
+      which matches, so the second endpoint is dropped and only one A record survives.
+    config:
+      sources: ["service", "ingress"]
+    resources:
+      - resource:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: test-service
+            namespace: default
+            annotations:
+              external-dns.alpha.kubernetes.io/hostname: example.local
+          spec:
+            selector:
+              app.kubernetes.io/name: MyApp
+            type: LoadBalancer
+          status:
+            loadBalancer:
+              ingress:
+                - ip: 1.2.3.4
+      - resource:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: test-ingress
+            namespace: default
+            annotations:
+              kubernetes.io/ingress.class: "nginx"
+          spec:
+            rules:
+              - host: example.local
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: my-service
+                          port:
+                            number: 80
+          status:
+            loadBalancer:
+              ingress:
+                - ip: 1.2.3.4
+    expected:
       - dnsName: example.local
-        targets: ["203.0.113.10"]
+        targets: ["1.2.3.4"]
         recordType: A
