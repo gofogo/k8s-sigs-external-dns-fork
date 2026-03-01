@@ -26,8 +26,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/pkg/events"
 )
 
 /** test utility functions for endpoints verifications */
@@ -165,6 +167,14 @@ func GenerateTestEndpointsByType(typeCounts map[string]int) []*endpoint.Endpoint
 		result[i], result[j] = result[j], result[i]
 	})
 	return result
+}
+
+// NewEndpointWithRef builds an endpoint attached to a Kubernetes object reference.
+// The record type is inferred from target: A for IPv4, AAAA for IPv6, CNAME otherwise.
+// Kind and APIVersion are resolved from the client-go scheme, so TypeMeta need not be set on obj.
+func NewEndpointWithRef(dns, target string, obj ctrlclient.Object, source string) *endpoint.Endpoint {
+	return endpoint.NewEndpoint(dns, endpoint.SuitableType(target), target).
+		WithRefObject(events.NewObjectReference(obj, source))
 }
 
 // AssertEndpointsHaveRefObject asserts that endpoints have the expected count

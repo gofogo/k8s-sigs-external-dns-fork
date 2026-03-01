@@ -23,7 +23,6 @@ import (
 
 // emitChangeEvent emits a Kubernetes event for each DNS record change.
 // Deletes use RecordDeleted on success and RecordError on failure.
-// No-ops if emitter is nil.
 func emitChangeEvent(e events.EventEmitter, ch *plan.Changes, reason events.Reason) {
 	if e == nil {
 		return

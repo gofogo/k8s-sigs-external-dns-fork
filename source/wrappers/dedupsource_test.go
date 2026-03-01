@@ -28,7 +28,6 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/internal/testutils"
 	logtest "sigs.k8s.io/external-dns/internal/testutils/log"
-	"sigs.k8s.io/external-dns/pkg/events"
 	"sigs.k8s.io/external-dns/source"
 	"sigs.k8s.io/external-dns/source/types"
 )
@@ -378,15 +377,11 @@ func TestDedupSource_RefObjects(t *testing.T) {
 		{
 			name: "single endpoint with RefObject preserved",
 			input: func() []*endpoint.Endpoint {
-				ep0 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&v1.Service{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "foo",
-							Namespace: "default",
-							UID:       "123",
-						},
-					}, types.Service))
-				return []*endpoint.Endpoint{ep0}
+				return []*endpoint.Endpoint{
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &v1.Service{
+						ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default", UID: "123"},
+					}, types.Service),
+				}
 			},
 			expected: func(t *testing.T, ep []*endpoint.Endpoint) {
 				require.Len(t, ep, 1)
@@ -399,23 +394,14 @@ func TestDedupSource_RefObjects(t *testing.T) {
 		{
 			name: "duplicate endpoints with same source type - first RefObject preserved",
 			input: func() []*endpoint.Endpoint {
-				ep0 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&v1.Service{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "first-svc",
-							Namespace: "default",
-							UID:       "uid-first",
-						},
-					}, types.Service))
-				ep1 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&v1.Service{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "second-svc",
-							Namespace: "other",
-							UID:       "uid-second",
-						},
-					}, types.Service))
-				return []*endpoint.Endpoint{ep0, ep1}
+				return []*endpoint.Endpoint{
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &v1.Service{
+						ObjectMeta: metav1.ObjectMeta{Name: "first-svc", Namespace: "default", UID: "uid-first"},
+					}, types.Service),
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &v1.Service{
+						ObjectMeta: metav1.ObjectMeta{Name: "second-svc", Namespace: "other", UID: "uid-second"},
+					}, types.Service),
+				}
 			},
 			expected: func(t *testing.T, ep []*endpoint.Endpoint) {
 				require.Len(t, ep, 1)
@@ -428,23 +414,14 @@ func TestDedupSource_RefObjects(t *testing.T) {
 		{
 			name: "duplicate endpoints with different source types - first RefObject preserved",
 			input: func() []*endpoint.Endpoint {
-				ep0 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&v1.Service{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-service",
-							Namespace: "default",
-							UID:       "svc-uid",
-						},
-					}, types.Service))
-				ep1 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&networkingv1.Ingress{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-ingress",
-							Namespace: "default",
-							UID:       "ing-uid",
-						},
-					}, types.Ingress))
-				return []*endpoint.Endpoint{ep0, ep1}
+				return []*endpoint.Endpoint{
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &v1.Service{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-service", Namespace: "default", UID: "svc-uid"},
+					}, types.Service),
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &networkingv1.Ingress{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-ingress", Namespace: "default", UID: "ing-uid"},
+					}, types.Ingress),
+				}
 			},
 			expected: func(t *testing.T, ep []*endpoint.Endpoint) {
 				require.Len(t, ep, 1)
@@ -458,23 +435,14 @@ func TestDedupSource_RefObjects(t *testing.T) {
 		{
 			name: "duplicate endpoints - Ingress first, Service second - Ingress RefObject preserved",
 			input: func() []*endpoint.Endpoint {
-				ep0 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&networkingv1.Ingress{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-ingress",
-							Namespace: "default",
-							UID:       "ing-uid",
-						},
-					}, types.Ingress))
-				ep1 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&v1.Service{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-service",
-							Namespace: "default",
-							UID:       "svc-uid",
-						},
-					}, types.Service))
-				return []*endpoint.Endpoint{ep0, ep1}
+				return []*endpoint.Endpoint{
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &networkingv1.Ingress{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-ingress", Namespace: "default", UID: "ing-uid"},
+					}, types.Ingress),
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &v1.Service{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-service", Namespace: "default", UID: "svc-uid"},
+					}, types.Service),
+				}
 			},
 			expected: func(t *testing.T, ep []*endpoint.Endpoint) {
 				require.Len(t, ep, 1)
@@ -488,23 +456,14 @@ func TestDedupSource_RefObjects(t *testing.T) {
 		{
 			name: "non-duplicate endpoints with different source types - both RefObjects preserved",
 			input: func() []*endpoint.Endpoint {
-				ep0 := endpoint.NewEndpoint("a.example.com", endpoint.RecordTypeA, "1.1.1.1").
-					WithRefObject(events.NewObjectReference(&v1.Service{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-service",
-							Namespace: "default",
-							UID:       "123",
-						},
-					}, types.Service))
-				ep1 := endpoint.NewEndpoint("b.example.com", endpoint.RecordTypeA, "2.2.2.2").
-					WithRefObject(events.NewObjectReference(&networkingv1.Ingress{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-ingress",
-							Namespace: "default",
-							UID:       "234",
-						},
-					}, types.Ingress))
-				return []*endpoint.Endpoint{ep0, ep1}
+				return []*endpoint.Endpoint{
+					testutils.NewEndpointWithRef("a.example.com", "1.1.1.1", &v1.Service{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-service", Namespace: "default", UID: "123"},
+					}, types.Service),
+					testutils.NewEndpointWithRef("b.example.com", "2.2.2.2", &networkingv1.Ingress{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-ingress", Namespace: "default", UID: "234"},
+					}, types.Ingress),
+				}
 			},
 			expected: func(t *testing.T, ep []*endpoint.Endpoint) {
 				require.Len(t, ep, 2)
@@ -533,31 +492,17 @@ func TestDedupSource_RefObjects(t *testing.T) {
 		{
 			name: "three duplicate endpoints from different sources - first RefObject preserved",
 			input: func() []*endpoint.Endpoint {
-				ep0 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&v1.Service{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-service",
-							Namespace: "default",
-							UID:       "123",
-						},
-					}, types.Service))
-				ep1 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&networkingv1.Ingress{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-ingress",
-							Namespace: "default",
-							UID:       "345",
-						},
-					}, types.Ingress))
-				ep2 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&v1.Pod{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-pod",
-							Namespace: "default",
-							UID:       "456",
-						},
-					}, types.Pod))
-				return []*endpoint.Endpoint{ep0, ep1, ep2}
+				return []*endpoint.Endpoint{
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &v1.Service{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-service", Namespace: "default", UID: "123"},
+					}, types.Service),
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &networkingv1.Ingress{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-ingress", Namespace: "default", UID: "345"},
+					}, types.Ingress),
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &v1.Pod{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-pod", Namespace: "default", UID: "456"},
+					}, types.Pod),
+				}
 			},
 			expected: func(t *testing.T, ep []*endpoint.Endpoint) {
 				require.Len(t, ep, 1)
@@ -571,16 +516,12 @@ func TestDedupSource_RefObjects(t *testing.T) {
 		{
 			name: "duplicate endpoints with one having nil RefObject - first RefObject preserved",
 			input: func() []*endpoint.Endpoint {
-				ep0 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&v1.Service{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-service",
-							Namespace: "default",
-							UID:       "123",
-						},
-					}, types.Service))
-				ep1 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4")
-				return []*endpoint.Endpoint{ep0, ep1}
+				return []*endpoint.Endpoint{
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &v1.Service{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-service", Namespace: "default", UID: "123"},
+					}, types.Service),
+					endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4"),
+				}
 			},
 			expected: func(t *testing.T, ep []*endpoint.Endpoint) {
 				require.Len(t, ep, 1)
@@ -592,16 +533,12 @@ func TestDedupSource_RefObjects(t *testing.T) {
 		{
 			name: "duplicate endpoints with first having nil RefObject - nil preserved",
 			input: func() []*endpoint.Endpoint {
-				ep0 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4")
-				ep1 := endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4").
-					WithRefObject(events.NewObjectReference(&v1.Service{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "my-service",
-							Namespace: "default",
-							UID:       "345",
-						},
-					}, types.Service))
-				return []*endpoint.Endpoint{ep0, ep1}
+				return []*endpoint.Endpoint{
+					endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "1.2.3.4"),
+					testutils.NewEndpointWithRef("example.com", "1.2.3.4", &v1.Service{
+						ObjectMeta: metav1.ObjectMeta{Name: "my-service", Namespace: "default", UID: "345"},
+					}, types.Service),
+				}
 			},
 			expected: func(t *testing.T, ep []*endpoint.Endpoint) {
 				require.Len(t, ep, 1)
