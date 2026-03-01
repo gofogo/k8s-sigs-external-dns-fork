@@ -36,18 +36,13 @@ func SuitableType(target string) string {
 	if err != nil {
 		return RecordTypeCNAME
 	}
-	if ip.Is4() {
+	switch {
+	case ip.Is4():
 		return RecordTypeA
-	}
-	return RecordTypeAAAA
-}
-
-// AttachRefObject sets the same ObjectReference on every endpoint in eps.
-// The reference is shared across all endpoints, so callers should create it once
-// per source object rather than once per endpoint.
-func AttachRefObject(eps []*Endpoint, ref *events.ObjectReference) {
-	for _, ep := range eps {
-		ep.WithRefObject(ref)
+	case ip.Is6():
+		return RecordTypeAAAA
+	default:
+		return RecordTypeCNAME
 	}
 }
 
@@ -62,4 +57,13 @@ func HasNoEmptyEndpoints(
 		return true
 	}
 	return false
+}
+
+// AttachRefObject sets the same ObjectReference on every endpoint in eps.
+// The reference is shared across all endpoints, so callers should create it once
+// per source object rather than once per endpoint.
+func AttachRefObject(eps []*Endpoint, ref *events.ObjectReference) {
+	for _, ep := range eps {
+		ep.WithRefObject(ref)
+	}
 }
