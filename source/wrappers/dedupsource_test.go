@@ -411,7 +411,7 @@ func TestDedupSource_InvalidEndpointIncrementsMetric(t *testing.T) {
 			value := testutil.ToFloat64(invalidEndpointsTotal.Gauge.With(
 				prometheus.Labels{"record_type": tt.wantRecordType, "source_type": tt.wantSourceType},
 			))
-			assert.Equal(t, 1.0, value)
+			assert.InDelta(t, 1.0, value, 0.001)
 
 			mockSource.AssertExpectations(t)
 		})

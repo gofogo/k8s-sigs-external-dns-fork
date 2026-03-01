@@ -110,9 +110,16 @@ func Execute() {
 
 	sCfg := source.NewSourceConfig(cfg)
 
-	eventEmitter, err := buildEventEmitter(ctx, cfg, sCfg)
-	if err != nil {
-		log.Fatal(err) // nolint: gocritic // exitAfterDefer
+	var eventEmitter events.EventEmitter
+	eventsCfg := events.NewConfig(
+		events.WithEmitEvents(cfg.EmitEvents),
+		events.WithDryRun(cfg.DryRun))
+	if eventsCfg.IsEnabled() {
+		var evErr error
+		eventEmitter, evErr = buildEventEmitter(ctx, sCfg, eventsCfg)
+		if evErr != nil {
+			log.Fatal(evErr) // nolint: gocritic // exitAfterDefer
+		}
 	}
 
 	endpointsSource, err := buildSource(ctx, sCfg, eventEmitter)
@@ -395,20 +402,14 @@ func buildController(
 	}, nil
 }
 
-// buildEventEmitter creates a Kubernetes EventEmitter if event emission is enabled in the
-// provided configuration. Returns nil (no-op) when events are not configured.
-func buildEventEmitter(ctx context.Context, cfg *externaldns.Config, sCfg *source.Config) (events.EventEmitter, error) {
-	eventsCfg := events.NewConfig(
-		events.WithEmitEvents(cfg.EmitEvents),
-		events.WithDryRun(cfg.DryRun))
-	if !eventsCfg.IsEnabled() {
-		return nil, nil
-	}
+// buildEventEmitter creates and starts a Kubernetes EventEmitter using the provided configuration.
+// The caller is responsible for checking whether events are enabled before calling this function.
+func buildEventEmitter(ctx context.Context, sCfg *source.Config, cfg *events.Config) (events.EventEmitter, error) {
 	kubeClient, err := sCfg.ClientGenerator().KubeClient()
 	if err != nil {
 		return nil, err
 	}
-	eventCtrl, err := events.NewEventController(kubeClient.EventsV1(), eventsCfg)
+	eventCtrl, err := events.NewEventController(kubeClient.EventsV1(), cfg)
 	if err != nil {
 		return nil, err
 	}
