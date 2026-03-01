@@ -284,9 +284,7 @@ func (sc *serviceSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 			continue
 		}
 
-		for _, ep := range svcEndpoints {
-			ep.WithRefObject(events.NewObjectReference(svc, types.Service))
-		}
+		endpoint.AttachRefObject(svcEndpoints, events.NewObjectReference(svc, types.Service))
 
 		log.Debugf("Endpoints generated from service: %s/%s: %v", svc.Namespace, svc.Name, svcEndpoints)
 		endpoints = append(endpoints, svcEndpoints...)

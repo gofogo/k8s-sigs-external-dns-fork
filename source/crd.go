@@ -235,10 +235,7 @@ func (cs *crdSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error
 			crdEndpoints = append(crdEndpoints, ep)
 		}
 
-		for _, ep := range crdEndpoints {
-			ep.WithRefObject(events.NewObjectReference(dnsEndpoint, types.CRD))
-		}
-
+		endpoint.AttachRefObject(crdEndpoints, events.NewObjectReference(dnsEndpoint, types.CRD))
 		endpoints = append(endpoints, crdEndpoints...)
 
 		if dnsEndpoint.Status.ObservedGeneration == dnsEndpoint.Generation {

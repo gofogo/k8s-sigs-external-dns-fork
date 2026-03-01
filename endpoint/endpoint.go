@@ -392,6 +392,7 @@ func (e *Endpoint) RefObject() *events.ObjectReference {
 	return e.refObject
 }
 
+
 // Key returns the EndpointKey of the Endpoint.
 func (e *Endpoint) Key() EndpointKey {
 	return EndpointKey{

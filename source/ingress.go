@@ -175,9 +175,7 @@ func (sc *ingressSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 			continue
 		}
 
-		for _, ep := range ingEndpoints {
-			ep.WithRefObject(events.NewObjectReference(ing, types.Ingress))
-		}
+		endpoint.AttachRefObject(ingEndpoints, events.NewObjectReference(ing, types.Ingress))
 
 		log.Debugf("Endpoints generated from ingress: %s/%s: %v", ing.Namespace, ing.Name, ingEndpoints)
 		endpoints = append(endpoints, ingEndpoints...)

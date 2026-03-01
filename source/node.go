@@ -151,9 +151,7 @@ func (ns *nodeSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error)
 			continue
 		}
 
-		for _, ep := range nodeEndpoints {
-			ep.WithRefObject(events.NewObjectReference(node, types.Node))
-		}
+		endpoint.AttachRefObject(nodeEndpoints, events.NewObjectReference(node, types.Node))
 
 		endpoints = append(endpoints, nodeEndpoints...)
 	}

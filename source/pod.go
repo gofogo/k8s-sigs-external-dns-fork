@@ -104,6 +104,8 @@ func NewPodSource(
 			if !ok {
 				return nil, fmt.Errorf("object is not a pod")
 			}
+			// UID is retained so that event correlation works; the transform
+			// is idempotent by construction.
 			return &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					// Name/namespace must always be kept for the informer to work.
@@ -177,9 +179,7 @@ func (ps *podSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error) 
 			return nil, err
 		}
 
-		for _, ep := range podEndpoints {
-			ep.WithRefObject(events.NewObjectReference(pod, types.Pod))
-		}
+		endpoint.AttachRefObject(podEndpoints, events.NewObjectReference(pod, types.Pod))
 
 		endpoints = append(endpoints, podEndpoints...)
 	}

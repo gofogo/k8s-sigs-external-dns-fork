@@ -19,11 +19,22 @@ package endpoint
 import (
 	log "github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"sigs.k8s.io/external-dns/pkg/events"
 )
 
 const (
 	msg = "No endpoints could be generated from '%s/%s/%s'"
 )
+
+// AttachRefObject sets the same ObjectReference on every endpoint in eps.
+// The reference is shared across all endpoints, so callers should create it once
+// per source object rather than once per endpoint.
+func AttachRefObject(eps []*Endpoint, ref *events.ObjectReference) {
+	for _, ep := range eps {
+		ep.WithRefObject(ref)
+	}
+}
 
 // HasNoEmptyEndpoints checks if the endpoint list is empty and logs
 // a debug message if so. Returns true if empty, false otherwise.
