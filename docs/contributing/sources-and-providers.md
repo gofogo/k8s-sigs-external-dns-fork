@@ -3,6 +3,7 @@ tags:
   - sources
   - providers
   - contributing
+  - informers
 ---
 
 # Sources and Providers
