@@ -77,14 +77,14 @@ func generateMarkdownTable(m *metrics.MetricRegistry, withRuntime bool) (string,
 		runtimeMetrics = []string{}
 	}
 
-	colWidths := utils.ComputeColumnWidths(m.Metrics)
-	runtimeWidth := utils.ComputeRuntimeWidth(runtimeMetrics)
+	colWidths := computeColumnWidths(m.Metrics)
+	runtimeWidth := computeRuntimeWidth(runtimeMetrics)
 
 	var b bytes.Buffer
 	err := tmpl.ExecuteTemplate(&b, "metrics.gotpl", struct {
 		Metrics        []*metrics.Metric
 		RuntimeMetrics []string
-		ColWidths      utils.ColumnWidths
+		ColWidths      columnWidths
 		RuntimeWidth   int
 	}{
 		Metrics:        m.Metrics,
@@ -130,4 +130,34 @@ func getRuntimeMetrics(reg prometheus.Registerer) []string {
 	}
 	sort.Strings(runtimeMetrics)
 	return runtimeMetrics
+}
+
+type columnWidths struct {
+	Name      int
+	Type      int
+	Subsystem int
+	Help      int
+}
+
+func computeColumnWidths(ms []*metrics.Metric) columnWidths {
+	names := make([]string, len(ms))
+	types := make([]string, len(ms))
+	subsystems := make([]string, len(ms))
+	helps := make([]string, len(ms))
+	for i, m := range ms {
+		names[i] = m.Name
+		types[i] = m.Type
+		subsystems[i] = m.Subsystem
+		helps[i] = m.Help
+	}
+	return columnWidths{
+		Name:      utils.ComputeColumnWidth("Name", names),
+		Type:      utils.ComputeColumnWidth("Metric Type", types),
+		Subsystem: utils.ComputeColumnWidth("Subsystem", subsystems),
+		Help:      utils.ComputeColumnWidth("Help", helps),
+	}
+}
+
+func computeRuntimeWidth(ms []string) int {
+	return utils.ComputeColumnWidth("Name", ms)
 }

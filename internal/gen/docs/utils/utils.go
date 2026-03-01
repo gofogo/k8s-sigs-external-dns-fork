@@ -24,55 +24,7 @@ import (
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-
-	"sigs.k8s.io/external-dns/pkg/metrics"
 )
-
-// ColumnWidths holds the maximum column widths for a metrics markdown table.
-type ColumnWidths struct {
-	Name      int
-	Type      int
-	Subsystem int
-	Help      int
-}
-
-// ComputeColumnWidths returns the minimum column widths needed to align a metrics table,
-// seeded with the header label widths.
-func ComputeColumnWidths(ms []*metrics.Metric) ColumnWidths {
-	w := ColumnWidths{
-		Name:      len("Name"),
-		Type:      len("Metric Type"),
-		Subsystem: len("Subsystem"),
-		Help:      len("Help"),
-	}
-	for _, m := range ms {
-		if n := len(m.Name); n > w.Name {
-			w.Name = n
-		}
-		if n := len(m.Type); n > w.Type {
-			w.Type = n
-		}
-		if n := len(m.Subsystem); n > w.Subsystem {
-			w.Subsystem = n
-		}
-		if n := len(m.Help); n > w.Help {
-			w.Help = n
-		}
-	}
-	return w
-}
-
-// ComputeRuntimeWidth returns the minimum column width needed to align a single-column
-// runtime metrics table, seeded with the "Name" header width.
-func ComputeRuntimeWidth(ms []string) int {
-	w := len("Name")
-	for _, m := range ms {
-		if n := len(m); n > w {
-			w = n
-		}
-	}
-	return w
-}
 
 func WriteToFile(filename string, content string) error {
 	file, fileErr := os.Create(filename)
@@ -96,6 +48,9 @@ func FuncMap() template.FuncMap {
 		"capitalize": cases.Title(language.English, cases.Compact).String,
 		"replace":    strings.ReplaceAll,
 		"lower":      strings.ToLower,
+		"bold": func(s string) string {
+			return "**" + s + "**"
+		},
 		// padRight pads s with spaces on the right to the given width.
 		"padRight": func(width int, s string) string {
 			return fmt.Sprintf("%-*s", width, s)
@@ -105,4 +60,13 @@ func FuncMap() template.FuncMap {
 			return strings.Repeat("-", width+1)
 		},
 	}
+}
+
+// ComputeColumnWidth returns the maximum string length among the header and all values.
+func ComputeColumnWidth(header string, values []string) int {
+	w := len(header)
+	for _, v := range values {
+		w = max(w, len(v))
+	}
+	return w
 }
