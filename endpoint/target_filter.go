@@ -45,6 +45,7 @@ func prepareTargetFilters(filters []string) []*net.IPNet {
 		filter = strings.TrimSpace(filter)
 		_, filterNet, err := net.ParseCIDR(filter)
 		if err != nil {
+			// TODO: consider returning error instead of logging, as this lead to silent misconfigurations
 			log.Errorf("Invalid target net filter: %s", filter)
 			continue
 		}
