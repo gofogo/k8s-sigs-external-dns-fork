@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/pkg/events"
 	"sigs.k8s.io/external-dns/source"
 )
 
@@ -32,6 +33,7 @@ type Config struct {
 	excludeTargetNets   []string
 	minTTL              time.Duration
 	preferAlias         bool
+	eventEmitter        events.EventEmitter
 	sourceWrappers      map[string]bool // map of source wrappers, e.g. "targetfilter", "nat64"
 }
 
@@ -87,6 +89,12 @@ func WithPreferAlias(enabled bool) Option {
 	}
 }
 
+func WithEventEmitter(e events.EventEmitter) Option {
+	return func(o *Config) {
+		o.eventEmitter = e
+	}
+}
+
 // addSourceWrapper registers a source wrapper by name in the Config.
 // It initializes the sourceWrappers map if it is nil.
 func (o *Config) addSourceWrapper(name string) {
@@ -112,7 +120,7 @@ func WrapSources(
 	sources []source.Source,
 	opts *Config,
 ) (source.Source, error) {
-	combinedSource := NewDedupSource(NewMultiSource(sources, opts.defaultTargets, opts.forceDefaultTargets))
+	combinedSource := NewDedupSource(NewMultiSource(sources, opts.defaultTargets, opts.forceDefaultTargets), opts.eventEmitter)
 	opts.addSourceWrapper("dedup")
 	if len(opts.nat64Networks) > 0 {
 		var err error
