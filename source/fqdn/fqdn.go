@@ -17,11 +17,18 @@ limitations under the License.
 package fqdn
 
 import (
+	"bytes"
 	"fmt"
+	"maps"
+	"reflect"
+	"slices"
+	"strings"
 	"text/template"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes/scheme"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
@@ -113,7 +120,67 @@ func (e TemplateEngine) CombineWithEndpoints(
 	return templatedEndpoints, nil
 }
 
+func parseTemplate(input string) (*template.Template, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil, nil //nolint:nilnil // nil template signals "not configured"; callers check IsConfigured()
+	}
+	funcs := template.FuncMap{
+		"contains":   strings.Contains,
+		"trimPrefix": strings.TrimPrefix,
+		"trimSuffix": strings.TrimSuffix,
+		"trim":       strings.TrimSpace,
+		"toLower":    strings.ToLower,
+		"replace":    replace,
+		"isIPv6":     isIPv6String,
+		"isIPv4":     isIPv4String,
+		"hasKey":     hasKey,
+		"fromJson":   fromJson,
+	}
+	return template.New("endpoint").Funcs(funcs).Parse(input)
+}
+
 type kubeObject interface {
 	runtime.Object
 	metav1.Object
+}
+
+func execTemplate(tmpl *template.Template, obj kubeObject) ([]string, error) {
+	if tmpl == nil {
+		return []string{}, nil
+	}
+	if obj == nil {
+		return nil, fmt.Errorf("object is nil")
+	}
+	// Kubernetes API doesn't populate TypeMeta (Kind/APIVersion) when retrieving
+	// objects via informers, because the client already knows what type it requested.
+	// Set it so templates can use .Kind and .APIVersion.
+	// TODO: all sources to transform Informer().SetTransform()
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	if gvk.Kind == "" {
+		gvks, _, err := scheme.Scheme.ObjectKinds(obj)
+		if err == nil && len(gvks) > 0 {
+			gvk = gvks[0]
+		} else {
+			// Fallback to reflection for types not in scheme
+			gvk = schema.GroupVersionKind{Kind: reflect.TypeOf(obj).Elem().Name()}
+		}
+		obj.GetObjectKind().SetGroupVersionKind(gvk)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, obj); err != nil {
+		kind := obj.GetObjectKind().GroupVersionKind().Kind
+		return nil, fmt.Errorf("failed to apply template on %s %s/%s: %w", kind, obj.GetNamespace(), obj.GetName(), err)
+	}
+	hosts := strings.Split(buf.String(), ",")
+	hostnames := make(map[string]struct{}, len(hosts))
+	for _, name := range hosts {
+		name = strings.TrimSpace(name)
+		name = strings.TrimSuffix(name, ".")
+		if name != "" {
+			hostnames[name] = struct{}{}
+		}
+	}
+	return slices.Sorted(maps.Keys(hostnames)), nil
 }
