@@ -93,10 +93,6 @@ func (e TemplateEngine) ExecFQDNTarget(obj kubeObject) ([]string, error) {
 }
 
 // CombineWithEndpoints merges annotation-based endpoints with template-based endpoints.
-//
-// Logic:
-//   - If no template is configured, returns original endpoints unchanged
-//   - If the engine was created with combineFQDN=true, appends templated endpoints to existing
 func (e TemplateEngine) CombineWithEndpoints(
 	endpoints []*endpoint.Endpoint,
 	templateFunc func() ([]*endpoint.Endpoint, error),

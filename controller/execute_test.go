@@ -157,7 +157,9 @@ func TestBuildSourceWithWrappers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := buildSource(t.Context(), source.NewSourceConfig(tt.cfg))
+			sCfg, err := source.NewSourceConfig(tt.cfg)
+			require.NoError(t, err)
+			_, err = buildSource(t.Context(), sCfg)
 			require.NoError(t, err)
 		})
 	}
@@ -335,7 +337,8 @@ func TestControllerRunCancelContextStopsLoop(t *testing.T) {
 		Registry:   "txt",
 		TXTOwnerID: "test-owner",
 	}
-	sCfg := source.NewSourceConfig(cfg)
+	sCfg, err := source.NewSourceConfig(cfg)
+	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	src, err := buildSource(ctx, sCfg)

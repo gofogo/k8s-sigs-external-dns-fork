@@ -110,12 +110,12 @@ type Config struct {
 	clientGenOnce sync.Once
 }
 
-func NewSourceConfig(cfg *externaldns.Config) *Config {
+func NewSourceConfig(cfg *externaldns.Config) (*Config, error) {
 	// error is explicitly ignored because the filter is already validated in validation.ValidateConfig
 	labelSelector, _ := labels.Parse(cfg.LabelFilter)
 	tmpls, err := fqdn.NewTemplateEngine(cfg.FQDNTemplate, cfg.TargetTemplate, cfg.FQDNTargetTemplate, cfg.CombineFQDNAndAnnotation)
 	if err != nil {
-		log.Fatalf("failed to parse fqdn templates: %v", err)
+		return nil, err
 	}
 	return &Config{
 		Namespace:         cfg.Namespace,
@@ -163,7 +163,7 @@ func NewSourceConfig(cfg *externaldns.Config) *Config {
 		Templates:                      tmpls,
 		PreferAlias:                    cfg.PreferAlias,
 		sources:                        cfg.Sources,
-	}
+	}, nil
 }
 
 // ClientGenerator returns a SingletonClientGenerator from this Config's connection settings.

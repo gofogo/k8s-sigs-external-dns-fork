@@ -517,7 +517,8 @@ func TestNewSourceConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewSourceConfig(tt.cfg)
+			got, err := NewSourceConfig(tt.cfg)
+			require.NoError(t, err)
 			tmpl := got.Templates
 			assert.Equal(t, tt.wantConfigured, tmpl.IsConfigured(), "IsConfigured")
 			assert.Equal(t, tt.wantCombining, tmpl.Combining(), "Combining")

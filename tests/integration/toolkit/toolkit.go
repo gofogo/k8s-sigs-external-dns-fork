@@ -237,7 +237,7 @@ func LoadResources(ctx context.Context, scenario Scenario) (*fake.Clientset, err
 }
 
 // scenarioToConfig creates a source.Config for testing with the scenario config.
-func scenarioToConfig(scenarioCfg ScenarioConfig) *source.Config {
+func scenarioToConfig(scenarioCfg ScenarioConfig) (*source.Config, error) {
 	return source.NewSourceConfig(&externaldns.Config{
 		Sources:             scenarioCfg.Sources,
 		ServiceTypeFilter:   scenarioCfg.ServiceTypeFilter,
@@ -254,7 +254,10 @@ func CreateWrappedSource(
 	client *fake.Clientset,
 	scenarioCfg ScenarioConfig) (source.Source, error) {
 	clientGen := newMockClientGenerator(client)
-	cfg := scenarioToConfig(scenarioCfg)
+	cfg, err := scenarioToConfig(scenarioCfg)
+	if err != nil {
+		return nil, err
+	}
 
 	// TODO: copied from controller/execute.go#buildSources
 	sources, err := source.ByNames(ctx, cfg, clientGen)

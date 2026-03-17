@@ -377,7 +377,9 @@ type routeGroup struct {
 	Status            routeGroupStatus `json:"status"`
 }
 
-// Metadata returns the ObjectMeta for backward-compatible template access (e.g. {{.Metadata.Name}}).
+// Metadata returns the ObjectMeta for backward-compatible template access.
+//
+// Deprecated: use top-level fields directly (e.g. {{.Name}} instead of {{.Metadata.Name}}).
 func (rg *routeGroup) Metadata() *metav1.ObjectMeta {
 	return &rg.ObjectMeta
 }
