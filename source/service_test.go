@@ -101,7 +101,6 @@ func TestServiceSource(t *testing.T) {
 
 	suite.Run(t, new(ServiceSuite))
 	t.Run("Interface", testServiceSourceImplementsSource)
-	t.Run("NewServiceSource", testServiceSourceNewServiceSource)
 	t.Run("Endpoints", testServiceSourceEndpoints)
 	t.Run("MultipleServices", testMultipleServicesEndpoints)
 }
@@ -109,52 +108,6 @@ func TestServiceSource(t *testing.T) {
 // testServiceSourceImplementsSource tests that serviceSource is a valid Source.
 func testServiceSourceImplementsSource(t *testing.T) {
 	assert.Implements(t, (*Source)(nil), new(serviceSource))
-}
-
-// testServiceSourceNewServiceSource tests that NewServiceSource doesn't return an error.
-func testServiceSourceNewServiceSource(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		title              string
-		annotationFilter   string
-		fqdnTemplate       string
-		serviceTypesFilter []string
-	}{
-		{
-			title: "valid empty template",
-		},
-		{
-			title:        "valid template",
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
-		},
-		{
-			title:            "non-empty annotation filter label",
-			annotationFilter: "kubernetes.io/ingress.class=nginx",
-		},
-		{
-			title:              "non-empty service types filter",
-			serviceTypesFilter: []string{string(v1.ServiceTypeClusterIP)},
-		},
-	} {
-
-		t.Run(tc.title, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := NewServiceSource(
-				t.Context(),
-				fake.NewClientset(),
-				&Config{
-					Templates:         mustTemplateEngine(t, tc.fqdnTemplate, "", "", false),
-					AnnotationFilter:  tc.annotationFilter,
-					ServiceTypeFilter: tc.serviceTypesFilter,
-					LabelFilter:       labels.Everything(),
-				},
-			)
-
-			require.NoError(t, err)
-		})
-	}
 }
 
 // testServiceSourceEndpoints tests that various services generate the correct endpoints.

@@ -187,9 +187,6 @@ func (us *unstructuredSource) endpointsFromInformer(informer kubeinformers.Gener
 
 // endpointsFromTemplate creates endpoints using DNS names from the FQDN template.
 func (us *unstructuredSource) endpointsFromTemplate(el *unstructuredWrapper) ([]*endpoint.Endpoint, error) {
-	if !us.templates.IsConfigured() {
-		return nil, nil
-	}
 	hostnames, err := us.templates.ExecFQDN(el)
 	if err != nil {
 		return nil, err
