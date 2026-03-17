@@ -875,8 +875,7 @@ func TestServiceSourceFqdnTemplatingExamples(t *testing.T) {
 			}
 
 			cfg := &Config{
-				FQDNTemplate:                   tt.fqdnTemplate,
-				CombineFQDNAndAnnotation:       tt.combineFQDN,
+				Templates:                      mustTemplateEngine(t, tt.fqdnTemplate, "", "", tt.combineFQDN),
 				PublishHostIP:                  tt.publishHostIp,
 				ServiceTypeFilter:              tt.serviceTypesFilter,
 				PublishInternal:                true,

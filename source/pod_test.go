@@ -960,7 +960,6 @@ func TestPodSourceLogs(t *testing.T) {
 			}
 
 			src, err := NewPodSource(ctx, kubernetes, &Config{
-				FQDNTemplate:             "",
 				IgnoreNonHostNetworkPods: tc.ignoreNonHostNetworkPods,
 			})
 			require.NoError(t, err)
@@ -1198,7 +1197,7 @@ func TestPodTransformerInPodSource(t *testing.T) {
 
 		// Should not error when creating the source
 		src, err := NewPodSource(t.Context(), fakeClient, &Config{
-			FQDNTemplate: "template",
+			Templates: mustTemplateEngine(t, "template", "", "", false),
 		})
 		require.NoError(t, err)
 		ps, ok := src.(*podSource)

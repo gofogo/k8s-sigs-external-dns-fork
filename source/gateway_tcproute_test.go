@@ -93,8 +93,7 @@ func TestGatewayTCPRouteSourceEndpoints(t *testing.T) {
 	require.NoError(t, err, "failed to create TCPRoute")
 
 	src, err := NewGatewayTCPRouteSource(ctx, clients, &Config{
-		FQDNTemplate:             "{{.Name}}-template.foobar.internal",
-		CombineFQDNAndAnnotation: true,
+		Templates: mustTemplateEngine(t, "{{.Name}}-template.foobar.internal", "", "", true),
 	})
 	require.NoError(t, err, "failed to create Gateway TCPRoute Source")
 

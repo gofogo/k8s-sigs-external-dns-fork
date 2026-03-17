@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"text/template"
 
 	projectcontour "github.com/projectcontour/contour/apis/projectcontour/v1"
 	log "github.com/sirupsen/logrus"
@@ -53,8 +52,7 @@ type httpProxySource struct {
 	dynamicKubeClient        dynamic.Interface
 	namespace                string
 	annotationFilter         string
-	fqdnTemplate             *template.Template
-	combineFQDNAnnotation    bool
+	templates                fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 	httpProxyInformer        kubeinformers.GenericInformer
 	unstructuredConverter    *UnstructuredConverter
@@ -66,11 +64,6 @@ func NewContourHTTPProxySource(
 	dynamicKubeClient dynamic.Interface,
 	cfg *Config,
 ) (Source, error) {
-	tmpl, err := fqdn.ParseTemplate(cfg.FQDNTemplate)
-	if err != nil {
-		return nil, err
-	}
-
 	// Use shared informer to listen for add/update/delete of HTTPProxys in the specified namespace.
 	// Set resync period to 0, to prevent processing when nothing has changed.
 	informerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicKubeClient, 0, cfg.Namespace, nil)
@@ -95,8 +88,7 @@ func NewContourHTTPProxySource(
 		dynamicKubeClient:        dynamicKubeClient,
 		namespace:                cfg.Namespace,
 		annotationFilter:         cfg.AnnotationFilter,
-		fqdnTemplate:             tmpl,
-		combineFQDNAnnotation:    cfg.CombineFQDNAndAnnotation,
+		templates:                cfg.Templates,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
 		httpProxyInformer:        httpProxyInformer,
 		unstructuredConverter:    uc,
@@ -141,10 +133,8 @@ func (sc *httpProxySource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 		hpEndpoints := sc.endpointsFromHTTPProxy(hp)
 
 		// apply template if fqdn is missing on HTTPProxy
-		hpEndpoints, err = fqdn.CombineWithTemplatedEndpoints(
+		hpEndpoints, err = sc.templates.CombineWithEndpoints(
 			hpEndpoints,
-			sc.fqdnTemplate,
-			sc.combineFQDNAnnotation,
 			func() ([]*endpoint.Endpoint, error) { return sc.endpointsFromTemplate(hp) },
 		)
 		if err != nil {
@@ -163,7 +153,7 @@ func (sc *httpProxySource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 }
 
 func (sc *httpProxySource) endpointsFromTemplate(httpProxy *projectcontour.HTTPProxy) ([]*endpoint.Endpoint, error) {
-	hostnames, err := fqdn.ExecTemplate(sc.fqdnTemplate, httpProxy)
+	hostnames, err := sc.templates.ExecFQDN(httpProxy)
 	if err != nil {
 		return nil, err
 	}

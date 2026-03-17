@@ -24,12 +24,11 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
-	"sigs.k8s.io/external-dns/source/fqdn"
 )
 
 func createTestRouteGroup(ns, name string, annotations map[string]string, hosts []string, destinations []routeGroupLoadBalancer) *routeGroup {
 	return &routeGroup{
-		Metadata: metav1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Namespace:   ns,
 			Name:        name,
 			Annotations: annotations,
@@ -299,11 +298,12 @@ func (f *fakeRouteGroupClient) getRouteGroupList(string) (*routeGroupList, error
 
 func TestRouteGroupsEndpoints(t *testing.T) {
 	for _, tt := range []struct {
-		name         string
-		source       *routeGroupSource
-		fqdnTemplate string
-		want         []*endpoint.Endpoint
-		wantErr      bool
+		name        string
+		source      *routeGroupSource
+		templates   string
+		combineFQDN bool
+		want        []*endpoint.Endpoint
+		wantErr     bool
 	}{
 		{
 			name: "Empty routegroup should return empty endpoints",
@@ -345,10 +345,10 @@ func TestRouteGroupsEndpoints(t *testing.T) {
 			},
 		},
 		{
-			name:         "Single routegroup with combineFQDNAnnotation with fqdn template should return endpoints from fqdnTemplate and routegroup",
-			fqdnTemplate: "{{.Metadata.Name}}.{{.Metadata.Namespace}}.example",
+			name:        "Single routegroup with combineFQDNAnnotation with fqdn template should return endpoints from fqdnTemplate and routegroup",
+			templates:   "{{.Metadata.Name}}.{{.Metadata.Namespace}}.example",
+			combineFQDN: true,
 			source: &routeGroupSource{
-				combineFQDNAnnotation: true,
 				cli: &fakeRouteGroupClient{
 					rg: &routeGroupList{
 						Items: []*routeGroup{
@@ -381,8 +381,8 @@ func TestRouteGroupsEndpoints(t *testing.T) {
 			},
 		},
 		{
-			name:         "Single routegroup without, with fqdn template should return endpoints from fqdnTemplate",
-			fqdnTemplate: "{{.Metadata.Name}}.{{.Metadata.Namespace}}.example",
+			name:      "Single routegroup without, with fqdn template should return endpoints from fqdnTemplate",
+			templates: "{{.Metadata.Name}}.{{.Metadata.Namespace}}.example",
 			source: &routeGroupSource{
 				cli: &fakeRouteGroupClient{
 					rg: &routeGroupList{
@@ -411,8 +411,8 @@ func TestRouteGroupsEndpoints(t *testing.T) {
 			},
 		},
 		{
-			name:         "Single routegroup without combineFQDNAnnotation with fqdn template should return endpoints not from fqdnTemplate",
-			fqdnTemplate: "{{.Metadata.Name}}.{{.Metadata.Namespace}}.example",
+			name:      "Single routegroup without combineFQDNAnnotation with fqdn template should return endpoints not from fqdnTemplate",
+			templates: "{{.Metadata.Name}}.{{.Metadata.Namespace}}.example",
 			source: &routeGroupSource{
 				cli: &fakeRouteGroupClient{
 					rg: &routeGroupList{
@@ -789,12 +789,12 @@ func TestRouteGroupsEndpoints(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.fqdnTemplate != "" {
-				tmpl, err := fqdn.ParseTemplate(tt.fqdnTemplate)
-				if err != nil {
-					t.Fatalf("Failed to parse template: %v", err)
+			if tt.templates != "" {
+				if tt.combineFQDN {
+					tt.source.templates = mustTemplateEngine(t, tt.templates, "", "", true)
+				} else {
+					tt.source.templates = mustTemplateEngine(t, tt.templates, "", "", false)
 				}
-				tt.source.fqdnTemplate = tmpl
 			}
 
 			got, err := tt.source.Endpoints(t.Context())

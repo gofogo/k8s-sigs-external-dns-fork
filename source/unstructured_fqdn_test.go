@@ -26,7 +26,6 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
-	"sigs.k8s.io/external-dns/source/fqdn"
 )
 
 func TestUnstructuredFqdnTemplatingExamples(t *testing.T) {
@@ -836,12 +835,9 @@ func TestUnstructuredFqdnTemplatingExamples(t *testing.T) {
 				dynamicClient,
 				kubeClient,
 				&Config{
-					LabelFilter:              selector,
-					UnstructuredResources:    tt.cfg.resources,
-					FQDNTemplate:             tt.cfg.fqdnTemplate,
-					TargetTemplate:           tt.cfg.targetTemplate,
-					FQDNTargetTemplate:       tt.cfg.fqdnTargetTemplate,
-					CombineFQDNAndAnnotation: tt.cfg.combine,
+					LabelFilter:           selector,
+					UnstructuredResources: tt.cfg.resources,
+					Templates:             mustTemplateEngine(t, tt.cfg.fqdnTemplate, tt.cfg.targetTemplate, tt.cfg.fqdnTargetTemplate, tt.cfg.combine),
 				},
 			)
 			require.NoError(t, err)
@@ -994,11 +990,10 @@ func TestUnstructuredWrapper_Templating(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tmpl, err := fqdn.ParseTemplate(tt.tmpl)
-			require.NoError(t, err)
+			engine := mustTemplateEngine(t, tt.tmpl, "", "", false)
 
 			wrapped := newUnstructuredWrapper(tt.obj)
-			got, err := fqdn.ExecTemplate(tmpl, wrapped)
+			got, err := engine.ExecFQDN(wrapped)
 			if tt.wantErr {
 				require.Error(t, err)
 				return

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"text/template"
 
 	log "github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
@@ -141,8 +140,7 @@ type gatewayRouteSource struct {
 
 	nsInformer coreinformers.NamespaceInformer
 
-	fqdnTemplate             *template.Template
-	combineFQDNAnnotation    bool
+	templates                fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 }
 
@@ -161,10 +159,6 @@ func newGatewayRouteSource(
 		rtLabels = labels.Everything()
 	}
 	rtAnnotations, err := getLabelSelector(config.AnnotationFilter)
-	if err != nil {
-		return nil, err
-	}
-	tmpl, err := fqdn.ParseTemplate(config.FQDNTemplate)
 	if err != nil {
 		return nil, err
 	}
@@ -224,8 +218,7 @@ func newGatewayRouteSource(
 
 		nsInformer: nsInformer,
 
-		fqdnTemplate:             tmpl,
-		combineFQDNAnnotation:    config.CombineFQDNAndAnnotation,
+		templates:                config.Templates,
 		ignoreHostnameAnnotation: config.IgnoreHostnameAnnotation,
 	}
 	return src, nil
@@ -447,8 +440,8 @@ func (c *gatewayRouteResolver) hosts(rt gatewayRoute) ([]string, error) {
 		hostnames = append(hostnames, string(name))
 	}
 	// TODO: The combine-fqdn-annotation flag is similarly vague.
-	if c.src.fqdnTemplate != nil && (len(hostnames) == 0 || c.src.combineFQDNAnnotation) {
-		hosts, err := fqdn.ExecTemplate(c.src.fqdnTemplate, rt.Object())
+	if c.src.templates.IsConfigured() && (len(hostnames) == 0 || c.src.templates.Combining()) {
+		hosts, err := c.src.templates.ExecFQDN(rt.Object())
 		if err != nil {
 			return nil, err
 		}

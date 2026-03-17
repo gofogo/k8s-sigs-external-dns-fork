@@ -421,10 +421,10 @@ func TestUnstructured_DifferentScenarios(t *testing.T) {
 				dynamicClient,
 				kubeClient,
 				&Config{
-					AnnotationFilter:         tt.cfg.annotationFilter,
-					LabelFilter:              labelSelector,
-					UnstructuredResources:    tt.cfg.resources,
-					CombineFQDNAndAnnotation: tt.cfg.combine,
+					AnnotationFilter:      tt.cfg.annotationFilter,
+					LabelFilter:           labelSelector,
+					UnstructuredResources: tt.cfg.resources,
+					Templates:             mustTemplateEngine(t, "", "", "", tt.cfg.combine),
 				},
 			)
 			require.NoError(t, err)

@@ -16,7 +16,6 @@ package source
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	istionetworking "istio.io/api/networking/v1beta1"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -35,25 +34,16 @@ func TestIstioVirtualServiceSourceNewSourceWithFqdn(t *testing.T) {
 		title            string
 		annotationFilter string
 		fqdnTemplate     string
-		expectError      bool
 	}{
 		{
-			title:        "invalid template",
-			expectError:  true,
-			fqdnTemplate: "{{.Name",
-		},
-		{
-			title:       "valid empty template",
-			expectError: false,
+			title: "valid empty template",
 		},
 		{
 			title:        "valid template",
-			expectError:  false,
 			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
 		},
 		{
 			title:        "valid template with multiple hosts",
-			expectError:  false,
 			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com, {{.Name}}-{{.Namespace}}.ext-dna.test.com",
 		},
 	} {
@@ -65,17 +55,12 @@ func TestIstioVirtualServiceSourceNewSourceWithFqdn(t *testing.T) {
 				&Config{
 					Namespace:                "",
 					AnnotationFilter:         "",
-					FQDNTemplate:             tt.fqdnTemplate,
-					CombineFQDNAndAnnotation: false,
+					Templates:                mustTemplateEngine(t, tt.fqdnTemplate, "", "", false),
 					IgnoreHostnameAnnotation: false,
 				},
 			)
 
-			if tt.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -659,8 +644,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				&Config{
 					Namespace:                "",
 					AnnotationFilter:         "",
-					FQDNTemplate:             tt.fqdnTemplate,
-					CombineFQDNAndAnnotation: !tt.combineFqdn,
+					Templates:                mustTemplateEngine(t, tt.fqdnTemplate, "", "", !tt.combineFqdn),
 					IgnoreHostnameAnnotation: false,
 				},
 			)

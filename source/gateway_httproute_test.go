@@ -949,7 +949,7 @@ func TestGatewayHTTPRouteSourceEndpoints(t *testing.T) {
 		{
 			title: "FQDNTemplate",
 			config: Config{
-				FQDNTemplate: "{{.Name}}.zero.internal, {{.Name}}.one.internal. ,  {{.Name}}.two.internal  ",
+				Templates: mustTemplateEngine(t, "{{.Name}}.zero.internal, {{.Name}}.one.internal. ,  {{.Name}}.two.internal  ", "", "", false),
 			},
 			namespaces: namespaces("default"),
 			gateways: []*v1beta1.Gateway{{
@@ -995,8 +995,7 @@ func TestGatewayHTTPRouteSourceEndpoints(t *testing.T) {
 		{
 			title: "CombineFQDN",
 			config: Config{
-				FQDNTemplate:             "combine-{{.Name}}.internal",
-				CombineFQDNAndAnnotation: true,
+				Templates: mustTemplateEngine(t, "combine-{{.Name}}.internal", "", "", true),
 			},
 			namespaces: namespaces("default"),
 			gateways: []*v1beta1.Gateway{{

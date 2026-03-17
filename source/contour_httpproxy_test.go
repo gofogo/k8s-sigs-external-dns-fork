@@ -93,8 +93,8 @@ func (suite *HTTPProxySuite) SetupTest() {
 		context.TODO(),
 		fakeDynamicClient,
 		&Config{
-			Namespace:    "default",
-			FQDNTemplate: "{{.Name}}",
+			Namespace: "default",
+			Templates: mustTemplateEngine(suite.T(), "{{.Name}}", "", "", false),
 		},
 	)
 	suite.NoError(err, "should initialize httpproxy source")
@@ -146,36 +146,25 @@ func TestNewContourHTTPProxySource(t *testing.T) {
 		annotationFilter         string
 		fqdnTemplate             string
 		combineFQDNAndAnnotation bool
-		expectError              bool
 	}{
 		{
-			title:        "invalid template",
-			expectError:  true,
-			fqdnTemplate: "{{.Name",
-		},
-		{
-			title:       "valid empty template",
-			expectError: false,
+			title: "valid empty template",
 		},
 		{
 			title:        "valid template",
-			expectError:  false,
 			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
 		},
 		{
 			title:        "valid template",
-			expectError:  false,
 			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com, {{.Name}}-{{.Namespace}}.ext-dna.test.com",
 		},
 		{
 			title:                    "valid template",
-			expectError:              false,
 			fqdnTemplate:             "{{.Name}}-{{.Namespace}}.ext-dns.test.com, {{.Name}}-{{.Namespace}}.ext-dna.test.com",
 			combineFQDNAndAnnotation: true,
 		},
 		{
 			title:            "non-empty annotation filter label",
-			expectError:      false,
 			annotationFilter: "contour.heptio.com/ingress.class=contour",
 		},
 	} {
@@ -189,16 +178,11 @@ func TestNewContourHTTPProxySource(t *testing.T) {
 				t.Context(),
 				fakeDynamicClient,
 				&Config{
-					AnnotationFilter:         ti.annotationFilter,
-					FQDNTemplate:             ti.fqdnTemplate,
-					CombineFQDNAndAnnotation: ti.combineFQDNAndAnnotation,
+					AnnotationFilter: ti.annotationFilter,
+					Templates:        mustTemplateEngine(t, ti.fqdnTemplate, "", "", ti.combineFQDNAndAnnotation),
 				},
 			)
-			if ti.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -287,7 +271,7 @@ func testEndpointsFromHTTPProxy(t *testing.T) {
 		t.Run(ti.title, func(t *testing.T) {
 			t.Parallel()
 
-			source, err := newTestHTTPProxySource()
+			source, err := newTestHTTPProxySource(t)
 			require.NoError(t, err)
 
 			endpoints := source.endpointsFromHTTPProxy(ti.httpProxy.HTTPProxy())
@@ -1057,8 +1041,7 @@ func testHTTPProxyEndpoints(t *testing.T) {
 				&Config{
 					Namespace:                ti.targetNamespace,
 					AnnotationFilter:         ti.annotationFilter,
-					FQDNTemplate:             ti.fqdnTemplate,
-					CombineFQDNAndAnnotation: ti.combineFQDNAndAnnotation,
+					Templates:                mustTemplateEngine(t, ti.fqdnTemplate, "", "", ti.combineFQDNAndAnnotation),
 					IgnoreHostnameAnnotation: ti.ignoreHostnameAnnotation,
 				},
 			)
@@ -1077,14 +1060,14 @@ func testHTTPProxyEndpoints(t *testing.T) {
 }
 
 // httpproxy specific helper functions
-func newTestHTTPProxySource() (*httpProxySource, error) {
+func newTestHTTPProxySource(t *testing.T) (*httpProxySource, error) {
 	fakeDynamicClient, _ := newDynamicKubernetesClient()
 
 	src, err := NewContourHTTPProxySource(
-		context.TODO(),
+		t.Context(),
 		fakeDynamicClient,
 		&Config{
-			FQDNTemplate: "{{.Name}}",
+			Templates: mustTemplateEngine(t, "{{.Name}}", "", "", false),
 		},
 	)
 	if err != nil {

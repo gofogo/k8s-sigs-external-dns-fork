@@ -54,13 +54,9 @@ const (
 )
 
 // NewFakeSource creates a new fakeSource with the given config.
-func NewFakeSource(fqdnTemplate string) (Source, error) {
-	if fqdnTemplate == "" {
-		fqdnTemplate = defaultFQDNTemplate
-	}
-
+func NewFakeSource(_ *Config) (Source, error) {
 	return &fakeSource{
-		dnsName: fqdnTemplate,
+		dnsName: defaultFQDNTemplate,
 	}, nil
 }
 

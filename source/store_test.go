@@ -39,6 +39,9 @@ import (
 	"k8s.io/client-go/rest"
 	gateway "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
 
+	"sigs.k8s.io/external-dns/source/fqdn"
+
+	externaldns "sigs.k8s.io/external-dns/pkg/apis/externaldns"
 	"sigs.k8s.io/external-dns/source/types"
 )
 
@@ -470,4 +473,62 @@ func TestSingletonClientGenerator_RESTConfig_SharedAcrossClients(t *testing.T) {
 	// This is documented in the TODO comment on SingletonClientGenerator
 	require.NoError(t, err2, "Second call does not return error due to sync.Once bug")
 	require.NoError(t, err3, "Third call does not return error due to sync.Once bug")
+}
+
+func TestNewSourceConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		cfg            *externaldns.Config
+		wantConfigured bool
+		wantCombining  bool
+	}{
+		{
+			name: "no templates configured",
+			cfg:  &externaldns.Config{},
+		},
+		{
+			name: "fqdn template only",
+			cfg: &externaldns.Config{
+				FQDNTemplate: "{{.Name}}.example.com",
+			},
+			wantConfigured: true,
+		},
+		{
+			name: "fqdn template with combine",
+			cfg: &externaldns.Config{
+				FQDNTemplate:             "{{.Name}}.example.com",
+				CombineFQDNAndAnnotation: true,
+			},
+			wantConfigured: true,
+			wantCombining:  true,
+		},
+		{
+			name: "all three templates configured",
+			cfg: &externaldns.Config{
+				FQDNTemplate:             "{{.Name}}.example.com",
+				TargetTemplate:           "{{.Name}}.targets.example.com",
+				FQDNTargetTemplate:       "{{.Name}}.example.com:{{.Name}}.targets.example.com",
+				CombineFQDNAndAnnotation: true,
+			},
+			wantConfigured: true,
+			wantCombining:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NewSourceConfig(tt.cfg)
+			tmpl := got.Templates
+			assert.Equal(t, tt.wantConfigured, tmpl.IsConfigured(), "IsConfigured")
+			assert.Equal(t, tt.wantCombining, tmpl.Combining(), "Combining")
+		})
+	}
+}
+
+// mustTemplateEngine creates a TemplateEngine with all three templates and combine flag.
+func mustTemplateEngine(t *testing.T, fqdnStr, targetStr, fqdnTargetStr string, combine bool) fqdn.TemplateEngine {
+	t.Helper()
+	engine, err := fqdn.NewTemplateEngine(fqdnStr, targetStr, fqdnTargetStr, combine)
+	require.NoError(t, err)
+	return engine
 }

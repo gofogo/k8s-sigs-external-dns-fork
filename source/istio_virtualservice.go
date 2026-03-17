@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"text/template"
 
 	log "github.com/sirupsen/logrus"
 	v1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -64,8 +63,7 @@ type virtualServiceSource struct {
 	istioClient              istioclient.Interface
 	namespace                string
 	annotationFilter         string
-	fqdnTemplate             *template.Template
-	combineFQDNAnnotation    bool
+	templates                fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 	serviceInformer          coreinformers.ServiceInformer
 	vServiceInformer         networkingv1beta1informer.VirtualServiceInformer
@@ -80,11 +78,6 @@ func NewIstioVirtualServiceSource(
 	istioClient istioclient.Interface,
 	cfg *Config,
 ) (Source, error) {
-	tmpl, err := fqdn.ParseTemplate(cfg.FQDNTemplate)
-	if err != nil {
-		return nil, err
-	}
-
 	// Use shared informers to listen for add/update/delete of services/pods/nodes in the specified namespace.
 	// Set resync period to 0, to prevent processing when nothing has changed
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(cfg.Namespace))
@@ -98,7 +91,7 @@ func NewIstioVirtualServiceSource(
 
 	// Add default resource event handlers to properly initialize informer.
 	_, _ = serviceInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
-	err = serviceInformer.Informer().SetTransform(informers.TransformerWithOptions[*corev1.Service](
+	err := serviceInformer.Informer().SetTransform(informers.TransformerWithOptions[*corev1.Service](
 		informers.TransformWithSpecSelector(),
 		informers.TransformWithSpecExternalIPs(),
 		informers.TransformWithStatusLoadBalancer(),
@@ -127,8 +120,7 @@ func NewIstioVirtualServiceSource(
 		istioClient:              istioClient,
 		namespace:                cfg.Namespace,
 		annotationFilter:         cfg.AnnotationFilter,
-		fqdnTemplate:             tmpl,
-		combineFQDNAnnotation:    cfg.CombineFQDNAndAnnotation,
+		templates:                cfg.Templates,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
 		serviceInformer:          serviceInformer,
 		vServiceInformer:         virtualServiceInformer,
@@ -164,10 +156,8 @@ func (sc *virtualServiceSource) Endpoints(ctx context.Context) ([]*endpoint.Endp
 		}
 
 		// apply template if host is missing on VirtualService
-		gwEndpoints, err = fqdn.CombineWithTemplatedEndpoints(
+		gwEndpoints, err = sc.templates.CombineWithEndpoints(
 			gwEndpoints,
-			sc.fqdnTemplate,
-			sc.combineFQDNAnnotation,
 			func() ([]*endpoint.Endpoint, error) { return sc.endpointsFromTemplate(ctx, vService) },
 		)
 		if err != nil {
@@ -221,7 +211,7 @@ func (sc *virtualServiceSource) getGateway(_ context.Context, gatewayStr string,
 }
 
 func (sc *virtualServiceSource) endpointsFromTemplate(ctx context.Context, virtualService *v1beta1.VirtualService) ([]*endpoint.Endpoint, error) {
-	hostnames, err := fqdn.ExecTemplate(sc.fqdnTemplate, virtualService)
+	hostnames, err := sc.templates.ExecFQDN(virtualService)
 	if err != nil {
 		return nil, err
 	}

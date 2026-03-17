@@ -24,7 +24,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"text/template"
 
 	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
@@ -71,12 +70,11 @@ var (
 // +externaldns:source:fqdn-template=true
 // +externaldns:source:events=true
 type serviceSource struct {
-	client                kubernetes.Interface
-	namespace             string
-	annotationFilter      string
-	labelSelector         labels.Selector
-	fqdnTemplate          *template.Template
-	combineFQDNAnnotation bool
+	client           kubernetes.Interface
+	namespace        string
+	annotationFilter string
+	labelSelector    labels.Selector
+	templates        fqdn.TemplateEngine
 
 	ignoreHostnameAnnotation       bool
 	publishInternal                bool
@@ -102,10 +100,6 @@ func NewServiceSource(
 	kubeClient kubernetes.Interface,
 	config *Config,
 ) (Source, error) {
-	tmpl, err := fqdn.ParseTemplate(config.FQDNTemplate)
-	if err != nil {
-		return nil, err
-	}
 	namespace := config.Namespace
 
 	// Use shared informers to listen for add/update/delete of services/pods/nodes in the specified namespace.
@@ -214,8 +208,7 @@ func NewServiceSource(
 		namespace:                      namespace,
 		annotationFilter:               config.AnnotationFilter,
 		compatibility:                  config.Compatibility,
-		fqdnTemplate:                   tmpl,
-		combineFQDNAnnotation:          config.CombineFQDNAndAnnotation,
+		templates:                      config.Templates,
 		ignoreHostnameAnnotation:       config.IgnoreHostnameAnnotation,
 		publishInternal:                config.PublishInternal,
 		publishHostIP:                  config.PublishHostIP,
@@ -266,10 +259,8 @@ func (sc *serviceSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 		}
 
 		// apply template if none of the above is found
-		svcEndpoints, err = fqdn.CombineWithTemplatedEndpoints(
+		svcEndpoints, err = sc.templates.CombineWithEndpoints(
 			svcEndpoints,
-			sc.fqdnTemplate,
-			sc.combineFQDNAnnotation,
 			func() ([]*endpoint.Endpoint, error) { return sc.endpointsFromTemplate(svc) },
 		)
 		if err != nil {
@@ -528,7 +519,7 @@ func buildHeadlessEndpoints(svc *v1.Service, targetsByHeadlessDomainAndType map[
 }
 
 func (sc *serviceSource) endpointsFromTemplate(svc *v1.Service) ([]*endpoint.Endpoint, error) {
-	hostnames, err := fqdn.ExecTemplate(sc.fqdnTemplate, svc)
+	hostnames, err := sc.templates.ExecFQDN(svc)
 	if err != nil {
 		return nil, err
 	}

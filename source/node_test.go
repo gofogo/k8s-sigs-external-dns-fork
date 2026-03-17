@@ -61,30 +61,20 @@ func testNodeSourceNewNodeSource(t *testing.T) {
 		title            string
 		annotationFilter string
 		fqdnTemplate     string
-		expectError      bool
 	}{
 		{
-			title:        "invalid template",
-			expectError:  true,
-			fqdnTemplate: "{{.Name",
-		},
-		{
-			title:       "valid empty template",
-			expectError: false,
+			title: "valid empty template",
 		},
 		{
 			title:        "valid template",
-			expectError:  false,
 			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
 		},
 		{
 			title:        "complex template",
-			expectError:  false,
 			fqdnTemplate: "{{range .Status.Addresses}}{{if and (eq .Type \"ExternalIP\") (isIPv4 .Address)}}{{.Address | replace \".\" \"-\"}}{{break}}{{end}}{{end}}.ext-dns.test.com",
 		},
 		{
 			title:            "non-empty annotation filter label",
-			expectError:      false,
 			annotationFilter: "kubernetes.io/ingress.class=nginx",
 		},
 	} {
@@ -97,18 +87,13 @@ func testNodeSourceNewNodeSource(t *testing.T) {
 				fake.NewClientset(),
 				&Config{
 					AnnotationFilter:     ti.annotationFilter,
-					FQDNTemplate:         ti.fqdnTemplate,
+					Templates:            mustTemplateEngine(t, ti.fqdnTemplate, "", "", false),
 					LabelFilter:          labels.Everything(),
 					ExcludeUnschedulable: true,
 					ExposeInternalIPv6:   true,
 				},
 			)
-
-			if ti.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -444,7 +429,7 @@ func testNodeSourceEndpoints(t *testing.T) {
 				kubeClient,
 				&Config{
 					AnnotationFilter:     tc.annotationFilter,
-					FQDNTemplate:         tc.fqdnTemplate,
+					Templates:            mustTemplateEngine(t, tc.fqdnTemplate, "", "", false),
 					LabelFilter:          labelSelector,
 					ExposeInternalIPv6:   tc.exposeInternalIPv6,
 					ExcludeUnschedulable: tc.excludeUnschedulable,
@@ -558,7 +543,7 @@ func testNodeEndpointsWithIPv6(t *testing.T) {
 			kubeClient,
 			&Config{
 				AnnotationFilter:     tc.annotationFilter,
-				FQDNTemplate:         tc.fqdnTemplate,
+				Templates:            mustTemplateEngine(t, tc.fqdnTemplate, "", "", false),
 				LabelFilter:          labelSelector,
 				ExposeInternalIPv6:   tc.exposeInternalIPv6,
 				ExcludeUnschedulable: tc.excludeUnschedulable,

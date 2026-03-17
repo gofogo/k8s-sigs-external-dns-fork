@@ -36,6 +36,7 @@ import (
 
 	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 	kubeclient "sigs.k8s.io/external-dns/pkg/client"
+	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/types"
 )
 
@@ -62,10 +63,7 @@ type Config struct {
 	AnnotationFilter               string
 	LabelFilter                    labels.Selector
 	IngressClassNames              []string
-	FQDNTemplate                   string
-	TargetTemplate                 string
-	FQDNTargetTemplate             string
-	CombineFQDNAndAnnotation       bool
+	Templates                      fqdn.TemplateEngine
 	IgnoreHostnameAnnotation       bool
 	IgnoreNonHostNetworkPods       bool
 	IgnoreIngressTLSSpec           bool
@@ -115,12 +113,16 @@ type Config struct {
 func NewSourceConfig(cfg *externaldns.Config) *Config {
 	// error is explicitly ignored because the filter is already validated in validation.ValidateConfig
 	labelSelector, _ := labels.Parse(cfg.LabelFilter)
+	tmpls, err := fqdn.NewTemplateEngine(cfg.FQDNTemplate, cfg.TargetTemplate, cfg.FQDNTargetTemplate, cfg.CombineFQDNAndAnnotation)
+	if err != nil {
+		log.Fatalf("failed to parse fqdn templates: %v", err)
+	}
 	return &Config{
-		Namespace:                      cfg.Namespace,
-		AnnotationFilter:               cfg.AnnotationFilter,
-		LabelFilter:                    labelSelector,
-		IngressClassNames:              cfg.IngressClassNames,
-		CombineFQDNAndAnnotation:       cfg.CombineFQDNAndAnnotation,
+		Namespace:         cfg.Namespace,
+		AnnotationFilter:  cfg.AnnotationFilter,
+		LabelFilter:       labelSelector,
+		IngressClassNames: cfg.IngressClassNames,
+
 		IgnoreHostnameAnnotation:       cfg.IgnoreHostnameAnnotation,
 		IgnoreNonHostNetworkPods:       cfg.IgnoreNonHostNetworkPods,
 		IgnoreIngressTLSSpec:           cfg.IgnoreIngressTLSSpec,
@@ -158,9 +160,7 @@ func NewSourceConfig(cfg *externaldns.Config) *Config {
 		NAT64Networks:                  cfg.NAT64Networks,
 		MinTTL:                         cfg.MinTTL,
 		UnstructuredResources:          cfg.UnstructuredResources,
-		FQDNTemplate:                   cfg.FQDNTemplate,
-		TargetTemplate:                 cfg.TargetTemplate,
-		FQDNTargetTemplate:             cfg.FQDNTargetTemplate,
+		Templates:                      tmpls,
 		PreferAlias:                    cfg.PreferAlias,
 		sources:                        cfg.Sources,
 	}
@@ -425,7 +425,7 @@ func BuildWithConfig(ctx context.Context, source string, p ClientGenerator, cfg 
 	case types.OpenShiftRoute:
 		return buildOpenShiftRouteSource(ctx, p, cfg)
 	case types.Fake:
-		return NewFakeSource(cfg.FQDNTemplate)
+		return NewFakeSource(cfg)
 	case types.Connector:
 		return NewConnectorSource(cfg.ConnectorServer)
 	case types.CRD:

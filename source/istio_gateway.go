@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"text/template"
 
 	log "github.com/sirupsen/logrus"
 	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
@@ -63,8 +62,7 @@ type gatewaySource struct {
 	istioClient              istioclient.Interface
 	namespace                string
 	annotationFilter         string
-	fqdnTemplate             *template.Template
-	combineFQDNAnnotation    bool
+	templates                fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 	serviceInformer          coreinformers.ServiceInformer
 	gatewayInformer          networkingv1beta1informer.GatewayInformer
@@ -78,11 +76,6 @@ func NewIstioGatewaySource(
 	istioClient istioclient.Interface,
 	cfg *Config,
 ) (Source, error) {
-	tmpl, err := fqdn.ParseTemplate(cfg.FQDNTemplate)
-	if err != nil {
-		return nil, err
-	}
-
 	// Use shared informers to listen for add/update/delete of services/pods/nodes in the specified namespace.
 	// Set resync period to 0, to prevent processing when nothing has changed
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(cfg.Namespace))
@@ -95,7 +88,7 @@ func NewIstioGatewaySource(
 
 	// Add default resource event handlers to properly initialize informer.
 	_, _ = serviceInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
-	err = serviceInformer.Informer().SetTransform(informers.TransformerWithOptions[*corev1.Service](
+	err := serviceInformer.Informer().SetTransform(informers.TransformerWithOptions[*corev1.Service](
 		informers.TransformWithSpecSelector(),
 		informers.TransformWithSpecExternalIPs(),
 		informers.TransformWithStatusLoadBalancer(),
@@ -122,8 +115,7 @@ func NewIstioGatewaySource(
 		istioClient:              istioClient,
 		namespace:                cfg.Namespace,
 		annotationFilter:         cfg.AnnotationFilter,
-		fqdnTemplate:             tmpl,
-		combineFQDNAnnotation:    cfg.CombineFQDNAndAnnotation,
+		templates:                cfg.Templates,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
 		serviceInformer:          serviceInformer,
 		gatewayInformer:          gatewayInformer,
@@ -164,12 +156,10 @@ func (sc *gatewaySource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, e
 		}
 
 		// apply template if host is missing on gateway
-		gwEndpoints, err = fqdn.CombineWithTemplatedEndpoints(
+		gwEndpoints, err = sc.templates.CombineWithEndpoints(
 			gwEndpoints,
-			sc.fqdnTemplate,
-			sc.combineFQDNAnnotation,
 			func() ([]*endpoint.Endpoint, error) {
-				hostnames, err := fqdn.ExecTemplate(sc.fqdnTemplate, gateway)
+				hostnames, err := sc.templates.ExecFQDN(gateway)
 				if err != nil {
 					return nil, err
 				}

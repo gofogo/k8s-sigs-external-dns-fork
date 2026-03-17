@@ -23,7 +23,6 @@ package source
 import (
 	"context"
 	"fmt"
-	"text/template"
 
 	log "github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
@@ -52,10 +51,9 @@ import (
 // +externaldns:source:fqdn-template=true
 // +externaldns:source:events=true
 type podSource struct {
-	client                kubernetes.Interface
-	namespace             string
-	fqdnTemplate          *template.Template
-	combineFQDNAnnotation bool
+	client    kubernetes.Interface
+	namespace string
+	templates fqdn.TemplateEngine
 
 	podInformer              coreinformers.PodInformer
 	nodeInformer             coreinformers.NodeInformer
@@ -89,7 +87,7 @@ func NewPodSource(
 
 	_, _ = podInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
 
-	if cfg.FQDNTemplate == "" {
+	if !cfg.Templates.IsConfigured() {
 		// Transformer is used to reduce the memory usage of the informer.
 		// The pod informer will otherwise store a full in-memory, go-typed copy of all pod schemas in the cluster.
 		// If watchList is not used it will not prevent memory bursts on the initial informer sync.
@@ -130,11 +128,6 @@ func NewPodSource(
 		return nil, err
 	}
 
-	tmpl, err := fqdn.ParseTemplate(cfg.FQDNTemplate)
-	if err != nil {
-		return nil, err
-	}
-
 	return &podSource{
 		client:                   kubeClient,
 		podInformer:              podInformer,
@@ -143,8 +136,7 @@ func NewPodSource(
 		compatibility:            cfg.Compatibility,
 		ignoreNonHostNetworkPods: cfg.IgnoreNonHostNetworkPods,
 		podSourceDomain:          cfg.PodSourceDomain,
-		fqdnTemplate:             tmpl,
-		combineFQDNAnnotation:    cfg.CombineFQDNAndAnnotation,
+		templates:                cfg.Templates,
 	}, nil
 }
 
@@ -164,10 +156,8 @@ func (ps *podSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error) 
 
 		podEndpoints := ps.endpointsFromPodAnnotations(pod)
 
-		podEndpoints, err = fqdn.CombineWithTemplatedEndpoints(
+		podEndpoints, err = ps.templates.CombineWithEndpoints(
 			podEndpoints,
-			ps.fqdnTemplate,
-			ps.combineFQDNAnnotation,
 			func() ([]*endpoint.Endpoint, error) { return ps.endpointsFromPodTemplate(pod) },
 		)
 		if err != nil {
@@ -288,7 +278,7 @@ func (ps *podSource) addPodNodeEndpointsToEndpointMap(endpointMap map[endpoint.E
 }
 
 func (ps *podSource) hostsFromTemplate(pod *corev1.Pod) (map[endpoint.EndpointKey][]string, error) {
-	hosts, err := fqdn.ExecTemplate(ps.fqdnTemplate, pod)
+	hosts, err := ps.templates.ExecFQDN(pod)
 	if err != nil {
 		return nil, fmt.Errorf("skipping generating endpoints from template for pod %s: %w", pod.Name, err)
 	}

@@ -47,8 +47,8 @@ func (suite *OCPRouteSuite) SetupTest() {
 		context.TODO(),
 		fakeClient,
 		&Config{
-			FQDNTemplate: "{{.Name}}",
-			LabelFilter:  labels.Everything(),
+			Templates:   mustTemplateEngine(suite.T(), "{{.Name}}", "", "", false),
+			LabelFilter: labels.Everything(),
 		},
 	)
 
@@ -105,31 +105,21 @@ func testOcpRouteSourceNewOcpRouteSource(t *testing.T) {
 		title            string
 		annotationFilter string
 		fqdnTemplate     string
-		expectError      bool
 		labelFilter      string
 	}{
 		{
-			title:        "invalid template",
-			expectError:  true,
-			fqdnTemplate: "{{.Name",
-		},
-		{
-			title:       "valid empty template",
-			expectError: false,
+			title: "valid empty template",
 		},
 		{
 			title:        "valid template",
-			expectError:  false,
 			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
 		},
 		{
 			title:            "non-empty annotation filter label",
-			expectError:      false,
 			annotationFilter: "kubernetes.io/ingress.class=nginx",
 		},
 		{
 			title:       "valid label selector",
-			expectError: false,
 			labelFilter: "app=web-external",
 		},
 	} {
@@ -144,16 +134,11 @@ func testOcpRouteSourceNewOcpRouteSource(t *testing.T) {
 				fake.NewClientset(),
 				&Config{
 					AnnotationFilter: ti.annotationFilter,
-					FQDNTemplate:     ti.fqdnTemplate,
+					Templates:        mustTemplateEngine(t, ti.fqdnTemplate, "", "", false),
 					LabelFilter:      labelSelector,
 				},
 			)
-
-			if ti.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -525,7 +510,7 @@ func testOcpRouteSourceEndpoints(t *testing.T) {
 				t.Context(),
 				fakeClient,
 				&Config{
-					FQDNTemplate:  "{{.Name}}",
+					Templates:     mustTemplateEngine(t, "{{.Name}}", "", "", false),
 					LabelFilter:   labelSelector,
 					OCPRouterName: tc.ocpRouterName,
 				},

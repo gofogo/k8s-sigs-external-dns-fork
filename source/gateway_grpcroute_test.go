@@ -93,8 +93,7 @@ func TestGatewayGRPCRouteSourceEndpoints(t *testing.T) {
 	require.NoError(t, err, "failed to create GRPCRoute")
 
 	src, err := NewGatewayGRPCRouteSource(ctx, clients, &Config{
-		FQDNTemplate:             "{{.Name}}-template.foobar.internal",
-		CombineFQDNAndAnnotation: true,
+		Templates: mustTemplateEngine(t, "{{.Name}}-template.foobar.internal", "", "", true),
 	})
 	require.NoError(t, err, "failed to create Gateway GRPCRoute Source")
 
