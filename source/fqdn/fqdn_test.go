@@ -33,6 +33,8 @@ func TestNewTemplateEngine(t *testing.T) {
 	for _, tt := range []struct {
 		name        string
 		fqdn        string
+		target      string
+		fqdnTarget  string
 		expectError bool
 	}{
 		{
@@ -71,9 +73,27 @@ func TestNewTemplateEngine(t *testing.T) {
 			name: "isIPv6 template function with invalid IPv6",
 			fqdn: "{{if isIPv6 \"not:ipv6:addr\"}}valid{{else}}invalid{{end}}.ext-dns.test.com",
 		},
+		{
+			name:        "invalid target template",
+			expectError: true,
+			target:      "{{.Status.LoadBalancer.Ingress",
+		},
+		{
+			name:   "valid target template",
+			target: "{{.Name}}.targets.example.com",
+		},
+		{
+			name:        "invalid fqdn-target template",
+			expectError: true,
+			fqdnTarget:  "{{.Name}}.example.com:{{.Status",
+		},
+		{
+			name:       "valid fqdn-target template",
+			fqdnTarget: "{{.Name}}.example.com:{{.Name}}.targets.example.com",
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewTemplateEngine(tt.fqdn, "", "", false)
+			_, err := NewTemplateEngine(tt.fqdn, tt.target, tt.fqdnTarget, false)
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
