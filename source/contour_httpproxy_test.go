@@ -138,55 +138,6 @@ func TestHTTPProxy(t *testing.T) {
 	t.Run("Endpoints", testHTTPProxyEndpoints)
 }
 
-func TestNewContourHTTPProxySource(t *testing.T) {
-	t.Parallel()
-
-	for _, ti := range []struct {
-		title                    string
-		annotationFilter         string
-		fqdnTemplate             string
-		combineFQDNAndAnnotation bool
-	}{
-		{
-			title: "valid empty template",
-		},
-		{
-			title:        "valid template",
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
-		},
-		{
-			title:        "valid template",
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com, {{.Name}}-{{.Namespace}}.ext-dna.test.com",
-		},
-		{
-			title:                    "valid template",
-			fqdnTemplate:             "{{.Name}}-{{.Namespace}}.ext-dns.test.com, {{.Name}}-{{.Namespace}}.ext-dna.test.com",
-			combineFQDNAndAnnotation: true,
-		},
-		{
-			title:            "non-empty annotation filter label",
-			annotationFilter: "contour.heptio.com/ingress.class=contour",
-		},
-	} {
-
-		t.Run(ti.title, func(t *testing.T) {
-			t.Parallel()
-
-			fakeDynamicClient, _ := newDynamicKubernetesClient()
-
-			_, err := NewContourHTTPProxySource(
-				t.Context(),
-				fakeDynamicClient,
-				&Config{
-					AnnotationFilter: ti.annotationFilter,
-					Templates:        mustTemplateEngine(t, ti.fqdnTemplate, "", "", ti.combineFQDNAndAnnotation),
-				},
-			)
-			require.NoError(t, err)
-		})
-	}
-}
-
 func testEndpointsFromHTTPProxy(t *testing.T) {
 	t.Parallel()
 

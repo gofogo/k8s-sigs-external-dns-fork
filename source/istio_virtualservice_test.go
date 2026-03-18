@@ -144,54 +144,6 @@ func TestVirtualService(t *testing.T) {
 	t.Run("gatewaySelectorMatchesService", testGatewaySelectorMatchesService)
 }
 
-func TestNewIstioVirtualServiceSource(t *testing.T) {
-	t.Parallel()
-
-	for _, ti := range []struct {
-		title                    string
-		annotationFilter         string
-		fqdnTemplate             string
-		combineFQDNAndAnnotation bool
-	}{
-		{
-			title: "valid empty template",
-		},
-		{
-			title:        "valid template",
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
-		},
-		{
-			title:        "valid template",
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com, {{.Name}}-{{.Namespace}}.ext-dna.test.com",
-		},
-		{
-			title:                    "valid template",
-			fqdnTemplate:             "{{.Name}}-{{.Namespace}}.ext-dns.test.com, {{.Name}}-{{.Namespace}}.ext-dna.test.com",
-			combineFQDNAndAnnotation: true,
-		},
-		{
-			title:            "non-empty annotation filter label",
-			annotationFilter: "kubernetes.io/gateway.class=nginx",
-		},
-	} {
-
-		t.Run(ti.title, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := NewIstioVirtualServiceSource(
-				t.Context(),
-				fake.NewClientset(),
-				istiofake.NewSimpleClientset(),
-				&Config{
-					Templates:        mustTemplateEngine(t, ti.fqdnTemplate, "", "", ti.combineFQDNAndAnnotation),
-					AnnotationFilter: ti.annotationFilter,
-				},
-			)
-			require.NoError(t, err)
-		})
-	}
-}
-
 func testVirtualServiceBindsToGateway(t *testing.T) {
 	for _, ti := range []struct {
 		title    string

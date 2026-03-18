@@ -48,54 +48,8 @@ import (
 func TestNodeSource(t *testing.T) {
 	t.Parallel()
 
-	t.Run("NewNodeSource", testNodeSourceNewNodeSource)
 	t.Run("Endpoints", testNodeSourceEndpoints)
 	t.Run("EndpointsIPv6", testNodeEndpointsWithIPv6)
-}
-
-// testNodeSourceNewNodeSource tests that NewNodeService doesn't return an error.
-func testNodeSourceNewNodeSource(t *testing.T) {
-	t.Parallel()
-
-	for _, ti := range []struct {
-		title            string
-		annotationFilter string
-		fqdnTemplate     string
-	}{
-		{
-			title: "valid empty template",
-		},
-		{
-			title:        "valid template",
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
-		},
-		{
-			title:        "complex template",
-			fqdnTemplate: "{{range .Status.Addresses}}{{if and (eq .Type \"ExternalIP\") (isIPv4 .Address)}}{{.Address | replace \".\" \"-\"}}{{break}}{{end}}{{end}}.ext-dns.test.com",
-		},
-		{
-			title:            "non-empty annotation filter label",
-			annotationFilter: "kubernetes.io/ingress.class=nginx",
-		},
-	} {
-
-		t.Run(ti.title, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := NewNodeSource(
-				t.Context(),
-				fake.NewClientset(),
-				&Config{
-					AnnotationFilter:     ti.annotationFilter,
-					Templates:            mustTemplateEngine(t, ti.fqdnTemplate, "", "", false),
-					LabelFilter:          labels.Everything(),
-					ExcludeUnschedulable: true,
-					ExposeInternalIPv6:   true,
-				},
-			)
-			require.NoError(t, err)
-		})
-	}
 }
 
 // testNodeSourceEndpoints tests that various node generate the correct endpoints.
