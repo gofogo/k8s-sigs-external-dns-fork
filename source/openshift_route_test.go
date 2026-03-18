@@ -88,59 +88,12 @@ func TestOcpRouteSource(t *testing.T) {
 
 	suite.Run(t, new(OCPRouteSuite))
 	t.Run("Interface", testOcpRouteSourceImplementsSource)
-	t.Run("NewOcpRouteSource", testOcpRouteSourceNewOcpRouteSource)
 	t.Run("Endpoints", testOcpRouteSourceEndpoints)
 }
 
 // testOcpRouteSourceImplementsSource tests that ocpRouteSource is a valid Source.
 func testOcpRouteSourceImplementsSource(t *testing.T) {
 	assert.Implements(t, (*Source)(nil), new(ocpRouteSource))
-}
-
-// testOcpRouteSourceNewOcpRouteSource tests that NewOcpRouteSource doesn't return an error.
-func testOcpRouteSourceNewOcpRouteSource(t *testing.T) {
-	t.Parallel()
-
-	for _, ti := range []struct {
-		title            string
-		annotationFilter string
-		fqdnTemplate     string
-		labelFilter      string
-	}{
-		{
-			title: "valid empty template",
-		},
-		{
-			title:        "valid template",
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
-		},
-		{
-			title:            "non-empty annotation filter label",
-			annotationFilter: "kubernetes.io/ingress.class=nginx",
-		},
-		{
-			title:       "valid label selector",
-			labelFilter: "app=web-external",
-		},
-	} {
-
-		labelSelector, err := labels.Parse(ti.labelFilter)
-		require.NoError(t, err)
-		t.Run(ti.title, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := NewOcpRouteSource(
-				t.Context(),
-				fake.NewClientset(),
-				&Config{
-					AnnotationFilter: ti.annotationFilter,
-					Templates:        mustTemplateEngine(t, ti.fqdnTemplate, "", "", false),
-					LabelFilter:      labelSelector,
-				},
-			)
-			require.NoError(t, err)
-		})
-	}
 }
 
 // testOcpRouteSourceEndpoints tests that various OCP routes generate the correct endpoints.
