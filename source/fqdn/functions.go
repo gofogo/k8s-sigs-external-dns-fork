@@ -19,8 +19,29 @@ package fqdn
 import (
 	"encoding/json"
 	"strings"
+	"text/template"
 
 	"sigs.k8s.io/external-dns/endpoint"
+)
+
+var (
+	// baseTemplate is the shared base with all template functions pre-registered.
+	// It is package-level so functions are registered once rather than on every parse call.
+	// Each call to parseTemplate clones it before adding new content.
+	baseTemplate = template.Must(
+		template.New("endpoint").Funcs(template.FuncMap{
+			"contains":   strings.Contains,
+			"trimPrefix": strings.TrimPrefix,
+			"trimSuffix": strings.TrimSuffix,
+			"trim":       strings.TrimSpace,
+			"toLower":    strings.ToLower,
+			"replace":    replace,
+			"isIPv6":     isIPv6,
+			"isIPv4":     isIPv4,
+			"hasKey":     hasKey,
+			"fromJson":   fromJson,
+		}).Parse(""),
+	)
 )
 
 // replace all instances of oldValue with newValue in target string.
@@ -29,14 +50,14 @@ func replace(oldValue, newValue, target string) string {
 	return strings.ReplaceAll(target, oldValue, newValue)
 }
 
-// isIPv6String reports whether the target string is an IPv6 address,
+// isIPv6 reports whether the target string is an IPv6 address,
 // including IPv4-mapped IPv6 addresses.
-func isIPv6String(target string) bool {
+func isIPv6(target string) bool {
 	return endpoint.SuitableType(target) == endpoint.RecordTypeAAAA
 }
 
-// isIPv4String reports whether the target string is an IPv4 address.
-func isIPv4String(target string) bool {
+// isIPv4 reports whether the target string is an IPv4 address.
+func isIPv4(target string) bool {
 	return endpoint.SuitableType(target) == endpoint.RecordTypeA
 }
 

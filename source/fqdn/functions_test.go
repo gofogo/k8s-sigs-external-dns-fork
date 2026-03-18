@@ -104,7 +104,7 @@ func TestIsIPv6String(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isIPv6String(tt.input)
+			result := isIPv6(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -143,7 +143,7 @@ func TestIsIPv4String(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isIPv4String(tt.input)
+			result := isIPv4(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

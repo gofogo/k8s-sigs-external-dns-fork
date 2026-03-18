@@ -33,8 +33,9 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
-// TemplateEngine holds the three FQDN-related templates and the combine-with-annotation
-// flag used across sources. The zero value is valid and represents an unconfigured engine.
+// TemplateEngine holds the parsed Go templates used to derive DNS names and targets
+// from Kubernetes objects. It is shared across source implementations.
+// The zero value is valid and represents a no-op engine.
 type TemplateEngine struct {
 	// fqdn is the template that generates fully-qualified domain names from a Kubernetes object.
 	// Parsed from --fqdn-template.
@@ -51,9 +52,9 @@ type TemplateEngine struct {
 	combine bool
 }
 
-// NewTemplateEngine parses all three template strings into a TemplateEngine.
-// Empty strings produce nil inner templates (IsConfigured returns false).
-// Returns an error if any non-empty template string fails to parse.
+// NewTemplateEngine parses the provided Go template strings into a TemplateEngine.
+// An empty string leaves the corresponding template unset; IsConfigured reflects
+// whether the FQDN template was provided. Returns an error on the first parse failure.
 func NewTemplateEngine(fqdnStr, targetStr, fqdnTargetStr string, combineFQDN bool) (TemplateEngine, error) {
 	fqdnTmpl, err := parseTemplate(fqdnStr)
 	if err != nil {
@@ -126,23 +127,14 @@ func (e TemplateEngine) CombineWithEndpoints(
 }
 
 func parseTemplate(input string) (*template.Template, error) {
-	input = strings.TrimSpace(input)
-	if input == "" {
+	if strings.TrimSpace(input) == "" {
 		return nil, nil //nolint:nilnil // nil template signals "not configured"; callers check IsConfigured()
 	}
-	funcs := template.FuncMap{
-		"contains":   strings.Contains,
-		"trimPrefix": strings.TrimPrefix,
-		"trimSuffix": strings.TrimSuffix,
-		"trim":       strings.TrimSpace,
-		"toLower":    strings.ToLower,
-		"replace":    replace,
-		"isIPv6":     isIPv6String,
-		"isIPv4":     isIPv4String,
-		"hasKey":     hasKey,
-		"fromJson":   fromJson,
+	t, err := baseTemplate.Clone()
+	if err != nil {
+		return nil, err
 	}
-	return template.New("endpoint").Funcs(funcs).Parse(input)
+	return t.Parse(input)
 }
 
 type kubeObject interface {
