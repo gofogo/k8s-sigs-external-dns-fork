@@ -36,10 +36,19 @@ import (
 // TemplateEngine holds the three FQDN-related templates and the combine-with-annotation
 // flag used across sources. The zero value is valid and represents an unconfigured engine.
 type TemplateEngine struct {
-	fqdn       *template.Template
-	target     *template.Template
+	// fqdn is the template that generates fully-qualified domain names from a Kubernetes object.
+	// Parsed from --fqdn-template.
+	fqdn *template.Template
+	// target is the optional template that overrides the DNS target values.
+	// Parsed from --target-template.
+	target *template.Template
+	// fqdnTarget is the optional template that generates "hostname:target" pairs in a single pass,
+	// superseding fqdn and target when set.
+	// Parsed from --fqdn-target-template.
 	fqdnTarget *template.Template
-	combine    bool
+	// combine controls whether template-derived endpoints are merged with annotation-derived endpoints.
+	// Set by --combine-fqdn-annotation.
+	combine bool
 }
 
 // NewTemplateEngine parses all three template strings into a TemplateEngine.
