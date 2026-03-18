@@ -130,6 +130,7 @@ func parseTemplate(input string) (*template.Template, error) {
 	if strings.TrimSpace(input) == "" {
 		return nil, nil //nolint:nilnil // nil template signals "not configured"; callers check IsConfigured()
 	}
+	// Clone is cheaper than re-registering all functions on a new template each call.
 	t, err := baseTemplate.Clone()
 	if err != nil {
 		return nil, err
