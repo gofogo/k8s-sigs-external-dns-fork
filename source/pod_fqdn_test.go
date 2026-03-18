@@ -401,7 +401,7 @@ func TestPodSourceFqdnTemplatingExamples(t *testing.T) {
 				t.Context(),
 				kubeClient,
 				&Config{
-					Templates:       mustTemplateEngine(t, tt.fqdnTemplate, "", "", true),
+					Templates:       mustTemplateEngine(t, tt.fqdnTemplate, "", "", tt.combineFQDN),
 					PodSourceDomain: tt.sourceDomain,
 				})
 			require.NoError(t, err)
@@ -461,7 +461,7 @@ func TestPodSourceFqdnTemplatingExamples_Failed(t *testing.T) {
 				t.Context(),
 				kubeClient,
 				&Config{
-					Templates:       mustTemplateEngine(t, tt.fqdnTemplate, "", "", true),
+					Templates:       mustTemplateEngine(t, tt.fqdnTemplate, "", "", tt.combineFQDN),
 					PodSourceDomain: tt.sourceDomain,
 				})
 			require.NoError(t, err)

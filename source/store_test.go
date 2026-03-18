@@ -481,6 +481,7 @@ func TestNewSourceConfig(t *testing.T) {
 		cfg            *externaldns.Config
 		wantConfigured bool
 		wantCombining  bool
+		wantErr        bool
 	}{
 		{
 			name: "no templates configured",
@@ -513,11 +514,30 @@ func TestNewSourceConfig(t *testing.T) {
 			wantConfigured: true,
 			wantCombining:  true,
 		},
+		{
+			name:    "invalid fqdn template",
+			cfg:     &externaldns.Config{FQDNTemplate: "{{.Name"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid target template",
+			cfg:     &externaldns.Config{TargetTemplate: "{{.Status.LoadBalancer.Ingress"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid fqdn-target template",
+			cfg:     &externaldns.Config{FQDNTargetTemplate: "{{.Name}}.example.com:{{.Status"},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := NewSourceConfig(tt.cfg)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
 			tmpl := got.Templates
 			assert.Equal(t, tt.wantConfigured, tmpl.IsConfigured(), "IsConfigured")
