@@ -48,6 +48,7 @@ import (
 // +externaldns:source:filters=annotation
 // +externaldns:source:namespace=all,single
 // +externaldns:source:fqdn-template=true
+// +externaldns:source:provider-specific=true
 type httpProxySource struct {
 	dynamicKubeClient        dynamic.Interface
 	namespace                string
