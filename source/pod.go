@@ -250,9 +250,9 @@ func (ps *podSource) addPodNodeEndpointsToEndpointMap(endpointMap map[endpoint.E
 }
 
 func (ps *podSource) hostsFromTemplate(pod *v1.Pod) (map[endpoint.EndpointKey][]string, error) {
-	hosts, err := fqdn.ExecTemplate(ps.fqdnTemplate, pod)
+	hosts, err := ps.templates.ExecFQDN(pod)
 	if err != nil {
-		return nil, fmt.Errorf("skipping generating endpoints from template for pod %s: %w", pod.Name, err)
+		return nil, err
 	}
 
 	result := make(map[endpoint.EndpointKey][]string)
