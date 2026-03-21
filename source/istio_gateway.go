@@ -98,6 +98,7 @@ func NewIstioGatewaySource(
 		informers.TransformRemoveLastAppliedConfig(),
 		informers.TransformRemoveStatusConditions(),
 	))
+	informers.MustAddIndexers(serviceInformer.Informer(), informers.IndexerSpecSelectorEntries())
 	informers.MustSetTransform(ingressInformer.Informer(), informers.TransformerWithOptions[*networkv1.Ingress](
 		informers.TransformRemoveManagedFields(),
 		informers.TransformRemoveLastAppliedConfig(),
