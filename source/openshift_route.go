@@ -64,8 +64,17 @@ type ocpRouteSource struct {
 	ocpRouterName            string
 }
 
-// NewOcpRouteSource creates a new ocpRouteSource with the given config.
-func NewOcpRouteSource(
+// NewOpenShiftRoute creates an OpenShift route source using the provided ClientGenerator.
+func NewOpenShiftRoute(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	ocpClient, err := p.OpenShiftClient()
+	if err != nil {
+		return nil, err
+	}
+	return newOcpRouteSource(ctx, ocpClient, cfg)
+}
+
+// newOcpRouteSource creates a new ocpRouteSource with the given config.
+func newOcpRouteSource(
 	ctx context.Context,
 	ocpClient versioned.Interface,
 	cfg *Config,

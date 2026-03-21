@@ -334,7 +334,7 @@ func TestOpenShiftFqdnTemplatingExamples(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			src, err := NewOcpRouteSource(
+			src, err := newOcpRouteSource(
 				t.Context(),
 				kubeClient,
 				&Config{

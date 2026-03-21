@@ -63,8 +63,21 @@ type unstructuredSource struct {
 	informers             []kubeinformers.GenericInformer
 }
 
-// NewUnstructuredFQDNSource creates a new unstructuredSource.
-func NewUnstructuredFQDNSource(
+// NewUnstructured creates an unstructured FQDN source using the provided ClientGenerator.
+func NewUnstructured(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	kubeClient, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	dynamicClient, err := p.DynamicKubernetesClient()
+	if err != nil {
+		return nil, err
+	}
+	return newUnstructuredFQDNSource(ctx, dynamicClient, kubeClient, cfg)
+}
+
+// newUnstructuredFQDNSource creates a new unstructuredSource.
+func newUnstructuredFQDNSource(
 	ctx context.Context,
 	dynamicClient dynamic.Interface,
 	kubeClient kubernetes.Interface,

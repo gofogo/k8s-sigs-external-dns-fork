@@ -97,8 +97,17 @@ type serviceSource struct {
 	compatibility string
 }
 
-// NewServiceSource creates a new serviceSource with the given config.
-func NewServiceSource(
+// NewService creates a service source using the provided ClientGenerator.
+func NewService(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	client, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	return newServiceSource(ctx, client, cfg)
+}
+
+// newServiceSource creates a new serviceSource with the given config.
+func newServiceSource(
 	ctx context.Context,
 	kubeClient kubernetes.Interface,
 	config *Config,

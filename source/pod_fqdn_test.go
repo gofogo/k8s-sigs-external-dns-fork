@@ -51,7 +51,7 @@ func TestNewPodSourceWithFqdn(t *testing.T) {
 		},
 	} {
 		t.Run(tt.title, func(t *testing.T) {
-			_, err := NewPodSource(
+			_, err := newPodSource(
 				t.Context(),
 				fake.NewClientset(),
 				&Config{
@@ -437,7 +437,7 @@ func TestPodSourceFqdnTemplatingExamples(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			src, err := NewPodSource(
+			src, err := newPodSource(
 				t.Context(),
 				kubeClient,
 				&Config{
@@ -498,7 +498,7 @@ func TestPodSourceFqdnTemplatingExamples_Failed(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			src, err := NewPodSource(
+			src, err := newPodSource(
 				t.Context(),
 				kubeClient,
 				&Config{

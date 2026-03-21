@@ -17,8 +17,6 @@ limitations under the License.
 package source
 
 import (
-	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -26,22 +24,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/suite"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
-	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	fakeDynamic "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes"
-	fakeKube "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	gateway "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
-
-	"sigs.k8s.io/external-dns/source/types"
 )
 
+// MockClientGenerator is a shared mock for ClientGenerator used across source tests.
 type MockClientGenerator struct {
 	mock.Mock
 	kubeClient              kubernetes.Interface
@@ -102,195 +92,6 @@ func (m *MockClientGenerator) RESTConfig() (*rest.Config, error) {
 		return args.Get(0).(*rest.Config), nil
 	}
 	return nil, args.Error(1)
-}
-
-type ByNamesTestSuite struct {
-	suite.Suite
-}
-
-func (suite *ByNamesTestSuite) TestAllInitialized() {
-	mockClientGenerator := new(MockClientGenerator)
-	mockClientGenerator.On("KubeClient").Return(fakeKube.NewSimpleClientset(), nil)
-	mockClientGenerator.On("IstioClient").Return(istiofake.NewSimpleClientset(), nil)
-	mockClientGenerator.On("DynamicKubernetesClient").Return(fakeDynamic.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
-		map[schema.GroupVersionResource]string{
-			{
-				Group:    "projectcontour.io",
-				Version:  "v1",
-				Resource: "httpproxies",
-			}: "HTTPPRoxiesList",
-			{
-				Group:    "contour.heptio.com",
-				Version:  "v1beta1",
-				Resource: "tcpingresses",
-			}: "TCPIngressesList",
-			{
-				Group:    "configuration.konghq.com",
-				Version:  "v1beta1",
-				Resource: "tcpingresses",
-			}: "TCPIngressesList",
-			{
-				Group:    "cis.f5.com",
-				Version:  "v1",
-				Resource: "virtualservers",
-			}: "VirtualServersList",
-			{
-				Group:    "cis.f5.com",
-				Version:  "v1",
-				Resource: "transportservers",
-			}: "TransportServersList",
-			{
-				Group:    "traefik.containo.us",
-				Version:  "v1alpha1",
-				Resource: "ingressroutes",
-			}: "IngressRouteList",
-			{
-				Group:    "traefik.containo.us",
-				Version:  "v1alpha1",
-				Resource: "ingressroutetcps",
-			}: "IngressRouteTCPList",
-			{
-				Group:    "traefik.containo.us",
-				Version:  "v1alpha1",
-				Resource: "ingressrouteudps",
-			}: "IngressRouteUDPList",
-			{
-				Group:    "traefik.io",
-				Version:  "v1alpha1",
-				Resource: "ingressroutes",
-			}: "IngressRouteList",
-			{
-				Group:    "traefik.io",
-				Version:  "v1alpha1",
-				Resource: "ingressroutetcps",
-			}: "IngressRouteTCPList",
-			{
-				Group:    "traefik.io",
-				Version:  "v1alpha1",
-				Resource: "ingressrouteudps",
-			}: "IngressRouteUDPList",
-		}), nil)
-
-	ss := []string{
-		types.Service, types.Ingress, types.IstioGateway, types.ContourHTTPProxy,
-		types.KongTCPIngress, types.F5VirtualServer, types.F5TransportServer, types.TraefikProxy, types.Fake,
-	}
-	sources, err := ByNames(context.TODO(), &Config{
-		sources: ss,
-	}, mockClientGenerator)
-	suite.NoError(err, "should not generate errors")
-	suite.Len(sources, 9, "should generate all nine sources")
-}
-
-func (suite *ByNamesTestSuite) TestOnlyFake() {
-	mockClientGenerator := new(MockClientGenerator)
-	mockClientGenerator.On("KubeClient").Return(fakeKube.NewClientset(), nil)
-
-	sources, err := ByNames(context.TODO(), &Config{
-		sources: []string{types.Fake},
-	}, mockClientGenerator)
-	suite.NoError(err, "should not generate errors")
-	suite.Len(sources, 1, "should generate fake source")
-	suite.Nil(mockClientGenerator.kubeClient, "client should not be created")
-}
-
-func (suite *ByNamesTestSuite) TestSourceNotFound() {
-	mockClientGenerator := new(MockClientGenerator)
-	mockClientGenerator.On("KubeClient").Return(fakeKube.NewClientset(), nil)
-	sources, err := ByNames(context.TODO(), &Config{
-		sources: []string{"foo"},
-	}, mockClientGenerator)
-	suite.Equal(err, ErrSourceNotFound, "should return source not found")
-	suite.Empty(sources, "should not returns any source")
-}
-
-func (suite *ByNamesTestSuite) TestKubeClientFails() {
-	mockClientGenerator := new(MockClientGenerator)
-	mockClientGenerator.On("KubeClient").Return(nil, errors.New("foo"))
-
-	sourceUnderTest := []string{
-		types.Node, types.Service, types.Ingress, types.Pod, types.IstioGateway, types.IstioVirtualService,
-		types.AmbassadorHost, types.GlooProxy, types.TraefikProxy, types.CRD, types.KongTCPIngress,
-		types.F5VirtualServer, types.F5TransportServer,
-	}
-
-	for _, source := range sourceUnderTest {
-		_, err := ByNames(context.TODO(), &Config{
-			sources: []string{source},
-		}, mockClientGenerator)
-		suite.Error(err, source+" should return an error if kubernetes client cannot be created")
-	}
-}
-
-func (suite *ByNamesTestSuite) TestIstioClientFails() {
-	mockClientGenerator := new(MockClientGenerator)
-	mockClientGenerator.On("KubeClient").Return(fakeKube.NewSimpleClientset(), nil)
-	mockClientGenerator.On("IstioClient").Return(nil, errors.New("foo"))
-	mockClientGenerator.On("DynamicKubernetesClient").Return(nil, errors.New("foo"))
-
-	sourcesDependentOnIstioClient := []string{types.IstioGateway, types.IstioVirtualService}
-
-	for _, source := range sourcesDependentOnIstioClient {
-		_, err := ByNames(context.TODO(), &Config{
-			sources: []string{source},
-		}, mockClientGenerator)
-		suite.Error(err, source+" should return an error if istio client cannot be created")
-	}
-}
-
-func (suite *ByNamesTestSuite) TestDynamicKubernetesClientFails() {
-	mockClientGenerator := new(MockClientGenerator)
-	mockClientGenerator.On("KubeClient").Return(fakeKube.NewClientset(), nil)
-	mockClientGenerator.On("IstioClient").Return(istiofake.NewSimpleClientset(), nil)
-	mockClientGenerator.On("DynamicKubernetesClient").Return(nil, errors.New("foo"))
-
-	sourcesDependentOnDynamicKubernetesClient := []string{
-		types.AmbassadorHost, types.ContourHTTPProxy, types.GlooProxy, types.TraefikProxy,
-		types.KongTCPIngress, types.F5VirtualServer, types.F5TransportServer,
-	}
-
-	for _, source := range sourcesDependentOnDynamicKubernetesClient {
-		_, err := ByNames(context.TODO(), &Config{
-			sources: []string{source},
-		}, mockClientGenerator)
-		suite.Error(err, source+" should return an error if dynamic kubernetes client cannot be created")
-	}
-}
-
-func TestByNames(t *testing.T) {
-	suite.Run(t, new(ByNamesTestSuite))
-}
-
-type minimalMockClientGenerator struct{}
-
-var errMock = errors.New("mock not implemented")
-
-func (m *minimalMockClientGenerator) KubeClient() (kubernetes.Interface, error) { return nil, errMock }
-func (m *minimalMockClientGenerator) GatewayClient() (gateway.Interface, error) { return nil, errMock }
-func (m *minimalMockClientGenerator) IstioClient() (istioclient.Interface, error) {
-	return nil, errMock
-}
-
-func (m *minimalMockClientGenerator) DynamicKubernetesClient() (dynamic.Interface, error) {
-	return nil, errMock
-}
-func (m *minimalMockClientGenerator) OpenShiftClient() (openshift.Interface, error) {
-	return nil, errMock
-}
-func (m *minimalMockClientGenerator) RESTConfig() (*rest.Config, error) { return nil, errMock }
-
-func TestBuildWithConfig_InvalidSource(t *testing.T) {
-	ctx := t.Context()
-	p := &minimalMockClientGenerator{}
-	cfg := &Config{LabelFilter: labels.NewSelector()}
-
-	src, err := BuildWithConfig(ctx, "not-a-source", p, cfg)
-	if src != nil {
-		t.Errorf("expected nil source for invalid type, got: %v", src)
-	}
-	if !errors.Is(err, ErrSourceNotFound) {
-		t.Errorf("expected ErrSourceNotFound, got: %v", err)
-	}
 }
 
 func TestConfig_ClientGenerator(t *testing.T) {

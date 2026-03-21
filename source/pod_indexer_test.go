@@ -216,7 +216,7 @@ func TestPodsWithAnnotationsAndLabels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			selector, _ := annotations.ParseFilter(tt.labelSelector)
-			pSource, err := NewPodSource(
+			pSource, err := newPodSource(
 				t.Context(), client,
 				&Config{
 					Namespace:        tt.namespace,

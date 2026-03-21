@@ -48,13 +48,13 @@ import (
 func TestNodeSource(t *testing.T) {
 	t.Parallel()
 
-	t.Run("NewNodeSource", testNodeSourceNewNodeSource)
+	t.Run("NewNodeSource", testNodeSourcenewNodeSource)
 	t.Run("Endpoints", testNodeSourceEndpoints)
 	t.Run("EndpointsIPv6", testNodeEndpointsWithIPv6)
 }
 
 // testNodeSourceNewNodeSource tests that NewNodeService doesn't return an error.
-func testNodeSourceNewNodeSource(t *testing.T) {
+func testNodeSourcenewNodeSource(t *testing.T) {
 	t.Parallel()
 
 	for _, ti := range []struct {
@@ -92,7 +92,7 @@ func testNodeSourceNewNodeSource(t *testing.T) {
 		t.Run(ti.title, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := NewNodeSource(
+			_, err := newNodeSource(
 				t.Context(),
 				fake.NewClientset(),
 				&Config{
@@ -451,7 +451,7 @@ func testNodeSourceEndpoints(t *testing.T) {
 			require.NoError(t, err)
 
 			// Create our object under test and get the endpoints.
-			client, err := NewNodeSource(
+			client, err := newNodeSource(
 				t.Context(),
 				kubeClient,
 				&Config{
@@ -565,7 +565,7 @@ func testNodeEndpointsWithIPv6(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create our object under test and get the endpoints.
-		client, err := NewNodeSource(
+		client, err := newNodeSource(
 			t.Context(),
 			kubeClient,
 			&Config{
@@ -610,7 +610,7 @@ func TestResourceLabelIsSetForEachNodeEndpoint(t *testing.T) {
 		require.NoError(t, err, "Failed to create node %s", node.Name)
 	}
 
-	client, err := NewNodeSource(
+	client, err := newNodeSource(
 		t.Context(),
 		kubeClient,
 		&Config{
@@ -653,7 +653,7 @@ func TestProcessEndpoint_Node_RefObjectExist(t *testing.T) {
 
 	fakeClient := fake.NewClientset(elements...)
 
-	client, err := NewNodeSource(
+	client, err := newNodeSource(
 		t.Context(),
 		fakeClient,
 		&Config{

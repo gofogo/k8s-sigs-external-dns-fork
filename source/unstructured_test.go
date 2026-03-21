@@ -454,7 +454,7 @@ func TestUnstructured_DifferentScenarios(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			src, err := NewUnstructuredFQDNSource(
+			src, err := newUnstructuredFQDNSource(
 				t.Context(),
 				dynamicClient,
 				kubeClient,
@@ -505,7 +505,7 @@ func TestProcessEndpoint_Unstructured_RefObjectExist(t *testing.T) {
 
 	kubeClient, dynamicClient := setupUnstructuredTestClients(t, resources, objects)
 
-	src, err := NewUnstructuredFQDNSource(
+	src, err := newUnstructuredFQDNSource(
 		t.Context(),
 		dynamicClient,
 		kubeClient,

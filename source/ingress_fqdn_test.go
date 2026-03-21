@@ -62,7 +62,7 @@ func TestIngressSourceNewNodeSourceWithFqdn(t *testing.T) {
 		},
 	} {
 		t.Run(tt.title, func(t *testing.T) {
-			_, err := NewIngressSource(
+			_, err := newIngressSource(
 				t.Context(),
 				fake.NewClientset(),
 				&Config{
@@ -318,7 +318,7 @@ func TestIngressSourceFqdnTemplatingExamples(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			src, err := NewIngressSource(
+			src, err := newIngressSource(
 				t.Context(),
 				kubeClient,
 				&Config{

@@ -636,7 +636,7 @@ func TestAmbassadorHostSource(t *testing.T) {
 			_, err = fakeDynamicClient.Resource(ambHostGVR).Namespace(namespace).Create(t.Context(), host, metav1.CreateOptions{})
 			assert.NoError(t, err)
 
-			source, err := NewAmbassadorHostSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
+			source, err := newAmbassadorHostSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
 				&Config{
 					Namespace:        namespace,
 					AnnotationFilter: ti.annotationFilter,

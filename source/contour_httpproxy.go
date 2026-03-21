@@ -61,8 +61,17 @@ type httpProxySource struct {
 	unstructuredConverter    *UnstructuredConverter
 }
 
-// NewContourHTTPProxySource creates a new contourHTTPProxySource with the given config.
-func NewContourHTTPProxySource(
+// NewContourHTTPProxy creates a contour HTTPProxy source using the provided ClientGenerator.
+func NewContourHTTPProxy(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	dynamicClient, err := p.DynamicKubernetesClient()
+	if err != nil {
+		return nil, err
+	}
+	return newContourHTTPProxySource(ctx, dynamicClient, cfg)
+}
+
+// newContourHTTPProxySource creates a new contourHTTPProxySource with the given config.
+func newContourHTTPProxySource(
 	ctx context.Context,
 	dynamicKubeClient dynamic.Interface,
 	cfg *Config,

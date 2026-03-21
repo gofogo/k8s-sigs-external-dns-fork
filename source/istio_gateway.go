@@ -72,8 +72,21 @@ type gatewaySource struct {
 	ingressInformer          netinformers.IngressInformer
 }
 
-// NewIstioGatewaySource creates a new gatewaySource with the given config.
-func NewIstioGatewaySource(
+// NewIstioGateway creates an Istio gateway source using the provided ClientGenerator.
+func NewIstioGateway(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	kubeClient, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	istioClient, err := p.IstioClient()
+	if err != nil {
+		return nil, err
+	}
+	return newIstioGatewaySource(ctx, kubeClient, istioClient, cfg)
+}
+
+// newIstioGatewaySource creates a new gatewaySource with the given config.
+func newIstioGatewaySource(
 	ctx context.Context,
 	kubeClient kubernetes.Interface,
 	istioClient istioclient.Interface,

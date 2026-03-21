@@ -42,6 +42,7 @@ import (
 	registryfactory "sigs.k8s.io/external-dns/registry/factory"
 	"sigs.k8s.io/external-dns/source"
 	"sigs.k8s.io/external-dns/source/annotations"
+	sourcefactory "sigs.k8s.io/external-dns/source/factory"
 	"sigs.k8s.io/external-dns/source/wrappers"
 )
 
@@ -192,7 +193,7 @@ func configureLogger(cfg *externaldns.Config) {
 // It initializes the source configuration, generates the required sources, and combines them into a single,
 // deduplicated source. Returns the combined source or an error if source creation fails.
 func buildSource(ctx context.Context, cfg *source.Config) (source.Source, error) {
-	sources, err := source.ByNames(ctx, cfg, cfg.ClientGenerator())
+	sources, err := sourcefactory.ByNames(ctx, cfg, cfg.ClientGenerator())
 	if err != nil {
 		return nil, err
 	}

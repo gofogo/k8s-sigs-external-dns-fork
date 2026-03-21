@@ -44,7 +44,7 @@ func (suite *OCPRouteSuite) SetupTest() {
 	fakeClient := fake.NewClientset()
 	var err error
 
-	suite.sc, err = NewOcpRouteSource(
+	suite.sc, err = newOcpRouteSource(
 		context.TODO(),
 		fakeClient,
 		&Config{
@@ -89,7 +89,7 @@ func TestOcpRouteSource(t *testing.T) {
 
 	suite.Run(t, new(OCPRouteSuite))
 	t.Run("Interface", testOcpRouteSourceImplementsSource)
-	t.Run("NewOcpRouteSource", testOcpRouteSourceNewOcpRouteSource)
+	t.Run("NewOcpRouteSource", testOcpRouteSourcenewOcpRouteSource)
 	t.Run("Endpoints", testOcpRouteSourceEndpoints)
 }
 
@@ -99,7 +99,7 @@ func testOcpRouteSourceImplementsSource(t *testing.T) {
 }
 
 // testOcpRouteSourceNewOcpRouteSource tests that NewOcpRouteSource doesn't return an error.
-func testOcpRouteSourceNewOcpRouteSource(t *testing.T) {
+func testOcpRouteSourcenewOcpRouteSource(t *testing.T) {
 	t.Parallel()
 
 	for _, ti := range []struct {
@@ -140,7 +140,7 @@ func testOcpRouteSourceNewOcpRouteSource(t *testing.T) {
 		t.Run(ti.title, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := NewOcpRouteSource(
+			_, err := newOcpRouteSource(
 				t.Context(),
 				fake.NewClientset(),
 				&Config{
@@ -558,7 +558,7 @@ func testOcpRouteSourceEndpoints(t *testing.T) {
 			labelSelector, err := labels.Parse(tc.labelFilter)
 			require.NoError(t, err)
 
-			source, err := NewOcpRouteSource(
+			source, err := newOcpRouteSource(
 				t.Context(),
 				fakeClient,
 				&Config{

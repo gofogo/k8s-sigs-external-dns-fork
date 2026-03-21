@@ -46,8 +46,13 @@ type connectorSource struct {
 	remoteServer string
 }
 
-// NewConnectorSource creates a new connectorSource with the given config.
-func NewConnectorSource(remoteServer string) (Source, error) {
+// NewConnector creates a connector source using the provided ClientGenerator.
+func NewConnector(_ context.Context, _ ClientGenerator, cfg *Config) (Source, error) {
+	return newConnectorSource(cfg.ConnectorServer)
+}
+
+// newConnectorSource creates a new connectorSource with the given config.
+func newConnectorSource(remoteServer string) (Source, error) {
 	return &connectorSource{
 		remoteServer: remoteServer,
 	}, nil

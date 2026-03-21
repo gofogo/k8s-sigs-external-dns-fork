@@ -76,8 +76,17 @@ type ingressSource struct {
 	labelSelector            labels.Selector
 }
 
-// NewIngressSource creates a new ingressSource with the given config.
-func NewIngressSource(
+// NewIngress creates an ingress source using the provided ClientGenerator.
+func NewIngress(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	client, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	return newIngressSource(ctx, client, cfg)
+}
+
+// newIngressSource creates a new ingressSource with the given config.
+func newIngressSource(
 	ctx context.Context,
 	kubeClient kubernetes.Interface,
 	cfg *Config) (Source, error) {

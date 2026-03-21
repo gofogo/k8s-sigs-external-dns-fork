@@ -757,7 +757,7 @@ func TestPodSource(t *testing.T) {
 				}
 			}
 
-			client, err := NewPodSource(ctx, kubernetes, &Config{
+			client, err := newPodSource(ctx, kubernetes, &Config{
 				Namespace:                tc.targetNamespace,
 				Compatibility:            tc.compatibility,
 				IgnoreNonHostNetworkPods: tc.ignoreNonHostNetworkPods,
@@ -990,7 +990,7 @@ func TestPodSourceLogs(t *testing.T) {
 				}
 			}
 
-			src, err := NewPodSource(ctx, kubernetes, &Config{
+			src, err := newPodSource(ctx, kubernetes, &Config{
 				FQDNTemplate:             "",
 				IgnoreNonHostNetworkPods: tc.ignoreNonHostNetworkPods,
 			})
@@ -1148,7 +1148,7 @@ func TestPodTransformerInPodSource(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should not error when creating the source
-		src, err := NewPodSource(ctx, fakeClient, &Config{})
+		src, err := newPodSource(ctx, fakeClient, &Config{})
 		require.NoError(t, err)
 		ps, ok := src.(*podSource)
 		require.True(t, ok)
@@ -1228,7 +1228,7 @@ func TestPodTransformerInPodSource(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should not error when creating the source
-		src, err := NewPodSource(t.Context(), fakeClient, &Config{
+		src, err := newPodSource(t.Context(), fakeClient, &Config{
 			FQDNTemplate: "template",
 		})
 		require.NoError(t, err)
@@ -1274,7 +1274,7 @@ func TestProcessEndpoint_Pod_RefObjectExist(t *testing.T) {
 
 	fakeClient := fake.NewClientset(elements...)
 
-	client, err := NewPodSource(
+	client, err := newPodSource(
 		t.Context(),
 		fakeClient,
 		&Config{},

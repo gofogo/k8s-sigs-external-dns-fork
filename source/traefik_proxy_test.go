@@ -387,7 +387,7 @@ func TestTraefikProxyIngressRouteEndpoints(t *testing.T) {
 			_, err = fakeDynamicClient.Resource(ingressRouteGVR).Namespace(defaultTraefikNamespace).Create(t.Context(), &ir, metav1.CreateOptions{})
 			assert.NoError(t, err)
 
-			source, err := NewTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
+			source, err := newTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
 				&Config{
 					Namespace:                defaultTraefikNamespace,
 					AnnotationFilter:         "kubernetes.io/ingress.class=traefik",
@@ -684,7 +684,7 @@ func TestTraefikProxyIngressRouteTCPEndpoints(t *testing.T) {
 			_, err = fakeDynamicClient.Resource(ingressRouteTCPGVR).Namespace(defaultTraefikNamespace).Create(t.Context(), &ir, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			source, err := NewTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
+			source, err := newTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
 				&Config{
 					Namespace:                defaultTraefikNamespace,
 					AnnotationFilter:         "kubernetes.io/ingress.class=traefik",
@@ -829,7 +829,7 @@ func TestTraefikProxyIngressRouteUDPEndpoints(t *testing.T) {
 			_, err = fakeDynamicClient.Resource(ingressRouteUDPGVR).Namespace(defaultTraefikNamespace).Create(t.Context(), &ir, metav1.CreateOptions{})
 			assert.NoError(t, err)
 
-			source, err := NewTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
+			source, err := newTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
 				&Config{
 					Namespace:                defaultTraefikNamespace,
 					AnnotationFilter:         "kubernetes.io/ingress.class=traefik",
@@ -1162,7 +1162,7 @@ func TestTraefikProxyOldIngressRouteEndpoints(t *testing.T) {
 			_, err = fakeDynamicClient.Resource(oldIngressRouteGVR).Namespace(defaultTraefikNamespace).Create(t.Context(), &ir, metav1.CreateOptions{})
 			assert.NoError(t, err)
 
-			source, err := NewTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
+			source, err := newTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
 				&Config{
 					Namespace:                defaultTraefikNamespace,
 					AnnotationFilter:         "kubernetes.io/ingress.class=traefik",
@@ -1460,7 +1460,7 @@ func TestTraefikProxyOldIngressRouteTCPEndpoints(t *testing.T) {
 			_, err = fakeDynamicClient.Resource(oldIngressRouteTCPGVR).Namespace(defaultTraefikNamespace).Create(t.Context(), &ir, metav1.CreateOptions{})
 			assert.NoError(t, err)
 
-			source, err := NewTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
+			source, err := newTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
 				&Config{
 					Namespace:                defaultTraefikNamespace,
 					AnnotationFilter:         "kubernetes.io/ingress.class=traefik",
@@ -1606,7 +1606,7 @@ func TestTraefikProxyOldIngressRouteUDPEndpoints(t *testing.T) {
 			_, err = fakeDynamicClient.Resource(oldIngressRouteUDPGVR).Namespace(defaultTraefikNamespace).Create(t.Context(), &ir, metav1.CreateOptions{})
 			assert.NoError(t, err)
 
-			source, err := NewTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
+			source, err := newTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
 				&Config{
 					Namespace:                defaultTraefikNamespace,
 					AnnotationFilter:         "kubernetes.io/ingress.class=traefik",
@@ -1773,7 +1773,7 @@ func TestTraefikAPIGroupFlags(t *testing.T) {
 			_, err = fakeDynamicClient.Resource(ti.gvr).Namespace(defaultTraefikNamespace).Create(t.Context(), &ir, metav1.CreateOptions{})
 			assert.NoError(t, err)
 
-			source, err := NewTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
+			source, err := newTraefikSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
 				&Config{
 					Namespace:                defaultTraefikNamespace,
 					AnnotationFilter:         "kubernetes.io/ingress.class=traefik",

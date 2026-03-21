@@ -145,8 +145,21 @@ type glooSource struct {
 	glooNamespaces []string
 }
 
-// NewGlooSource creates a new glooSource with the given config
-func NewGlooSource(
+// NewGlooProxy creates a gloo proxy source using the provided ClientGenerator.
+func NewGlooProxy(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	kubeClient, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	dynamicClient, err := p.DynamicKubernetesClient()
+	if err != nil {
+		return nil, err
+	}
+	return newGlooSource(ctx, dynamicClient, kubeClient, cfg)
+}
+
+// newGlooSource creates a new glooSource with the given config
+func newGlooSource(
 	ctx context.Context,
 	dynamicKubeClient dynamic.Interface,
 	kubeClient kubernetes.Interface,

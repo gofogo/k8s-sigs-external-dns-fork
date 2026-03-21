@@ -128,7 +128,7 @@ func testConnectorSourceEndpoints(t *testing.T) {
 				defer ln.Close()
 				addr = ln.Addr().String()
 			}
-			cs, _ := NewConnectorSource(addr)
+			cs, _ := newConnectorSource(addr)
 
 			endpoints, err := cs.Endpoints(t.Context())
 			if ti.expectError {
