@@ -98,6 +98,7 @@ func svcInformerWithServices(toLookup, underTest int) (coreinformers.ServiceInfo
 	if err != nil {
 		return nil, fmt.Errorf("failed to add event handler: %w", err)
 	}
+	informers.MustAddIndexers(svcInformer.Informer(), informers.IndexerSpecSelectorEntries())
 
 	services := fixturesSvcWithLabels(toLookup, underTest)
 	for _, svc := range services {

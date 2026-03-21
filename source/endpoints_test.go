@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/source/informers"
 )
 
 func TestEndpointTargetsFromServices(t *testing.T) {
@@ -208,6 +209,94 @@ func TestEndpointTargetsFromServices(t *testing.T) {
 			},
 			expected: endpoint.Targets{"158.123.32.23"},
 		},
+		{
+			// Gateway selector is a SUPERSET of the service selector: the service is
+			// missing a label the gateway requires. The index returns the service as a
+			// candidate (it has the first queried k=v), but MatchesServiceSelector must
+			// reject it because the remaining required label is absent.
+			name: "gateway selector is superset of service selector — no match",
+			services: []*corev1.Service{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "igw", Namespace: "default"},
+					Spec: corev1.ServiceSpec{
+						Selector:    map[string]string{"istio": "ingressgateway"},
+						ExternalIPs: []string{"10.0.0.1"},
+					},
+				},
+			},
+			namespace: "default",
+			selector:  map[string]string{"istio": "ingressgateway", "app": "required"},
+			expected:  endpoint.Targets{},
+		},
+		{
+			// Reproduces the bug from PR #5708: the gateway selector is a strict subset of
+			// the service's spec.selector. A hash-of-full-selector index would miss this.
+			name: "gateway selector is subset of service selector",
+			services: []*corev1.Service{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "igw",
+						Namespace: "default",
+					},
+					Spec: corev1.ServiceSpec{
+						Selector:    map[string]string{"istio": "ingressgateway", "release": "istio"},
+						ExternalIPs: []string{"10.0.0.1"},
+					},
+				},
+			},
+			namespace: "default",
+			selector:  map[string]string{"istio": "ingressgateway"},
+			expected:  endpoint.Targets{"10.0.0.1"},
+		},
+		{
+			// Two services share the same first index entry ("istio=ingressgateway") but
+			// only one satisfies the full gateway selector. Validates that MatchesServiceSelector
+			// correctly eliminates the false positive returned by the index.
+			name: "index returns multiple candidates, post-filter eliminates false positives",
+			services: []*corev1.Service{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "igw-a", Namespace: "default"},
+					Spec: corev1.ServiceSpec{
+						Selector:    map[string]string{"istio": "ingressgateway", "app": "foo"},
+						ExternalIPs: []string{"10.0.0.1"},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "igw-b", Namespace: "default"},
+					Spec: corev1.ServiceSpec{
+						Selector:    map[string]string{"istio": "ingressgateway", "app": "bar"},
+						ExternalIPs: []string{"10.0.0.2"},
+					},
+				},
+			},
+			namespace: "default",
+			selector:  map[string]string{"istio": "ingressgateway", "app": "foo"},
+			expected:  endpoint.Targets{"10.0.0.1"},
+		},
+		{
+			// Empty gateway selector takes the lister path (no index key to query) and
+			// returns all services in the namespace — same behaviour as MatchesServiceSelector({}, _) = true.
+			name: "empty selector returns all services",
+			services: []*corev1.Service{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "svc-a", Namespace: "default"},
+					Spec: corev1.ServiceSpec{
+						Selector:    map[string]string{"app": "foo"},
+						ExternalIPs: []string{"10.0.0.1"},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "svc-b", Namespace: "default"},
+					Spec: corev1.ServiceSpec{
+						Selector:    map[string]string{"app": "bar"},
+						ExternalIPs: []string{"10.0.0.2"},
+					},
+				},
+			},
+			namespace: "default",
+			selector:  map[string]string{},
+			expected:  endpoint.Targets{"10.0.0.1", "10.0.0.2"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -216,6 +305,7 @@ func TestEndpointTargetsFromServices(t *testing.T) {
 			informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, 0,
 				kubeinformers.WithNamespace(tt.namespace))
 			serviceInformer := informerFactory.Core().V1().Services()
+			informers.MustAddIndexers(serviceInformer.Informer(), informers.IndexerSpecSelectorEntries())
 
 			for _, svc := range tt.services {
 				_, err := client.CoreV1().Services(tt.namespace).Create(t.Context(), svc, metav1.CreateOptions{})
@@ -234,6 +324,67 @@ func TestEndpointTargetsFromServices(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestEndpointTargetsFromServices_SelectorEntryOrder verifies that the result is
+// stable regardless of which key-value pair happens to be chosen first from the
+// gateway selector map (Go map iteration is randomised per run).
+//
+// Two execution paths exist for selector {istio: ingressgateway, app: gateway}:
+//   - firstEntry = "istio=ingressgateway": index returns svcA + svcB (both have that
+//     entry); MatchesServiceSelector then eliminates svcB ("app" mismatch) → {svcA}
+//   - firstEntry = "app=gateway":          index returns only svcA;
+//     MatchesServiceSelector passes → {svcA}
+//
+// Both paths must produce the same result. Running 50 iterations exercises the
+// randomised map order enough to hit both paths with high probability.
+func TestEndpointTargetsFromServices_SelectorEntryOrder(t *testing.T) {
+	client := fake.NewClientset()
+	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, 0,
+		kubeinformers.WithNamespace("default"))
+	serviceInformer := informerFactory.Core().V1().Services()
+	informers.MustAddIndexers(serviceInformer.Informer(), informers.IndexerSpecSelectorEntries())
+
+	for _, svc := range []*corev1.Service{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "igw-a", Namespace: "default"},
+			Spec: corev1.ServiceSpec{
+				Selector:    map[string]string{"istio": "ingressgateway", "app": "gateway"},
+				ExternalIPs: []string{"10.0.0.1"},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "igw-b", Namespace: "default"},
+			Spec: corev1.ServiceSpec{
+				Selector:    map[string]string{"istio": "ingressgateway", "app": "other"},
+				ExternalIPs: []string{"10.0.0.2"},
+			},
+		},
+	} {
+		assert.NoError(t, serviceInformer.Informer().GetIndexer().Add(svc))
+	}
+
+	gwSelector := map[string]string{"istio": "ingressgateway", "app": "gateway"}
+	for range 50 {
+		result, err := EndpointTargetsFromServices(serviceInformer, "default", gwSelector)
+		assert.NoError(t, err)
+		assert.Equal(t, endpoint.Targets{"10.0.0.1"}, result, "result must be stable across map iteration orders")
+	}
+}
+
+func TestEndpointTargetsFromServices_IndexNotRegistered(t *testing.T) {
+	// If the caller forgets to register IndexerSpecSelectorEntries, ByIndex returns
+	// an "index not found" error for any non-empty selector. This test documents that
+	// the error propagates rather than silently returning empty results.
+	client := fake.NewClientset()
+	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(client, 0,
+		kubeinformers.WithNamespace("default"))
+	serviceInformer := informerFactory.Core().V1().Services()
+	// intentionally no MustAddIndexers call
+
+	_, err := EndpointTargetsFromServices(serviceInformer, "default", map[string]string{"app": "nginx"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "spec.selector.entry")
 }
 
 func TestEndpointTargetsFromServicesWithFixtures(t *testing.T) {

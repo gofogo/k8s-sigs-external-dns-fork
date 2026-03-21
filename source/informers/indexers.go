@@ -17,6 +17,7 @@ import (
 	"fmt"
 
 	log "github.com/sirupsen/logrus"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -26,7 +27,8 @@ import (
 )
 
 const (
-	IndexWithSelectors = "withSelectors"
+	IndexWithSelectors        = "withSelectors"
+	IndexWithSpecSelectorEntry = "spec.selector.entry"
 )
 
 type IndexSelectorOptions struct {
@@ -113,6 +115,28 @@ func IndexerWithOptions[T metav1.Object](optFns ...func(options *IndexSelectorOp
 			}
 			key := types.NamespacedName{Namespace: entity.GetNamespace(), Name: name}.String()
 			return []string{key}, nil
+		},
+	}
+}
+
+// IndexerSpecSelectorEntries returns a cache.Indexers map that indexes Service objects by
+// each individual "key=value" entry in their spec.selector. A service with selector
+// {a: x, b: y} is stored under both "a=x" and "b=y", so a lookup for "a=x" returns all
+// services whose selector contains that pair — regardless of any additional pairs. This
+// makes it possible to implement the subset-match semantics of MatchesServiceSelector
+// (gwSelector ⊆ svc.Spec.Selector) with an O(1) index lookup rather than an O(n) scan.
+func IndexerSpecSelectorEntries() cache.Indexers {
+	return cache.Indexers{
+		IndexWithSpecSelectorEntry: func(obj any) ([]string, error) {
+			svc, ok := obj.(*corev1.Service)
+			if !ok {
+				return nil, nil
+			}
+			keys := make([]string, 0, len(svc.Spec.Selector))
+			for k, v := range svc.Spec.Selector {
+				keys = append(keys, k+"="+v)
+			}
+			return keys, nil
 		},
 	}
 }

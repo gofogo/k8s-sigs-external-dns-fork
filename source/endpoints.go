@@ -16,10 +16,12 @@ package source
 import (
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/source/informers"
 )
 
 // EndpointTargetsFromServices retrieves endpoint targets from services in a given namespace
@@ -29,10 +31,38 @@ import (
 func EndpointTargetsFromServices(svcInformer coreinformers.ServiceInformer, namespace string, selector map[string]string) (endpoint.Targets, error) {
 	targets := endpoint.Targets{}
 
-	services, err := svcInformer.Lister().Services(namespace).List(labels.Everything())
+	var services []*corev1.Service
 
-	if err != nil {
-		return nil, fmt.Errorf("failed to list labels for services in namespace %q: %w", namespace, err)
+	if len(selector) == 0 {
+		// Empty selector matches all services; use the lister (no index key to query).
+		all, err := svcInformer.Lister().Services(namespace).List(labels.Everything())
+		if err != nil {
+			return nil, fmt.Errorf("failed to list services in namespace %q: %w", namespace, err)
+		}
+		services = all
+	} else {
+		// Pick any single k=v entry from the selector and use the per-entry index to
+		// retrieve candidate services. The index stores one entry per k=v pair in each
+		// service's spec.selector, so this returns all services that contain the queried
+		// pair — a strict superset of the final match set. MatchesServiceSelector then
+		// handles multi-pair selectors by verifying the remaining pairs.
+		var firstEntry string
+		for k, v := range selector {
+			firstEntry = k + "=" + v
+			break
+		}
+		objs, err := svcInformer.Informer().GetIndexer().ByIndex(informers.IndexWithSpecSelectorEntry, firstEntry)
+		if err != nil {
+			return nil, fmt.Errorf("failed to look up services by selector entry %q in namespace %q: %w", firstEntry, namespace, err)
+		}
+		services = make([]*corev1.Service, 0, len(objs))
+		for _, obj := range objs {
+			svc, ok := obj.(*corev1.Service)
+			if !ok {
+				continue
+			}
+			services = append(services, svc)
+		}
 	}
 
 	for _, service := range services {
