@@ -16,9 +16,11 @@ package source
 import (
 	"testing"
 
+	"sigs.k8s.io/external-dns/internal/testutils"
+
 	"github.com/stretchr/testify/require"
 	istionetworking "istio.io/api/networking/v1beta1"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,11 +68,10 @@ func TestIstioVirtualServiceSourceNewSourceWithFqdn(t *testing.T) {
 }
 
 func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
-	annotations.SetAnnotationPrefix("external-dns.alpha.kubernetes.io/")
 	for _, tt := range []struct {
 		title           string
-		virtualServices []*networkingv1beta1.VirtualService
-		gateways        []*networkingv1beta1.Gateway
+		virtualServices []*networkingv1.VirtualService
+		gateways        []*networkingv1.Gateway
 		services        []*v1.Service
 		fqdnTemplate    string
 		combineFqdn     bool
@@ -83,7 +84,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				{DNSName: "app.example.org", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"1.2.3.4"}},
 				{DNSName: "my-virtualservice.test.com", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"1.2.3.4"}},
 			},
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "my-virtualservice",
@@ -95,7 +96,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 					},
 				},
 			},
-			gateways: []*networkingv1beta1.Gateway{
+			gateways: []*networkingv1.Gateway{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "my-gateway",
@@ -135,7 +136,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				{DNSName: "app.example.org", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"1.2.3.4"}},
 			},
 			combineFqdn: true,
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "my-virtualservice",
@@ -147,7 +148,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 					},
 				},
 			},
-			gateways: []*networkingv1beta1.Gateway{
+			gateways: []*networkingv1.Gateway{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "my-gateway",
@@ -189,7 +190,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				{DNSName: "web.example.org", RecordType: endpoint.RecordTypeAAAA, Targets: endpoint.Targets{"::ffff:192.1.56.10"}},
 				{DNSName: "web-service.staging.cluster.local", RecordType: endpoint.RecordTypeAAAA, Targets: endpoint.Targets{"::ffff:192.1.56.10"}},
 			},
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "api-service",
@@ -211,7 +212,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 					},
 				},
 			},
-			gateways: []*networkingv1beta1.Gateway{
+			gateways: []*networkingv1.Gateway{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "api-gateway",
@@ -279,7 +280,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				{DNSName: "multi-host.example.com", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"10.0.0.1"}},
 				{DNSName: "multi-host.example.org", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"10.0.0.1"}},
 			},
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "multi-host",
@@ -290,7 +291,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 					},
 				},
 			},
-			gateways: []*networkingv1beta1.Gateway{
+			gateways: []*networkingv1.Gateway{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "my-gateway",
@@ -330,7 +331,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				{DNSName: "app.example.org", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"172.16.0.1"}},
 				{DNSName: "combined-vs.internal.example.com", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"172.16.0.1"}},
 			},
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "combined-vs",
@@ -342,7 +343,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 					},
 				},
 			},
-			gateways: []*networkingv1beta1.Gateway{
+			gateways: []*networkingv1.Gateway{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "my-gateway",
@@ -381,7 +382,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 			expected: []*endpoint.Endpoint{
 				{DNSName: "labeled-vs.dev.ex", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"172.16.0.1"}},
 			},
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "labeled-vs",
@@ -404,7 +405,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 					},
 				},
 			},
-			gateways: []*networkingv1beta1.Gateway{
+			gateways: []*networkingv1.Gateway{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "my-gateway",
@@ -443,7 +444,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				{DNSName: "cross-ns.example.org", RecordType: endpoint.RecordTypeCNAME, Targets: endpoint.Targets{"lb.example.com"}},
 				{DNSName: "cross-ns-vs.app-namespace.svc.cluster.local", RecordType: endpoint.RecordTypeCNAME, Targets: endpoint.Targets{"lb.example.com"}},
 			},
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "cross-ns-vs",
@@ -455,7 +456,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 					},
 				},
 			},
-			gateways: []*networkingv1beta1.Gateway{
+			gateways: []*networkingv1.Gateway{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "shared-gateway",
@@ -497,7 +498,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				{DNSName: "app3.example.org", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"192.168.1.100"}},
 				{DNSName: "multi-host-vs.internal.local", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"192.168.1.100"}},
 			},
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "multi-host-vs",
@@ -509,7 +510,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 					},
 				},
 			},
-			gateways: []*networkingv1beta1.Gateway{
+			gateways: []*networkingv1.Gateway{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "my-gateway",
@@ -548,7 +549,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 			expected: []*endpoint.Endpoint{
 				{DNSName: "orphan.example.org", RecordType: endpoint.RecordTypeCNAME, Targets: endpoint.Targets{"fallback.local"}},
 			},
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "orphan-vs",
@@ -570,7 +571,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 			expected: []*endpoint.Endpoint{
 				{DNSName: "api-v2.company.local", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"192.168.1.100"}},
 			},
-			virtualServices: []*networkingv1beta1.VirtualService{
+			virtualServices: []*networkingv1.VirtualService{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "annotated-vs",
@@ -585,7 +586,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 					},
 				},
 			},
-			gateways: []*networkingv1beta1.Gateway{
+			gateways: []*networkingv1.Gateway{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "my-gateway",
@@ -617,6 +618,93 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				},
 			},
 		},
+		{
+			title:        "Kind=VirtualService matches — FQDN generated from template",
+			fqdnTemplate: `{{if eq .Kind "VirtualService"}}{{.Name}}.vs.example.com{{end}}`,
+			expected: []*endpoint.Endpoint{
+				{DNSName: "app.example.org", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"1.2.3.4"}},
+				{DNSName: "my-virtualservice.vs.example.com", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"1.2.3.4"}},
+			},
+			virtualServices: []*networkingv1.VirtualService{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "my-virtualservice", Namespace: "default"},
+					Spec: istionetworking.VirtualService{
+						Hosts:    []string{"app.example.org"},
+						Gateways: []string{"my-gateway"},
+					},
+				},
+			},
+			gateways: []*networkingv1.Gateway{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "my-gateway", Namespace: "default"},
+					Spec: istionetworking.Gateway{
+						Selector: map[string]string{"istio": "ingressgateway"},
+						Servers:  []*istionetworking.Server{{Hosts: []string{"*"}}},
+					},
+				},
+			},
+			services: []*v1.Service{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "istio-ingressgateway",
+						Namespace: "default",
+						Labels:    map[string]string{"istio": "ingressgateway"},
+					},
+					Spec: v1.ServiceSpec{
+						Type:     v1.ServiceTypeLoadBalancer,
+						Selector: map[string]string{"istio": "ingressgateway"},
+					},
+					Status: v1.ServiceStatus{
+						LoadBalancer: v1.LoadBalancerStatus{
+							Ingress: []v1.LoadBalancerIngress{{IP: "1.2.3.4"}},
+						},
+					},
+				},
+			},
+		},
+		{
+			title:        "Kind=Service does not match VirtualService — no FQDN from template",
+			fqdnTemplate: `{{if eq .Kind "Service"}}{{.Name}}.svc.example.com{{end}}`,
+			expected: []*endpoint.Endpoint{
+				{DNSName: "app.example.org", RecordType: endpoint.RecordTypeA, Targets: endpoint.Targets{"1.2.3.4"}},
+			},
+			virtualServices: []*networkingv1.VirtualService{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "my-virtualservice", Namespace: "default"},
+					Spec: istionetworking.VirtualService{
+						Hosts:    []string{"app.example.org"},
+						Gateways: []string{"my-gateway"},
+					},
+				},
+			},
+			gateways: []*networkingv1.Gateway{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "my-gateway", Namespace: "default"},
+					Spec: istionetworking.Gateway{
+						Selector: map[string]string{"istio": "ingressgateway"},
+						Servers:  []*istionetworking.Server{{Hosts: []string{"*"}}},
+					},
+				},
+			},
+			services: []*v1.Service{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "istio-ingressgateway",
+						Namespace: "default",
+						Labels:    map[string]string{"istio": "ingressgateway"},
+					},
+					Spec: v1.ServiceSpec{
+						Type:     v1.ServiceTypeLoadBalancer,
+						Selector: map[string]string{"istio": "ingressgateway"},
+					},
+					Status: v1.ServiceStatus{
+						LoadBalancer: v1.LoadBalancerStatus{
+							Ingress: []v1.LoadBalancerIngress{{IP: "1.2.3.4"}},
+						},
+					},
+				},
+			},
+		},
 	} {
 		t.Run(tt.title, func(t *testing.T) {
 			kubeClient := fake.NewClientset()
@@ -628,12 +716,12 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 			}
 
 			for _, gw := range tt.gateways {
-				_, err := istioClient.NetworkingV1beta1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
+				_, err := istioClient.NetworkingV1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
 				require.NoError(t, err)
 			}
 
 			for _, vs := range tt.virtualServices {
-				_, err := istioClient.NetworkingV1beta1().VirtualServices(vs.Namespace).Create(t.Context(), vs, metav1.CreateOptions{})
+				_, err := istioClient.NetworkingV1().VirtualServices(vs.Namespace).Create(t.Context(), vs, metav1.CreateOptions{})
 				require.NoError(t, err)
 			}
 
@@ -653,7 +741,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 			endpoints, err := src.Endpoints(t.Context())
 			require.NoError(t, err)
 
-			validateEndpoints(t, endpoints, tt.expected)
+			testutils.ValidateEndpoints(t, endpoints, tt.expected)
 		})
 	}
 }

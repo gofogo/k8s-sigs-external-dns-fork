@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	istionetworking "istio.io/api/networking/v1beta1"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
 	v1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
@@ -468,7 +468,7 @@ func testEndpointsFromGatewayConfig(t *testing.T) {
 			hostnames := source.hostNamesFromGateway(gatewayCfg)
 			endpoints, err := source.endpointsFromGateway(hostnames, gatewayCfg)
 			require.NoError(t, err)
-			validateEndpoints(t, endpoints, ti.expected)
+			testutils.ValidateEndpoints(t, endpoints, ti.expected)
 		})
 	}
 }
@@ -1461,7 +1461,7 @@ func testGatewayEndpoints(t *testing.T) {
 			fakeIstioClient := istiofake.NewSimpleClientset()
 			for _, config := range ti.configItems {
 				gatewayCfg := config.Config()
-				_, err := fakeIstioClient.NetworkingV1beta1().Gateways(ti.targetNamespace).Create(t.Context(), gatewayCfg, metav1.CreateOptions{})
+				_, err := fakeIstioClient.NetworkingV1().Gateways(ti.targetNamespace).Create(t.Context(), gatewayCfg, metav1.CreateOptions{})
 				require.NoError(t, err)
 			}
 
@@ -1485,7 +1485,7 @@ func testGatewayEndpoints(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			validateEndpoints(t, res, ti.expected)
+			testutils.ValidateEndpoints(t, res, ti.expected)
 		})
 	}
 }
@@ -1561,7 +1561,7 @@ func TestGatewaySource_GWSelectorMatchServiceSelector(t *testing.T) {
 			_, err := fakeKubeClient.CoreV1().Services(svc.Namespace).Create(t.Context(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			gw := &networkingv1beta1.Gateway{
+			gw := &networkingv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "fake-gateway",
 					Namespace: "default",
@@ -1576,7 +1576,7 @@ func TestGatewaySource_GWSelectorMatchServiceSelector(t *testing.T) {
 				},
 			}
 
-			_, err = fakeIstioClient.NetworkingV1beta1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
+			_, err = fakeIstioClient.NetworkingV1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
 			require.NoError(t, err)
 
 			src, err := NewIstioGatewaySource(
@@ -1591,7 +1591,7 @@ func TestGatewaySource_GWSelectorMatchServiceSelector(t *testing.T) {
 			res, err := src.Endpoints(t.Context())
 			require.NoError(t, err)
 
-			validateEndpoints(t, res, tt.expected)
+			testutils.ValidateEndpoints(t, res, tt.expected)
 		})
 	}
 }
@@ -1698,7 +1698,7 @@ func TestTransformerInIstioGatewaySource(t *testing.T) {
 	})
 
 	t.Run("gateway strips managed fields", func(t *testing.T) {
-		gw := &networkingv1beta1.Gateway{
+		gw := &networkingv1.Gateway{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-gateway",
 				Namespace: "default",
@@ -1714,7 +1714,7 @@ func TestTransformerInIstioGatewaySource(t *testing.T) {
 			},
 		}
 		istioClient := istiofake.NewSimpleClientset()
-		_, err := istioClient.NetworkingV1beta1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
+		_, err := istioClient.NetworkingV1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
 		require.NoError(t, err)
 		gs := newSource(t, fake.NewClientset(), istioClient)
 
@@ -1734,7 +1734,7 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 	fakeKubeClient := fake.NewClientset()
 	fakeIstioClient := istiofake.NewSimpleClientset()
 
-	gw := &networkingv1beta1.Gateway{
+	gw := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "argocd",
 			Namespace: "argocd",
@@ -1855,7 +1855,7 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	_, err := fakeIstioClient.NetworkingV1beta1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
+	_, err := fakeIstioClient.NetworkingV1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
 	require.NoError(t, err)
 
 	src, err := NewIstioGatewaySource(
@@ -1870,7 +1870,7 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 	got, err := src.Endpoints(t.Context())
 	require.NoError(t, err)
 
-	validateEndpoints(t, got, []*endpoint.Endpoint{
+	testutils.ValidateEndpoints(t, got, []*endpoint.Endpoint{
 		endpoint.NewEndpoint("example.org", endpoint.RecordTypeA, "34.66.66.77").WithLabel(endpoint.ResourceLabelKey, "gateway/argocd/argocd"),
 	})
 }
@@ -1963,8 +1963,8 @@ type fakeGatewayConfig struct {
 	selector    map[string]string
 }
 
-func (c fakeGatewayConfig) Config() *networkingv1beta1.Gateway {
-	gw := &networkingv1beta1.Gateway{
+func (c fakeGatewayConfig) Config() *networkingv1.Gateway {
+	gw := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        c.name,
 			Namespace:   c.namespace,
