@@ -29,7 +29,6 @@ import (
 	networkingv1informer "istio.io/client-go/pkg/informers/externalversions/networking/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	netinformers "k8s.io/client-go/informers/networking/v1"
@@ -56,15 +55,12 @@ var IstioGatewayIngressSource = annotations.Ingress
 // +externaldns:source:category=Service Mesh
 // +externaldns:source:description=Creates DNS entries from Istio Gateway resources
 // +externaldns:source:resources=Gateway.networking.istio.io
-// +externaldns:source:filters=annotation
+// +externaldns:source:filters=annotation,label
 // +externaldns:source:namespace=all,single
 // +externaldns:source:fqdn-template=true
 // +externaldns:source:provider-specific=true
 type gatewaySource struct {
-	kubeClient               kubernetes.Interface
-	istioClient              istioclient.Interface
 	namespace                string
-	annotationFilter         string
 	fqdnTemplate             *template.Template
 	combineFQDNAnnotation    bool
 	ignoreHostnameAnnotation bool
@@ -107,6 +103,11 @@ func NewIstioGatewaySource(
 		informers.TransformRemoveLastAppliedConfig(),
 	))
 
+	informers.MustAddIndexers(gatewayInformer.Informer(), informers.IndexerWithOptions[*networkingv1.Gateway](
+		informers.IndexSelectorWithAnnotationFilter(cfg.AnnotationFilter),
+		informers.IndexSelectorWithLabelSelector(cfg.LabelFilter),
+	))
+
 	// Add default resource event handlers to properly initialize informer.
 	informers.MustAddEventHandler(serviceInformer.Informer(), informers.DefaultEventHandler())
 	informers.MustAddEventHandler(ingressInformer.Informer(), informers.DefaultEventHandler())
@@ -124,10 +125,7 @@ func NewIstioGatewaySource(
 	}
 
 	return &gatewaySource{
-		kubeClient:               kubeClient,
-		istioClient:              istioClient,
 		namespace:                cfg.Namespace,
-		annotationFilter:         cfg.AnnotationFilter,
 		fqdnTemplate:             tmpl,
 		combineFQDNAnnotation:    cfg.CombineFQDNAndAnnotation,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
@@ -139,25 +137,20 @@ func NewIstioGatewaySource(
 
 // Endpoints returns endpoint objects for each host-target combination that should be processed.
 // Retrieves all gateway resources in the source's namespace(s).
-func (sc *gatewaySource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, error) {
-	// TODO: replace direct API call with indexer to serve from the local cache
-	// and avoid per-reconciliation round-trips to the API server.
-	gwList, err := sc.istioClient.NetworkingV1().Gateways(sc.namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
+func (sc *gatewaySource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error) {
+	indexer := sc.gatewayInformer.Informer().GetIndexer()
+	indexKeys := indexer.ListIndexFuncValues(informers.IndexWithSelectors)
 
-	gateways := gwList.Items
-	gateways, err = annotations.Filter(gateways, sc.annotationFilter)
-	if err != nil {
-		return nil, err
-	}
+	endpoints := make([]*endpoint.Endpoint, 0, len(indexKeys))
 
-	var endpoints []*endpoint.Endpoint
+	log.Debugf("Found %d gateways in namespace %s", len(indexKeys), sc.namespace)
 
-	log.Debugf("Found %d gateways in namespace %s", len(gateways), sc.namespace)
+	for _, key := range indexKeys {
+		gateway, err := informers.GetByKey[*networkingv1.Gateway](indexer, key)
+		if err != nil || gateway == nil {
+			continue
+		}
 
-	for _, gateway := range gateways {
 		if annotations.IsControllerMismatch(gateway, types.IstioGateway) {
 			continue
 		}
