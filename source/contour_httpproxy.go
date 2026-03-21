@@ -71,7 +71,7 @@ func NewContourHTTPProxySource(
 	httpProxyInformer := informerFactory.ForResource(projectcontour.HTTPProxyGVR)
 
 	// Add default resource event handlers to properly initialize informer.
-	_, _ = httpProxyInformer.Informer().AddEventHandler(informers.DefaultEventHandler())
+	informers.MustAddEventHandler(httpProxyInformer.Informer(), informers.DefaultEventHandler())
 
 	informerFactory.Start(ctx.Done())
 
@@ -229,5 +229,5 @@ func (sc *httpProxySource) AddEventHandler(_ context.Context, handler func()) {
 
 	// Right now there is no way to remove event handler from informer, see:
 	// https://github.com/kubernetes/kubernetes/issues/79610
-	_, _ = sc.httpProxyInformer.Informer().AddEventHandler(eventHandlerFunc(handler))
+	informers.MustAddEventHandler(sc.httpProxyInformer.Informer(), eventHandlerFunc(handler))
 }
