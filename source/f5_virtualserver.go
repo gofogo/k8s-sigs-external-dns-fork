@@ -64,7 +64,21 @@ type f5VirtualServerSource struct {
 	unstructuredConverter *unstructuredConverter
 }
 
-func NewF5VirtualServerSource(
+// NewF5VirtualServer creates an F5 virtual server source using the provided ClientGenerator.
+func NewF5VirtualServer(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	kubeClient, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	dynamicClient, err := p.DynamicKubernetesClient()
+	if err != nil {
+		return nil, err
+	}
+	return newF5VirtualServerSource(ctx, dynamicClient, kubeClient, cfg)
+}
+
+// newF5VirtualServerSource creates a new f5VirtualServerSource with the given config.
+func newF5VirtualServerSource(
 	ctx context.Context,
 	dynamicKubeClient dynamic.Interface,
 	kubeClient kubernetes.Interface,

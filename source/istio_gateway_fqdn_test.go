@@ -59,7 +59,7 @@ func TestIstioGatewaySourceNewSourceWithFqdn(t *testing.T) {
 		},
 	} {
 		t.Run(tt.title, func(t *testing.T) {
-			_, err := NewIstioGatewaySource(
+			_, err := newIstioGatewaySource(
 				t.Context(),
 				fake.NewClientset(),
 				istiofake.NewSimpleClientset(),
@@ -501,7 +501,7 @@ func TestIstioGatewaySourceFqdnTemplatingExamples(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			src, err := NewIstioGatewaySource(
+			src, err := newIstioGatewaySource(
 				t.Context(),
 				kubeClient,
 				istioClient,

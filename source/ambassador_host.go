@@ -77,8 +77,21 @@ type ambassadorHostSource struct {
 	labelSelector          labels.Selector
 }
 
-// NewAmbassadorHostSource creates a new ambassadorHostSource with the given config.
-func NewAmbassadorHostSource(
+// NewAmbassadorHost creates an ambassador host source using the provided ClientGenerator.
+func NewAmbassadorHost(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	kubeClient, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	dynamicClient, err := p.DynamicKubernetesClient()
+	if err != nil {
+		return nil, err
+	}
+	return newAmbassadorHostSource(ctx, dynamicClient, kubeClient, cfg)
+}
+
+// newAmbassadorHostSource creates a new ambassadorHostSource with the given config.
+func newAmbassadorHostSource(
 	ctx context.Context,
 	dynamicKubeClient dynamic.Interface,
 	kubeClient kubernetes.Interface,

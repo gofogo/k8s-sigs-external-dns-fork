@@ -58,7 +58,7 @@ func (suite *IngressSuite) SetupTest() {
 	_, err := fakeClient.NetworkingV1().Ingresses(suite.fooWithTargets.Namespace).Create(context.Background(), suite.fooWithTargets, metav1.CreateOptions{})
 	suite.NoError(err, "should succeed")
 
-	suite.sc, err = NewIngressSource(
+	suite.sc, err = newIngressSource(
 		context.TODO(),
 		fakeClient,
 		&Config{
@@ -117,7 +117,7 @@ func TestNewIngressSource(t *testing.T) {
 		t.Run(ti.title, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := NewIngressSource(
+			_, err := newIngressSource(
 				t.Context(),
 				fake.NewClientset(),
 				&Config{
@@ -1411,7 +1411,7 @@ func testIngressEndpoints(t *testing.T) {
 				ti.ingressLabelSelector = labels.Everything()
 			}
 
-			source, _ := NewIngressSource(
+			source, _ := newIngressSource(
 				t.Context(),
 				fakeClient,
 				&Config{
@@ -1735,7 +1735,7 @@ func TestIngressWithConfiguration(t *testing.T) {
 			}
 			tt.cfg.LabelFilter = labels.Everything()
 
-			src, err := NewIngressSource(
+			src, err := newIngressSource(
 				t.Context(),
 				kubeClient,
 				tt.cfg,
@@ -1774,7 +1774,7 @@ func TestProcessEndpoint_Ingress_RefObjectExist(t *testing.T) {
 
 	fakeClient := fake.NewClientset(elements...)
 
-	client, err := NewIngressSource(
+	client, err := newIngressSource(
 		t.Context(),
 		fakeClient,
 		&Config{

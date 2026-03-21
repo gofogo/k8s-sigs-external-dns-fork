@@ -886,7 +886,7 @@ func TestServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				LabelFilter:                    labels.Everything(),
 			}
 
-			src, err := NewServiceSource(
+			src, err := newServiceSource(
 				t.Context(),
 				kubeClient,
 				cfg,

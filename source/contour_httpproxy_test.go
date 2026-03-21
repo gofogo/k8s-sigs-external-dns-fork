@@ -89,7 +89,7 @@ func (suite *HTTPProxySuite) SetupTest() {
 	fakeDynamicClient, s := newDynamicKubernetesClient()
 	var err error
 
-	suite.source, err = NewContourHTTPProxySource(
+	suite.source, err = newContourHTTPProxySource(
 		context.TODO(),
 		fakeDynamicClient,
 		&Config{
@@ -185,7 +185,7 @@ func TestNewContourHTTPProxySource(t *testing.T) {
 
 			fakeDynamicClient, _ := newDynamicKubernetesClient()
 
-			_, err := NewContourHTTPProxySource(
+			_, err := newContourHTTPProxySource(
 				t.Context(),
 				fakeDynamicClient,
 				&Config{
@@ -1073,7 +1073,7 @@ func testHTTPProxyEndpoints(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			httpProxySource, err := NewContourHTTPProxySource(
+			httpProxySource, err := newContourHTTPProxySource(
 				t.Context(),
 				fakeDynamicClient,
 				&Config{
@@ -1102,7 +1102,7 @@ func testHTTPProxyEndpoints(t *testing.T) {
 func newTestHTTPProxySource() (*httpProxySource, error) {
 	fakeDynamicClient, _ := newDynamicKubernetesClient()
 
-	src, err := NewContourHTTPProxySource(
+	src, err := newContourHTTPProxySource(
 		context.TODO(),
 		fakeDynamicClient,
 		&Config{

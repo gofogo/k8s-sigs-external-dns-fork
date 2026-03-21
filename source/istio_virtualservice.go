@@ -74,8 +74,21 @@ type virtualServiceSource struct {
 	ingressInformer          netinformers.IngressInformer
 }
 
-// NewIstioVirtualServiceSource creates a new virtualServiceSource with the given config.
-func NewIstioVirtualServiceSource(
+// NewIstioVirtualService creates an Istio virtual service source using the provided ClientGenerator.
+func NewIstioVirtualService(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	kubeClient, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	istioClient, err := p.IstioClient()
+	if err != nil {
+		return nil, err
+	}
+	return newIstioVirtualServiceSource(ctx, kubeClient, istioClient, cfg)
+}
+
+// newIstioVirtualServiceSource creates a new virtualServiceSource with the given config.
+func newIstioVirtualServiceSource(
 	ctx context.Context,
 	kubeClient kubernetes.Interface,
 	istioClient istioclient.Interface,

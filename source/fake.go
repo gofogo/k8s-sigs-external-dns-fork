@@ -54,8 +54,13 @@ const (
 	defaultFQDNTemplate = "example.com"
 )
 
-// NewFakeSource creates a new fakeSource with the given config.
-func NewFakeSource(fqdnTemplate string) (Source, error) {
+// NewFake creates a fake source using the provided ClientGenerator.
+func NewFake(_ context.Context, _ ClientGenerator, cfg *Config) (Source, error) {
+	return newFakeSource(cfg.FQDNTemplate)
+}
+
+// newFakeSource creates a new fakeSource with the given config.
+func newFakeSource(fqdnTemplate string) (Source, error) {
 	if fqdnTemplate == "" {
 		fqdnTemplate = defaultFQDNTemplate
 	}

@@ -65,8 +65,17 @@ type podSource struct {
 	podSourceDomain          string
 }
 
-// NewPodSource creates a new podSource with the given config.
-func NewPodSource(
+// NewPod creates a pod source using the provided ClientGenerator.
+func NewPod(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	client, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	return newPodSource(ctx, client, cfg)
+}
+
+// newPodSource creates a new podSource with the given config.
+func newPodSource(
 	ctx context.Context,
 	kubeClient kubernetes.Interface,
 	cfg *Config,

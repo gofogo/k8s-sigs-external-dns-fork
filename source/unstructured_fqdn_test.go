@@ -831,7 +831,7 @@ func TestUnstructuredFqdnTemplatingExamples(t *testing.T) {
 				selector = labels.Everything()
 			}
 
-			src, err := NewUnstructuredFQDNSource(
+			src, err := newUnstructuredFQDNSource(
 				t.Context(),
 				dynamicClient,
 				kubeClient,

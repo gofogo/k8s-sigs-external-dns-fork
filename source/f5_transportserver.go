@@ -65,7 +65,21 @@ type f5TransportServerSource struct {
 	unstructuredConverter   *unstructuredConverter
 }
 
-func NewF5TransportServerSource(
+// NewF5TransportServer creates an F5 transport server source using the provided ClientGenerator.
+func NewF5TransportServer(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	kubeClient, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	dynamicClient, err := p.DynamicKubernetesClient()
+	if err != nil {
+		return nil, err
+	}
+	return newF5TransportServerSource(ctx, dynamicClient, kubeClient, cfg)
+}
+
+// newF5TransportServerSource creates a new f5TransportServerSource with the given config.
+func newF5TransportServerSource(
 	ctx context.Context,
 	dynamicKubeClient dynamic.Interface,
 	kubeClient kubernetes.Interface,

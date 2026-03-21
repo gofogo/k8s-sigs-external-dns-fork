@@ -58,7 +58,7 @@ func TestIstioVirtualServiceSourceNewSourceWithFqdn(t *testing.T) {
 		},
 	} {
 		t.Run(tt.title, func(t *testing.T) {
-			_, err := NewIstioVirtualServiceSource(
+			_, err := newIstioVirtualServiceSource(
 				t.Context(),
 				fake.NewClientset(),
 				istiofake.NewSimpleClientset(),
@@ -652,7 +652,7 @@ func TestIstioVirtualServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			src, err := NewIstioVirtualServiceSource(
+			src, err := newIstioVirtualServiceSource(
 				t.Context(),
 				kubeClient,
 				istioClient,

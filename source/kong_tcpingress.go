@@ -67,8 +67,21 @@ type kongTCPIngressSource struct {
 	unstructuredConverter    *unstructuredConverter
 }
 
-// NewKongTCPIngressSource creates a new kongTCPIngressSource with the given config.
-func NewKongTCPIngressSource(
+// NewKongTCPIngress creates a Kong TCP ingress source using the provided ClientGenerator.
+func NewKongTCPIngress(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	kubeClient, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	dynamicClient, err := p.DynamicKubernetesClient()
+	if err != nil {
+		return nil, err
+	}
+	return newKongTCPIngressSource(ctx, dynamicClient, kubeClient, cfg)
+}
+
+// newKongTCPIngressSource creates a new kongTCPIngressSource with the given config.
+func newKongTCPIngressSource(
 	ctx context.Context,
 	dynamicKubeClient dynamic.Interface, kubeClient kubernetes.Interface,
 	cfg *Config,

@@ -114,7 +114,7 @@ func (suite *VirtualServiceSuite) SetupTest() {
 	_, err = fakeIstioClient.NetworkingV1beta1().VirtualServices(suite.vsconfig.Namespace).Create(context.Background(), suite.vsconfig, metav1.CreateOptions{})
 	suite.NoError(err, "should succeed")
 
-	suite.source, err = NewIstioVirtualServiceSource(
+	suite.source, err = newIstioVirtualServiceSource(
 		context.TODO(),
 		fakeKubernetesClient,
 		fakeIstioClient,
@@ -189,7 +189,7 @@ func TestNewIstioVirtualServiceSource(t *testing.T) {
 		t.Run(ti.title, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := NewIstioVirtualServiceSource(
+			_, err := newIstioVirtualServiceSource(
 				t.Context(),
 				fake.NewClientset(),
 				istiofake.NewSimpleClientset(),
@@ -2015,7 +2015,7 @@ func testVirtualServiceEndpoints(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			virtualServiceSource, err := NewIstioVirtualServiceSource(
+			virtualServiceSource, err := newIstioVirtualServiceSource(
 				t.Context(),
 				fakeKubernetesClient,
 				fakeIstioClient,
@@ -2103,7 +2103,7 @@ func newTestVirtualServiceSource(loadBalancerList []fakeIngressGatewayService, i
 		}
 	}
 
-	src, err := NewIstioVirtualServiceSource(
+	src, err := newIstioVirtualServiceSource(
 		context.TODO(),
 		fakeKubernetesClient,
 		fakeIstioClient,
@@ -2344,7 +2344,7 @@ func TestIstioVirtualServiceSource_GWServiceSelectorMatchServiceSelector(t *test
 			_, err = fakeIstioClient.NetworkingV1beta1().VirtualServices(gwService.Namespace).Create(t.Context(), gwService, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			src, err := NewIstioVirtualServiceSource(
+			src, err := newIstioVirtualServiceSource(
 				t.Context(),
 				fakeKubeClient,
 				fakeIstioClient,
@@ -2425,7 +2425,7 @@ func TestTransformerInIstioGatewayVirtualServiceSource(t *testing.T) {
 	_, err := fakeClient.CoreV1().Services(svc.Namespace).Create(t.Context(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	src, err := NewIstioVirtualServiceSource(
+	src, err := newIstioVirtualServiceSource(
 		t.Context(),
 		fakeClient,
 		istiofake.NewSimpleClientset(),

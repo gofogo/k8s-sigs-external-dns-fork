@@ -96,7 +96,7 @@ func (suite *GatewaySuite) SetupTest() {
 		suite.NoError(err, "should succeed")
 	}
 
-	suite.source, err = NewIstioGatewaySource(
+	suite.source, err = newIstioGatewaySource(
 		context.TODO(),
 		fakeKubernetesClient,
 		fakeIstioClient,
@@ -168,7 +168,7 @@ func TestNewIstioGatewaySource(t *testing.T) {
 		t.Run(ti.title, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := NewIstioGatewaySource(
+			_, err := newIstioGatewaySource(
 				t.Context(),
 				fake.NewClientset(),
 				istiofake.NewSimpleClientset(),
@@ -1529,7 +1529,7 @@ func testGatewayEndpoints(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			gatewaySource, err := NewIstioGatewaySource(
+			gatewaySource, err := newIstioGatewaySource(
 				t.Context(),
 				fakeKubernetesClient,
 				fakeIstioClient,
@@ -1644,7 +1644,7 @@ func TestGatewaySource_GWSelectorMatchServiceSelector(t *testing.T) {
 			_, err = fakeIstioClient.NetworkingV1beta1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			src, err := NewIstioGatewaySource(
+			src, err := newIstioGatewaySource(
 				t.Context(),
 				fakeKubeClient,
 				fakeIstioClient,
@@ -1725,7 +1725,7 @@ func TestTransformerInIstioGatewaySource(t *testing.T) {
 	_, err := fakeClient.CoreV1().Services(svc.Namespace).Create(t.Context(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	src, err := NewIstioGatewaySource(
+	src, err := newIstioGatewaySource(
 		t.Context(),
 		fakeClient,
 		istiofake.NewSimpleClientset(),
@@ -1878,7 +1878,7 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 	_, err := fakeIstioClient.NetworkingV1beta1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	src, err := NewIstioGatewaySource(
+	src, err := newIstioGatewaySource(
 		t.Context(),
 		fakeKubeClient,
 		fakeIstioClient,
@@ -1915,7 +1915,7 @@ func newTestGatewaySource(loadBalancerList []fakeIngressGatewayService, ingressL
 		}
 	}
 
-	src, err := NewIstioGatewaySource(
+	src, err := newIstioGatewaySource(
 		context.TODO(),
 		fakeKubernetesClient,
 		fakeIstioClient,

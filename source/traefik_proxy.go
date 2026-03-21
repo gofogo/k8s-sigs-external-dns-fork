@@ -104,7 +104,21 @@ type traefikSource struct {
 	unstructuredConverter      *unstructuredConverter
 }
 
-func NewTraefikSource(
+// NewTraefikProxy creates a Traefik proxy source using the provided ClientGenerator.
+func NewTraefikProxy(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	kubeClient, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	dynamicClient, err := p.DynamicKubernetesClient()
+	if err != nil {
+		return nil, err
+	}
+	return newTraefikSource(ctx, dynamicClient, kubeClient, cfg)
+}
+
+// newTraefikSource creates a new traefikSource with the given config.
+func newTraefikSource(
 	ctx context.Context,
 	dynamicKubeClient dynamic.Interface,
 	kubeClient kubernetes.Interface,

@@ -60,8 +60,17 @@ type nodeSource struct {
 	exposeInternalIPv6   bool
 }
 
-// NewNodeSource creates a new nodeSource with the given config.
-func NewNodeSource(
+// NewNode creates a node source using the provided ClientGenerator.
+func NewNode(ctx context.Context, p ClientGenerator, cfg *Config) (Source, error) {
+	client, err := p.KubeClient()
+	if err != nil {
+		return nil, err
+	}
+	return newNodeSource(ctx, client, cfg)
+}
+
+// newNodeSource creates a new nodeSource with the given config.
+func newNodeSource(
 	ctx context.Context,
 	kubeClient kubernetes.Interface,
 	cfg *Config) (Source, error) {

@@ -57,7 +57,7 @@ func TestNodeSourceNewNodeSourceWithFqdn(t *testing.T) {
 		},
 	} {
 		t.Run(tt.title, func(t *testing.T) {
-			_, err := NewNodeSource(
+			_, err := newNodeSource(
 				t.Context(),
 				fake.NewClientset(),
 				&Config{
@@ -364,7 +364,7 @@ func TestNodeSourceFqdnTemplatingExamples(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			src, err := NewNodeSource(
+			src, err := newNodeSource(
 				t.Context(),
 				kubeClient,
 				&Config{
