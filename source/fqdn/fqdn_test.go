@@ -35,12 +35,12 @@ func TestNewTemplateEngine(t *testing.T) {
 		fqdn        string
 		target      string
 		fqdnTarget  string
-		expectError bool
+		errContains string
 	}{
 		{
 			name:        "invalid fqdn template",
-			expectError: true,
 			fqdn:        "{{.Name",
+			errContains: `parse --fqdn-template: "{{.Name"`,
 		},
 		{
 			name: "empty fqdn template",
@@ -75,8 +75,8 @@ func TestNewTemplateEngine(t *testing.T) {
 		},
 		{
 			name:        "invalid target template",
-			expectError: true,
 			target:      "{{.Status.LoadBalancer.Ingress",
+			errContains: `parse --target-template: "{{.Status.LoadBalancer.Ingress"`,
 		},
 		{
 			name:   "valid target template",
@@ -84,8 +84,8 @@ func TestNewTemplateEngine(t *testing.T) {
 		},
 		{
 			name:        "invalid fqdn-target template",
-			expectError: true,
 			fqdnTarget:  "{{.Name}}.example.com:{{.Status",
+			errContains: `parse --fqdn-target-template: "{{.Name}}.example.com:{{.Status"`,
 		},
 		{
 			name:       "valid fqdn-target template",
@@ -94,8 +94,8 @@ func TestNewTemplateEngine(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewTemplateEngine(tt.fqdn, tt.target, tt.fqdnTarget, false)
-			if tt.expectError {
-				assert.Error(t, err)
+			if tt.errContains != "" {
+				assert.ErrorContains(t, err, tt.errContains)
 			} else {
 				assert.NoError(t, err)
 			}

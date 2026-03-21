@@ -58,15 +58,15 @@ type TemplateEngine struct {
 func NewTemplateEngine(fqdnStr, targetStr, fqdnTargetStr string, combineFQDN bool) (TemplateEngine, error) {
 	fqdnTmpl, err := parseTemplate(fqdnStr)
 	if err != nil {
-		return TemplateEngine{}, fmt.Errorf("fqdn template: %w", err)
+		return TemplateEngine{}, fmt.Errorf("parse --fqdn-template: %w", err)
 	}
 	targetTmpl, err := parseTemplate(targetStr)
 	if err != nil {
-		return TemplateEngine{}, fmt.Errorf("target template: %w", err)
+		return TemplateEngine{}, fmt.Errorf("parse --target-template: %w", err)
 	}
 	fqdnTargetTmpl, err := parseTemplate(fqdnTargetStr)
 	if err != nil {
-		return TemplateEngine{}, fmt.Errorf("fqdn-target template: %w", err)
+		return TemplateEngine{}, fmt.Errorf("parse --fqdn-target-template: %w", err)
 	}
 	return TemplateEngine{
 		fqdn:       fqdnTmpl,
@@ -135,7 +135,10 @@ func parseTemplate(input string) (*template.Template, error) {
 	if err != nil {
 		return nil, err
 	}
-	return t.Parse(input)
+	if _, err = t.Parse(input); err != nil {
+		return nil, fmt.Errorf("%q: %w", input, err)
+	}
+	return t, nil
 }
 
 type kubeObject interface {
