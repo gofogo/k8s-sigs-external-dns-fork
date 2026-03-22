@@ -820,9 +820,9 @@ func TestRouteGroupsEndpoints(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.templates != "" {
 				if tt.combineFQDN {
-					tt.source.templates = mustTemplateEngine(t, tt.templates, "", "", true)
+					tt.source.templateEngine = mustTemplateEngine(t, tt.templates, "", "", true)
 				} else {
-					tt.source.templates = mustTemplateEngine(t, tt.templates, "", "", false)
+					tt.source.templateEngine = mustTemplateEngine(t, tt.templates, "", "", false)
 				}
 			}
 

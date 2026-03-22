@@ -53,7 +53,7 @@ type httpProxySource struct {
 	dynamicKubeClient        dynamic.Interface
 	namespace                string
 	annotationFilter         string
-	templates                fqdn.TemplateEngine
+	templateEngine           fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 	httpProxyInformer        kubeinformers.GenericInformer
 	unstructuredConverter    *UnstructuredConverter
@@ -89,7 +89,7 @@ func NewContourHTTPProxySource(
 		dynamicKubeClient:        dynamicKubeClient,
 		namespace:                cfg.Namespace,
 		annotationFilter:         cfg.AnnotationFilter,
-		templates:                cfg.Templates,
+		templateEngine:           cfg.Templates,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
 		httpProxyInformer:        httpProxyInformer,
 		unstructuredConverter:    uc,
@@ -134,7 +134,7 @@ func (sc *httpProxySource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 		hpEndpoints := sc.endpointsFromHTTPProxy(hp)
 
 		// apply template if fqdn is missing on HTTPProxy
-		hpEndpoints, err = sc.templates.CombineWithEndpoints(
+		hpEndpoints, err = sc.templateEngine.CombineWithEndpoints(
 			hpEndpoints,
 			func() ([]*endpoint.Endpoint, error) { return sc.endpointsFromTemplate(hp) },
 		)
@@ -154,7 +154,7 @@ func (sc *httpProxySource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 }
 
 func (sc *httpProxySource) endpointsFromTemplate(httpProxy *projectcontour.HTTPProxy) ([]*endpoint.Endpoint, error) {
-	hostnames, err := sc.templates.ExecFQDN(httpProxy)
+	hostnames, err := sc.templateEngine.ExecFQDN(httpProxy)
 	if err != nil {
 		return nil, err
 	}

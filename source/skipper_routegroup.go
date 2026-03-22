@@ -63,7 +63,7 @@ type routeGroupSource struct {
 	namespace                string
 	apiEndpoint              string
 	annotationFilter         string
-	templates                fqdn.TemplateEngine
+	templateEngine           fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 }
 
@@ -231,7 +231,7 @@ func NewRouteGroupSource(cfg *Config, token, tokenPath, apiServerURL string) (So
 		namespace:                cfg.Namespace,
 		apiEndpoint:              apiEndpoint,
 		annotationFilter:         cfg.AnnotationFilter,
-		templates:                cfg.Templates,
+		templateEngine:           cfg.Templates,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
 	}, nil
 }
@@ -262,7 +262,7 @@ func (sc *routeGroupSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, 
 
 		eps := sc.endpointsFromRouteGroup(rg)
 
-		eps, err = sc.templates.CombineWithEndpoints(
+		eps, err = sc.templateEngine.CombineWithEndpoints(
 			eps,
 			func() ([]*endpoint.Endpoint, error) { return sc.endpointsFromTemplate(rg) },
 		)
@@ -282,7 +282,7 @@ func (sc *routeGroupSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, 
 }
 
 func (sc *routeGroupSource) endpointsFromTemplate(rg *routeGroup) ([]*endpoint.Endpoint, error) {
-	hostnames, err := sc.templates.ExecFQDN(rg)
+	hostnames, err := sc.templateEngine.ExecFQDN(rg)
 	if err != nil {
 		return nil, err
 	}

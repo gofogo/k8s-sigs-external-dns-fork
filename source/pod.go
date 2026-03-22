@@ -50,9 +50,9 @@ import (
 // +externaldns:source:provider-specific=false
 // +externaldns:source:events=true
 type podSource struct {
-	client    kubernetes.Interface
-	namespace string
-	templates fqdn.TemplateEngine
+	client         kubernetes.Interface
+	namespace      string
+	templateEngine fqdn.TemplateEngine
 
 	podInformer              coreinformers.PodInformer
 	nodeInformer             coreinformers.NodeInformer
@@ -108,7 +108,7 @@ func NewPodSource(
 		compatibility:            cfg.Compatibility,
 		ignoreNonHostNetworkPods: cfg.IgnoreNonHostNetworkPods,
 		podSourceDomain:          cfg.PodSourceDomain,
-		templates:                cfg.Templates,
+		templateEngine:           cfg.Templates,
 	}, nil
 }
 
@@ -128,7 +128,7 @@ func (ps *podSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error) 
 
 		podEndpoints := ps.endpointsFromPodAnnotations(pod)
 
-		podEndpoints, err = ps.templates.CombineWithEndpoints(
+		podEndpoints, err = ps.templateEngine.CombineWithEndpoints(
 			podEndpoints,
 			func() ([]*endpoint.Endpoint, error) { return ps.endpointsFromPodTemplate(pod) },
 		)
@@ -250,7 +250,7 @@ func (ps *podSource) addPodNodeEndpointsToEndpointMap(endpointMap map[endpoint.E
 }
 
 func (ps *podSource) hostsFromTemplate(pod *v1.Pod) (map[endpoint.EndpointKey][]string, error) {
-	hosts, err := ps.templates.ExecFQDN(pod)
+	hosts, err := ps.templateEngine.ExecFQDN(pod)
 	if err != nil {
 		return nil, err
 	}

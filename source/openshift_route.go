@@ -55,7 +55,7 @@ type ocpRouteSource struct {
 	client                   versioned.Interface
 	namespace                string
 	annotationFilter         string
-	templates                fqdn.TemplateEngine
+	templateEngine           fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 	routeInformer            routeInformer.RouteInformer
 	labelSelector            labels.Selector
@@ -87,7 +87,7 @@ func NewOcpRouteSource(
 		client:                   ocpClient,
 		namespace:                cfg.Namespace,
 		annotationFilter:         cfg.AnnotationFilter,
-		templates:                cfg.Templates,
+		templateEngine:           cfg.Templates,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
 		routeInformer:            informer,
 		labelSelector:            cfg.LabelFilter,
@@ -127,7 +127,7 @@ func (ors *ocpRouteSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 		orEndpoints := ors.endpointsFromOcpRoute(ocpRoute, ors.ignoreHostnameAnnotation)
 
 		// apply template if host is missing on OpenShift Route
-		orEndpoints, err = ors.templates.CombineWithEndpoints(
+		orEndpoints, err = ors.templateEngine.CombineWithEndpoints(
 			orEndpoints,
 			func() ([]*endpoint.Endpoint, error) { return ors.endpointsFromTemplate(ocpRoute) },
 		)
@@ -147,7 +147,7 @@ func (ors *ocpRouteSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, e
 }
 
 func (ors *ocpRouteSource) endpointsFromTemplate(ocpRoute *routev1.Route) ([]*endpoint.Endpoint, error) {
-	hostnames, err := ors.templates.ExecFQDN(ocpRoute)
+	hostnames, err := ors.templateEngine.ExecFQDN(ocpRoute)
 	if err != nil {
 		return nil, err
 	}

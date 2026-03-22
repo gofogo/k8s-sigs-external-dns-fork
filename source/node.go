@@ -50,7 +50,7 @@ import (
 type nodeSource struct {
 	client           kubernetes.Interface
 	annotationFilter string
-	templates        fqdn.TemplateEngine
+	templateEngine   fqdn.TemplateEngine
 
 	nodeInformer         coreinformers.NodeInformer
 	labelSelector        labels.Selector
@@ -87,7 +87,7 @@ func NewNodeSource(
 	return &nodeSource{
 		client:               kubeClient,
 		annotationFilter:     cfg.AnnotationFilter,
-		templates:            cfg.Templates,
+		templateEngine:       cfg.Templates,
 		nodeInformer:         nodeInformer,
 		labelSelector:        cfg.LabelFilter,
 		excludeUnschedulable: cfg.ExcludeUnschedulable,
@@ -124,14 +124,14 @@ func (ns *nodeSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error)
 
 		// Only generate node name endpoints when there's no template or when combining
 		var nodeEndpoints []*endpoint.Endpoint
-		if !ns.templates.IsConfigured() || ns.templates.Combining() {
+		if !ns.templateEngine.IsConfigured() || ns.templateEngine.Combining() {
 			nodeEndpoints, err = ns.endpointsForDNSNames(node, []string{node.Name})
 			if err != nil {
 				return nil, err
 			}
 		}
 
-		nodeEndpoints, err = ns.templates.CombineWithEndpoints(
+		nodeEndpoints, err = ns.templateEngine.CombineWithEndpoints(
 			nodeEndpoints,
 			func() ([]*endpoint.Endpoint, error) { return ns.endpointsFromNodeTemplate(node) },
 		)
@@ -158,7 +158,7 @@ func (ns *nodeSource) AddEventHandler(_ context.Context, handler func()) {
 
 // endpointsFromNodeTemplate creates endpoints using DNS names from the FQDN template.
 func (ns *nodeSource) endpointsFromNodeTemplate(node *v1.Node) ([]*endpoint.Endpoint, error) {
-	names, err := ns.templates.ExecFQDN(node)
+	names, err := ns.templateEngine.ExecFQDN(node)
 	if err != nil {
 		return nil, err
 	}

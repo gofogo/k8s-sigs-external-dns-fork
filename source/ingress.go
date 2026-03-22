@@ -66,7 +66,7 @@ type ingressSource struct {
 	namespace                string
 	annotationFilter         string
 	ingressClassNames        []string
-	templates                fqdn.TemplateEngine
+	templateEngine           fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 	ingressInformer          netinformers.IngressInformer
 	ignoreIngressTLSSpec     bool
@@ -119,7 +119,7 @@ func NewIngressSource(
 		namespace:                cfg.Namespace,
 		annotationFilter:         cfg.AnnotationFilter,
 		ingressClassNames:        cfg.IngressClassNames,
-		templates:                cfg.Templates,
+		templateEngine:           cfg.Templates,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
 		ingressInformer:          ingressInformer,
 		ignoreIngressTLSSpec:     cfg.IgnoreIngressTLSSpec,
@@ -156,7 +156,7 @@ func (sc *ingressSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 		ingEndpoints := endpointsFromIngress(ing, sc.ignoreHostnameAnnotation, sc.ignoreIngressTLSSpec, sc.ignoreIngressRulesSpec)
 
 		// apply template if host is missing on ingress
-		ingEndpoints, err = sc.templates.CombineWithEndpoints(
+		ingEndpoints, err = sc.templateEngine.CombineWithEndpoints(
 			ingEndpoints,
 			func() ([]*endpoint.Endpoint, error) { return sc.endpointsFromTemplate(ing) },
 		)
@@ -178,7 +178,7 @@ func (sc *ingressSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 }
 
 func (sc *ingressSource) endpointsFromTemplate(ing *networkv1.Ingress) ([]*endpoint.Endpoint, error) {
-	hostnames, err := sc.templates.ExecFQDN(ing)
+	hostnames, err := sc.templateEngine.ExecFQDN(ing)
 	if err != nil {
 		return nil, err
 	}

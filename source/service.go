@@ -72,7 +72,7 @@ type serviceSource struct {
 	namespace        string
 	annotationFilter string
 	labelSelector    labels.Selector
-	templates        fqdn.TemplateEngine
+	templateEngine   fqdn.TemplateEngine
 
 	ignoreHostnameAnnotation       bool
 	publishInternal                bool
@@ -168,7 +168,7 @@ func NewServiceSource(
 		namespace:                      namespace,
 		annotationFilter:               config.AnnotationFilter,
 		compatibility:                  config.Compatibility,
-		templates:                      config.Templates,
+		templateEngine:                 config.Templates,
 		ignoreHostnameAnnotation:       config.IgnoreHostnameAnnotation,
 		publishInternal:                config.PublishInternal,
 		publishHostIP:                  config.PublishHostIP,
@@ -219,7 +219,7 @@ func (sc *serviceSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, err
 		}
 
 		// apply template if none of the above is found
-		svcEndpoints, err = sc.templates.CombineWithEndpoints(
+		svcEndpoints, err = sc.templateEngine.CombineWithEndpoints(
 			svcEndpoints,
 			func() ([]*endpoint.Endpoint, error) { return sc.endpointsFromTemplate(svc) },
 		)
@@ -479,7 +479,7 @@ func buildHeadlessEndpoints(svc *v1.Service, targetsByHeadlessDomainAndType map[
 }
 
 func (sc *serviceSource) endpointsFromTemplate(svc *v1.Service) ([]*endpoint.Endpoint, error) {
-	hostnames, err := sc.templates.ExecFQDN(svc)
+	hostnames, err := sc.templateEngine.ExecFQDN(svc)
 	if err != nil {
 		return nil, err
 	}

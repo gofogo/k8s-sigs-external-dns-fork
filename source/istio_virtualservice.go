@@ -65,7 +65,7 @@ type virtualServiceSource struct {
 	istioClient              istioclient.Interface
 	namespace                string
 	annotationFilter         string
-	templates                fqdn.TemplateEngine
+	templateEngine           fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 	serviceInformer          coreinformers.ServiceInformer
 	vServiceInformer         networkingv1informer.VirtualServiceInformer
@@ -129,7 +129,7 @@ func NewIstioVirtualServiceSource(
 		istioClient:              istioClient,
 		namespace:                cfg.Namespace,
 		annotationFilter:         cfg.AnnotationFilter,
-		templates:                cfg.Templates,
+		templateEngine:           cfg.Templates,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
 		serviceInformer:          serviceInformer,
 		vServiceInformer:         virtualServiceInformer,
@@ -167,7 +167,7 @@ func (sc *virtualServiceSource) Endpoints(ctx context.Context) ([]*endpoint.Endp
 		}
 
 		// apply template if host is missing on VirtualService
-		gwEndpoints, err = sc.templates.CombineWithEndpoints(
+		gwEndpoints, err = sc.templateEngine.CombineWithEndpoints(
 			gwEndpoints,
 			func() ([]*endpoint.Endpoint, error) { return sc.endpointsFromTemplate(ctx, vService) },
 		)
@@ -222,7 +222,7 @@ func (sc *virtualServiceSource) getGateway(_ context.Context, gatewayStr string,
 }
 
 func (sc *virtualServiceSource) endpointsFromTemplate(ctx context.Context, virtualService *networkingv1.VirtualService) ([]*endpoint.Endpoint, error) {
-	hostnames, err := sc.templates.ExecFQDN(virtualService)
+	hostnames, err := sc.templateEngine.ExecFQDN(virtualService)
 	if err != nil {
 		return nil, err
 	}

@@ -64,7 +64,7 @@ type gatewaySource struct {
 	istioClient              istioclient.Interface
 	namespace                string
 	annotationFilter         string
-	templates                fqdn.TemplateEngine
+	templateEngine           fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 	serviceInformer          coreinformers.ServiceInformer
 	gatewayInformer          networkingv1informer.GatewayInformer
@@ -121,7 +121,7 @@ func NewIstioGatewaySource(
 		istioClient:              istioClient,
 		namespace:                cfg.Namespace,
 		annotationFilter:         cfg.AnnotationFilter,
-		templates:                cfg.Templates,
+		templateEngine:           cfg.Templates,
 		ignoreHostnameAnnotation: cfg.IgnoreHostnameAnnotation,
 		serviceInformer:          serviceInformer,
 		gatewayInformer:          gatewayInformer,
@@ -164,10 +164,10 @@ func (sc *gatewaySource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, e
 		}
 
 		// apply template if host is missing on gateway
-		gwEndpoints, err = sc.templates.CombineWithEndpoints(
+		gwEndpoints, err = sc.templateEngine.CombineWithEndpoints(
 			gwEndpoints,
 			func() ([]*endpoint.Endpoint, error) {
-				hostnames, err := sc.templates.ExecFQDN(gateway)
+				hostnames, err := sc.templateEngine.ExecFQDN(gateway)
 				if err != nil {
 					return nil, err
 				}

@@ -145,7 +145,7 @@ type gatewayRouteSource struct {
 
 	nsInformer coreinformers.NamespaceInformer
 
-	templates                fqdn.TemplateEngine
+	templateEngine           fqdn.TemplateEngine
 	ignoreHostnameAnnotation bool
 }
 
@@ -223,7 +223,7 @@ func newGatewayRouteSource(
 
 		nsInformer: nsInformer,
 
-		templates:                config.Templates,
+		templateEngine:           config.Templates,
 		ignoreHostnameAnnotation: config.IgnoreHostnameAnnotation,
 	}
 	return src, nil
@@ -445,8 +445,8 @@ func (c *gatewayRouteResolver) hosts(rt gatewayRoute) ([]string, error) {
 		hostnames = append(hostnames, string(name))
 	}
 	// TODO: The combine-fqdn-annotation flag is similarly vague.
-	if c.src.templates.IsConfigured() && (len(hostnames) == 0 || c.src.templates.Combining()) {
-		hosts, err := c.src.templates.ExecFQDN(rt.Object())
+	if c.src.templateEngine.IsConfigured() && (len(hostnames) == 0 || c.src.templateEngine.Combining()) {
+		hosts, err := c.src.templateEngine.ExecFQDN(rt.Object())
 		if err != nil {
 			return nil, err
 		}
