@@ -85,7 +85,7 @@ func NewIstioGatewaySource(
 	// Set resync period to 0, to prevent processing when nothing has changed
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(cfg.Namespace))
 	serviceInformer := informerFactory.Core().V1().Services()
-	istioInformerFactory := istioinformers.NewSharedInformerFactory(istioClient, 0)
+	istioInformerFactory := istioinformers.NewSharedInformerFactoryWithOptions(istioClient, 0, istioinformers.WithNamespace(cfg.Namespace))
 	gatewayInformer := istioInformerFactory.Networking().V1().Gateways()
 	ingressInformer := informerFactory.Networking().V1().Ingresses()
 
