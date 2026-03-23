@@ -39,8 +39,8 @@ import (
 	"sigs.k8s.io/external-dns/pkg/events"
 	"sigs.k8s.io/external-dns/provider"
 	"sigs.k8s.io/external-dns/source/annotations"
-	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
+	"sigs.k8s.io/external-dns/source/templateegine"
 	"sigs.k8s.io/external-dns/source/types"
 )
 
@@ -72,7 +72,7 @@ type serviceSource struct {
 	namespace        string
 	annotationFilter string
 	labelSelector    labels.Selector
-	templateEngine   fqdn.TemplateEngine
+	templateEngine   templateegine.TemplateEngine
 
 	ignoreHostnameAnnotation       bool
 	publishInternal                bool

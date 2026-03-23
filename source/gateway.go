@@ -38,8 +38,8 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
-	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
+	"sigs.k8s.io/external-dns/source/templateegine"
 )
 
 const (
@@ -145,7 +145,7 @@ type gatewayRouteSource struct {
 
 	nsInformer coreinformers.NamespaceInformer
 
-	templateEngine           fqdn.TemplateEngine
+	templateEngine           templateegine.TemplateEngine
 	ignoreHostnameAnnotation bool
 }
 

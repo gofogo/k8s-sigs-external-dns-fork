@@ -33,8 +33,8 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
-	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
+	"sigs.k8s.io/external-dns/source/templateegine"
 )
 
 // ocpRouteSource is an implementation of Source for OpenShift Route objects.
@@ -55,7 +55,7 @@ type ocpRouteSource struct {
 	client                   versioned.Interface
 	namespace                string
 	annotationFilter         string
-	templateEngine           fqdn.TemplateEngine
+	templateEngine           templateegine.TemplateEngine
 	ignoreHostnameAnnotation bool
 	routeInformer            routeInformer.RouteInformer
 	labelSelector            labels.Selector
