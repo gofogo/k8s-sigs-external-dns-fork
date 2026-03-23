@@ -159,7 +159,7 @@ func (ns *nodeSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error)
 		endpoints = append(endpoints, nodeEndpoints...)
 	}
 
-	return MergeEndpoints(endpoints), nil
+	return endpoint.MergeEndpoints(endpoints), nil
 }
 
 func (ns *nodeSource) AddEventHandler(_ context.Context, handler func()) {
@@ -205,7 +205,7 @@ func (ns *nodeSource) endpointsForDNSNames(node *v1.Node, dnsNames []string) ([]
 		}
 	}
 
-	return MergeEndpoints(endpoints), nil
+	return endpoint.MergeEndpoints(endpoints), nil
 }
 
 // nodeAddress returns the node's externalIP and if that's not found, the node's internalIP

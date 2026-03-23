@@ -76,7 +76,7 @@ func (sc *fakeSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error)
 		endpoints[i] = sc.generateEndpoint()
 	}
 
-	return MergeEndpoints(endpoints), nil
+	return endpoint.MergeEndpoints(endpoints), nil
 }
 
 func (sc *fakeSource) generateEndpoint() *endpoint.Endpoint {

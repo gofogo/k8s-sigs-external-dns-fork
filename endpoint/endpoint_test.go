@@ -1208,6 +1208,15 @@ func TestCheckEndpoint(t *testing.T) {
 			expected: true,
 		},
 		{
+			description: "CNAME record with no targets is invalid",
+			endpoint: Endpoint{
+				DNSName:    "example.com",
+				RecordType: RecordTypeCNAME,
+				Targets:    Targets{},
+			},
+			expected: false,
+		},
+		{
 			description: "MX record with alias=true is invalid",
 			endpoint: Endpoint{
 				DNSName:          "example.com",
@@ -1503,6 +1512,27 @@ func TestCheckEndpoint_PTRValidationLog(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCheckEndpoint_CNAMEDebugLog(t *testing.T) {
+	t.Run("CNAME with no targets logs debug", func(t *testing.T) {
+		hook := logtest.LogsUnderTestWithLogLevel(log.DebugLevel, t)
+
+		ep := Endpoint{DNSName: "example.com", RecordType: RecordTypeCNAME, Targets: Targets{}}
+		ep.CheckEndpoint()
+
+		logtest.TestHelperLogContainsWithLogLevel("Skipping CNAME endpoint", log.DebugLevel, hook, t)
+		logtest.TestHelperLogContains("example.com", hook, t)
+	})
+
+	t.Run("CNAME with target does not log", func(t *testing.T) {
+		hook := logtest.LogsUnderTestWithLogLevel(log.DebugLevel, t)
+
+		ep := Endpoint{DNSName: "example.com", RecordType: RecordTypeCNAME, Targets: Targets{"target.example.com"}}
+		ep.CheckEndpoint()
+
+		logtest.TestHelperLogNotContains("Skipping CNAME endpoint", hook, t)
+	})
 }
 
 func TestEndpoint_WithRefObject(t *testing.T) {
