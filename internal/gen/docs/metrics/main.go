@@ -31,6 +31,7 @@ import (
 
 	// these imports are necessary for the code generation process.
 	_ "sigs.k8s.io/external-dns/controller"
+	_ "sigs.k8s.io/external-dns/pkg/client"
 	_ "sigs.k8s.io/external-dns/provider"
 	_ "sigs.k8s.io/external-dns/provider/webhook"
 )

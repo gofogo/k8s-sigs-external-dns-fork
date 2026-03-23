@@ -72,6 +72,31 @@ func (g CounterVecMetric) Get() *Metric {
 	return &g.Metric
 }
 
+type HistogramVecMetric struct {
+	Metric
+	HistogramVec *prometheus.HistogramVec
+}
+
+func (h HistogramVecMetric) Get() *Metric {
+	return &h.Metric
+}
+
+func NewHistogramVecWithOpts(opts prometheus.HistogramOpts, labelNames []string) HistogramVecMetric {
+	opts.Namespace = Namespace
+	return HistogramVecMetric{
+		Metric: Metric{
+			Type:      "histogram",
+			Name:      opts.Name,
+			FQDN:      fmt.Sprintf("%s_%s", opts.Subsystem, opts.Name),
+			Namespace: opts.Namespace,
+			Subsystem: opts.Subsystem,
+			Help:      opts.Help,
+			Labels:    append(slices.Sorted(maps.Keys(opts.ConstLabels)), labelNames...),
+		},
+		HistogramVec: prometheus.NewHistogramVec(opts, labelNames),
+	}
+}
+
 type GaugeVecMetric struct {
 	Metric
 	Gauge prometheus.GaugeVec
