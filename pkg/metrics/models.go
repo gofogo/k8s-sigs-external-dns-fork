@@ -18,6 +18,8 @@ package metrics
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,6 +38,7 @@ type Metric struct {
 	Name      string
 	Help      string
 	FQDN      string
+	Labels    []string
 }
 
 type IMetric interface {
@@ -120,6 +123,7 @@ func NewGaugedVectorOpts(opts prometheus.GaugeOpts, labelNames []string) GaugeVe
 			Namespace: opts.Namespace,
 			Subsystem: opts.Subsystem,
 			Help:      opts.Help,
+			Labels:    labelNames,
 		},
 		Gauge: *prometheus.NewGaugeVec(opts, labelNames),
 	}
@@ -150,6 +154,7 @@ func NewCounterVecWithOpts(opts prometheus.CounterOpts, labelNames []string) Cou
 			Namespace: opts.Namespace,
 			Subsystem: opts.Subsystem,
 			Help:      opts.Help,
+			Labels:    labelNames,
 		},
 		CounterVec: prometheus.NewCounterVec(opts, labelNames),
 	}
@@ -178,6 +183,7 @@ func NewGaugeFuncMetric(opts prometheus.GaugeOpts) GaugeFuncMetric {
 			Namespace: opts.Namespace,
 			Subsystem: opts.Subsystem,
 			Help:      opts.Help,
+			Labels:    slices.Sorted(maps.Keys(opts.ConstLabels)),
 		},
 		GaugeFunc: prometheus.NewGaugeFunc(opts, func() float64 { return 1 }),
 	}
@@ -206,6 +212,7 @@ func NewSummaryVecWithOpts(opts prometheus.SummaryOpts, labels []string) Summary
 			Namespace: opts.Namespace,
 			Subsystem: opts.Subsystem,
 			Help:      opts.Help,
+			Labels:    labels,
 		},
 		SummaryVec: *prometheus.NewSummaryVec(opts, labels),
 	}
