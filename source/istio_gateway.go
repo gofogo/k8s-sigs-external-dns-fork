@@ -64,7 +64,7 @@ type gatewaySource struct {
 	istioClient              istioclient.Interface
 	namespace                string
 	annotationFilter         string
-	templateEngine           templateegine.TemplateEngine
+	templateEngine           templateegine.Engine
 	ignoreHostnameAnnotation bool
 	serviceInformer          coreinformers.ServiceInformer
 	gatewayInformer          networkingv1informer.GatewayInformer

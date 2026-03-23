@@ -72,7 +72,7 @@ type serviceSource struct {
 	namespace        string
 	annotationFilter string
 	labelSelector    labels.Selector
-	templateEngine   templateegine.TemplateEngine
+	templateEngine   templateegine.Engine
 
 	ignoreHostnameAnnotation       bool
 	publishInternal                bool

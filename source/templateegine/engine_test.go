@@ -93,7 +93,7 @@ func TestNewTemplateEngine(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewTemplateEngine(tt.fqdn, tt.target, tt.fqdnTarget, false)
+			_, err := NewEngine(tt.fqdn, tt.target, tt.fqdnTarget, false)
 			if tt.errContains != "" {
 				assert.ErrorContains(t, err, tt.errContains)
 			} else {
@@ -104,11 +104,11 @@ func TestNewTemplateEngine(t *testing.T) {
 }
 
 func TestTemplateEngineIsConfigured(t *testing.T) {
-	empty, err := NewTemplateEngine("", "", "", false)
+	empty, err := NewEngine("", "", "", false)
 	require.NoError(t, err)
 	assert.False(t, empty.IsConfigured())
 
-	configured, err := NewTemplateEngine("{{ .Name }}.example.com", "", "", false)
+	configured, err := NewEngine("{{ .Name }}.example.com", "", "", false)
 	require.NoError(t, err)
 	assert.True(t, configured.IsConfigured())
 }
@@ -422,11 +422,11 @@ func TestExecFQDNExecutionError(t *testing.T) {
 }
 
 func TestCombineWithEndpoints(t *testing.T) {
-	configured, err := NewTemplateEngine("{{.Name}}", "", "", false)
+	configured, err := NewEngine("{{.Name}}", "", "", false)
 	require.NoError(t, err)
-	configuredCombine, err := NewTemplateEngine("{{.Name}}", "", "", true)
+	configuredCombine, err := NewEngine("{{.Name}}", "", "", true)
 	require.NoError(t, err)
-	unconfigured, err := NewTemplateEngine("", "", "", false)
+	unconfigured, err := NewEngine("", "", "", false)
 	require.NoError(t, err)
 
 	annotationEndpoints := []*endpoint.Endpoint{
@@ -446,7 +446,7 @@ func TestCombineWithEndpoints(t *testing.T) {
 	tests := []struct {
 		name         string
 		endpoints    []*endpoint.Endpoint
-		engine       TemplateEngine
+		engine       Engine
 		templateFunc func() ([]*endpoint.Endpoint, error)
 		want         []*endpoint.Endpoint
 		wantErr      bool
@@ -520,9 +520,9 @@ func TestCombineWithEndpoints(t *testing.T) {
 	}
 }
 
-func mustEngine(t *testing.T, fqdnStr string) TemplateEngine {
+func mustEngine(t *testing.T, fqdnStr string) Engine {
 	t.Helper()
-	engine, err := NewTemplateEngine(fqdnStr, "", "", false)
+	engine, err := NewEngine(fqdnStr, "", "", false)
 	require.NoError(t, err)
 	return engine
 }

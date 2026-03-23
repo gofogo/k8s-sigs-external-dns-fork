@@ -52,7 +52,7 @@ import (
 type podSource struct {
 	client         kubernetes.Interface
 	namespace      string
-	templateEngine templateegine.TemplateEngine
+	templateEngine templateegine.Engine
 
 	podInformer              coreinformers.PodInformer
 	nodeInformer             coreinformers.NodeInformer

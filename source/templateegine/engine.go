@@ -33,10 +33,10 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
-// TemplateEngine holds the parsed Go templates used to derive DNS names and targets
+// Engine holds the parsed Go templates used to derive DNS names and targets
 // from Kubernetes objects. It is shared across source implementations.
 // The zero value is valid and represents a no-op engine.
-type TemplateEngine struct {
+type Engine struct {
 	// fqdn is the template that generates fully-qualified domain names from a Kubernetes object.
 	// Parsed from --fqdn-template.
 	fqdn *template.Template
@@ -52,23 +52,23 @@ type TemplateEngine struct {
 	combine bool
 }
 
-// NewTemplateEngine parses the provided Go template strings into a TemplateEngine.
+// NewEngine parses the provided Go template strings into a Engine.
 // An empty string leaves the corresponding template unset; IsConfigured reflects
 // whether the FQDN template was provided. Returns an error on the first parse failure.
-func NewTemplateEngine(fqdnStr, targetStr, fqdnTargetStr string, combineFQDN bool) (TemplateEngine, error) {
+func NewEngine(fqdnStr, targetStr, fqdnTargetStr string, combineFQDN bool) (Engine, error) {
 	fqdnTmpl, err := parseTemplate(fqdnStr)
 	if err != nil {
-		return TemplateEngine{}, fmt.Errorf("parse --fqdn-template: %w", err)
+		return Engine{}, fmt.Errorf("parse --fqdn-template: %w", err)
 	}
 	targetTmpl, err := parseTemplate(targetStr)
 	if err != nil {
-		return TemplateEngine{}, fmt.Errorf("parse --target-template: %w", err)
+		return Engine{}, fmt.Errorf("parse --target-template: %w", err)
 	}
 	fqdnTargetTmpl, err := parseTemplate(fqdnTargetStr)
 	if err != nil {
-		return TemplateEngine{}, fmt.Errorf("parse --fqdn-target-template: %w", err)
+		return Engine{}, fmt.Errorf("parse --fqdn-target-template: %w", err)
 	}
-	return TemplateEngine{
+	return Engine{
 		fqdn:       fqdnTmpl,
 		target:     targetTmpl,
 		fqdnTarget: fqdnTargetTmpl,
@@ -77,33 +77,33 @@ func NewTemplateEngine(fqdnStr, targetStr, fqdnTargetStr string, combineFQDN boo
 }
 
 // IsConfigured reports whether the FQDN template is set and ready to use.
-func (e TemplateEngine) IsConfigured() bool {
+func (e Engine) IsConfigured() bool {
 	return e.fqdn != nil
 }
 
 // Combining reports whether the engine is configured to combine template-based
 // endpoints with annotation-based endpoints.
-func (e TemplateEngine) Combining() bool {
+func (e Engine) Combining() bool {
 	return e.combine
 }
 
 // ExecFQDN executes the FQDN template against a Kubernetes object and returns hostnames.
-func (e TemplateEngine) ExecFQDN(obj kubeObject) ([]string, error) {
+func (e Engine) ExecFQDN(obj kubeObject) ([]string, error) {
 	return execTemplate(e.fqdn, obj)
 }
 
 // ExecTarget executes the Target template against a Kubernetes object and returns targets.
-func (e TemplateEngine) ExecTarget(obj kubeObject) ([]string, error) {
+func (e Engine) ExecTarget(obj kubeObject) ([]string, error) {
 	return execTemplate(e.target, obj)
 }
 
 // ExecFQDNTarget executes the FQDNTarget template against a Kubernetes object and returns hostname:target pairs.
-func (e TemplateEngine) ExecFQDNTarget(obj kubeObject) ([]string, error) {
+func (e Engine) ExecFQDNTarget(obj kubeObject) ([]string, error) {
 	return execTemplate(e.fqdnTarget, obj)
 }
 
 // CombineWithEndpoints merges annotation-based endpoints with template-based endpoints.
-func (e TemplateEngine) CombineWithEndpoints(
+func (e Engine) CombineWithEndpoints(
 	endpoints []*endpoint.Endpoint,
 	templateFunc func() ([]*endpoint.Endpoint, error),
 ) ([]*endpoint.Endpoint, error) {

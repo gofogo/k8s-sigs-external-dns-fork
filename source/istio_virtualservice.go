@@ -65,7 +65,7 @@ type virtualServiceSource struct {
 	istioClient              istioclient.Interface
 	namespace                string
 	annotationFilter         string
-	templateEngine           templateegine.TemplateEngine
+	templateEngine           templateegine.Engine
 	ignoreHostnameAnnotation bool
 	serviceInformer          coreinformers.ServiceInformer
 	vServiceInformer         networkingv1informer.VirtualServiceInformer

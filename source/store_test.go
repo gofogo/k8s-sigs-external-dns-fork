@@ -394,10 +394,10 @@ func TestNewSourceConfig(t *testing.T) {
 	}
 }
 
-// mustTemplateEngine creates a TemplateEngine with all three templates and combine flag.
-func mustTemplateEngine(t *testing.T, fqdnStr, targetStr, fqdnTargetStr string, combine bool) templateegine.TemplateEngine {
+// mustTemplateEngine creates a Engine with all three templates and combine flag.
+func mustTemplateEngine(t *testing.T, fqdnStr, targetStr, fqdnTargetStr string, combine bool) templateegine.Engine {
 	t.Helper()
-	engine, err := templateegine.NewTemplateEngine(fqdnStr, targetStr, fqdnTargetStr, combine)
+	engine, err := templateegine.NewEngine(fqdnStr, targetStr, fqdnTargetStr, combine)
 	require.NoError(t, err)
 	return engine
 }

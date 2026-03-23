@@ -55,7 +55,7 @@ import (
 // +externaldns:source:provider-specific=false
 // +externaldns:source:events=false
 type unstructuredSource struct {
-	templateEngine templateegine.TemplateEngine
+	templateEngine templateegine.Engine
 	informers      []kubeinformers.GenericInformer
 }
 

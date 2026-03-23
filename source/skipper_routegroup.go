@@ -63,7 +63,7 @@ type routeGroupSource struct {
 	namespace                string
 	apiEndpoint              string
 	annotationFilter         string
-	templateEngine           templateegine.TemplateEngine
+	templateEngine           templateegine.Engine
 	ignoreHostnameAnnotation bool
 }
 

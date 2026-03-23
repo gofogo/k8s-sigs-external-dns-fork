@@ -50,7 +50,7 @@ import (
 type nodeSource struct {
 	client           kubernetes.Interface
 	annotationFilter string
-	templateEngine   templateegine.TemplateEngine
+	templateEngine   templateegine.Engine
 
 	nodeInformer         coreinformers.NodeInformer
 	labelSelector        labels.Selector

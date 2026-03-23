@@ -66,7 +66,7 @@ type ingressSource struct {
 	namespace                string
 	annotationFilter         string
 	ingressClassNames        []string
-	templateEngine           templateegine.TemplateEngine
+	templateEngine           templateegine.Engine
 	ignoreHostnameAnnotation bool
 	ingressInformer          netinformers.IngressInformer
 	ignoreIngressTLSSpec     bool

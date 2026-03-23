@@ -145,7 +145,7 @@ type gatewayRouteSource struct {
 
 	nsInformer coreinformers.NamespaceInformer
 
-	templateEngine           templateegine.TemplateEngine
+	templateEngine           templateegine.Engine
 	ignoreHostnameAnnotation bool
 }
 

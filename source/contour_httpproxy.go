@@ -53,7 +53,7 @@ type httpProxySource struct {
 	dynamicKubeClient        dynamic.Interface
 	namespace                string
 	annotationFilter         string
-	templateEngine           templateegine.TemplateEngine
+	templateEngine           templateegine.Engine
 	ignoreHostnameAnnotation bool
 	httpProxyInformer        kubeinformers.GenericInformer
 	unstructuredConverter    *UnstructuredConverter

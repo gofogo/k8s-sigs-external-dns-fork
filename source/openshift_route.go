@@ -55,7 +55,7 @@ type ocpRouteSource struct {
 	client                   versioned.Interface
 	namespace                string
 	annotationFilter         string
-	templateEngine           templateegine.TemplateEngine
+	templateEngine           templateegine.Engine
 	ignoreHostnameAnnotation bool
 	routeInformer            routeInformer.RouteInformer
 	labelSelector            labels.Selector
