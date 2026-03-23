@@ -36,7 +36,7 @@ func EndpointTargetsFromServices(svcInformer coreinformers.ServiceInformer, name
 	}
 
 	for _, service := range services {
-		if !MatchesServiceSelector(selector, service.Spec.Selector) {
+		if !labels.SelectorFromSet(selector).Matches(labels.Set(service.Spec.Selector)) {
 			continue
 		}
 
