@@ -106,6 +106,7 @@ func NewGaugeWithOpts(opts prometheus.GaugeOpts) GaugeMetric {
 			Namespace: opts.Namespace,
 			Subsystem: opts.Subsystem,
 			Help:      opts.Help,
+			Labels:    slices.Sorted(maps.Keys(opts.ConstLabels)),
 		},
 		Gauge: prometheus.NewGauge(opts),
 	}
@@ -123,7 +124,7 @@ func NewGaugedVectorOpts(opts prometheus.GaugeOpts, labelNames []string) GaugeVe
 			Namespace: opts.Namespace,
 			Subsystem: opts.Subsystem,
 			Help:      opts.Help,
-			Labels:    labelNames,
+			Labels:    append(slices.Sorted(maps.Keys(opts.ConstLabels)), labelNames...),
 		},
 		Gauge: *prometheus.NewGaugeVec(opts, labelNames),
 	}
@@ -139,6 +140,7 @@ func NewCounterWithOpts(opts prometheus.CounterOpts) CounterMetric {
 			Namespace: opts.Namespace,
 			Subsystem: opts.Subsystem,
 			Help:      opts.Help,
+			Labels:    slices.Sorted(maps.Keys(opts.ConstLabels)),
 		},
 		Counter: prometheus.NewCounter(opts),
 	}
@@ -154,7 +156,7 @@ func NewCounterVecWithOpts(opts prometheus.CounterOpts, labelNames []string) Cou
 			Namespace: opts.Namespace,
 			Subsystem: opts.Subsystem,
 			Help:      opts.Help,
-			Labels:    labelNames,
+			Labels:    append(slices.Sorted(maps.Keys(opts.ConstLabels)), labelNames...),
 		},
 		CounterVec: prometheus.NewCounterVec(opts, labelNames),
 	}
@@ -212,7 +214,7 @@ func NewSummaryVecWithOpts(opts prometheus.SummaryOpts, labels []string) Summary
 			Namespace: opts.Namespace,
 			Subsystem: opts.Subsystem,
 			Help:      opts.Help,
-			Labels:    labels,
+			Labels:    append(slices.Sorted(maps.Keys(opts.ConstLabels)), labels...),
 		},
 		SummaryVec: *prometheus.NewSummaryVec(opts, labels),
 	}
