@@ -1,3 +1,10 @@
+---
+tags:
+  - sources
+  - fake
+  - testing
+---
+
 # Fake Source
 
 The fake source generates synthetic DNS endpoints without requiring a Kubernetes cluster or any real resources. It produces one endpoint per supported record type on every reconciliation cycle, using documentation-reserved address ranges (RFC 5737 for IPv4, RFC 3849 for IPv6).
@@ -36,6 +43,8 @@ On each reconciliation the fake source emits one endpoint per record type:
 | `PTR`       | `<n>.2.0.192.in-addr.arpa` | `<random>.example.com`                                        |
 | `MX`        | `example.com`              | `10 <random>.example.com`                                     |
 | `NAPTR`     | `_sip._udp.example.com`    | `100 10 "u" "E2U+sip" "!^.*$!sip:info@example.com!" .`        |
+
+The NAPTR target fields are: `order preference flags service regexp replacement` (RFC 2915). In the example above: order=100, preference=10, flags=`"u"` (URI result), service=`"E2U+sip"`, regexp=`"!^.*$!sip:info@example.com!"`, replacement=`.` (none).
 
 IPv4 addresses are drawn from `192.0.2.0/24` and IPv6 from `2001:db8::/32` — both reserved for documentation and examples, so they will never accidentally match real infrastructure.
 

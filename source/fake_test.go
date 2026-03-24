@@ -52,72 +52,100 @@ func TestFakeSourceEndpoints(t *testing.T) {
 	}
 }
 
-func TestFakeSource_ARecord(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypeA)
-	require.Len(t, ep.Targets, 1)
-	ip := net.ParseIP(ep.Targets[0])
-	assert.NotNil(t, ip, "A record target %q is not a valid IP", ep.Targets[0])
-	assert.NotNil(t, ip.To4(), "A record target %q must be IPv4", ep.Targets[0])
-}
-
-func TestFakeSource_AAAARecord(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypeAAAA)
-	require.Len(t, ep.Targets, 1)
-	addr, err := netip.ParseAddr(ep.Targets[0])
-	require.NoError(t, err, "AAAA record target %q is not a valid IP address", ep.Targets[0])
-	assert.True(t, addr.Is6() && !addr.Is4In6(), "AAAA record target %q must be native IPv6", ep.Targets[0])
-}
-
-func TestFakeSource_CNAMERecord(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypeCNAME)
-	require.Len(t, ep.Targets, 1)
-	assert.True(t, strings.HasSuffix(ep.Targets[0], "."+defaultFQDNTemplate),
-		"CNAME target %q should be under %s", ep.Targets[0], defaultFQDNTemplate)
-}
-
-func TestFakeSource_TXTRecord(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypeTXT)
-	require.NotEmpty(t, ep.Targets)
-}
-
-func TestFakeSource_SRVRecord(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypeSRV)
-	assert.True(t, strings.HasPrefix(ep.DNSName, "_sip._udp."), "SRV DNSName %q should start with _sip._udp.", ep.DNSName)
-	require.Len(t, ep.Targets, 1)
-	assert.True(t, ep.Targets.ValidateSRVRecord(), "SRV target %q is invalid", ep.Targets[0])
-}
-
-func TestFakeSource_NSRecord(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypeNS)
-	assert.Equal(t, defaultFQDNTemplate, ep.DNSName)
-	require.Len(t, ep.Targets, 1)
-	assert.True(t, strings.HasSuffix(ep.Targets[0], "."+defaultFQDNTemplate),
-		"NS target %q should be under %s", ep.Targets[0], defaultFQDNTemplate)
-}
-
-func TestFakeSource_PTRRecord(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypePTR)
-	assert.True(t, ep.ValidatePTRRecord(), "PTR record is invalid: %v", ep)
-}
-
-func TestFakeSource_MXRecord(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypeMX)
-	assert.Equal(t, defaultFQDNTemplate, ep.DNSName)
-	require.Len(t, ep.Targets, 1)
-	_, err := endpoint.NewMXRecord(ep.Targets[0])
-	assert.NoError(t, err, "MX target %q is invalid", ep.Targets[0])
-}
-
-func TestFakeSource_NAPTRRecord(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypeNAPTR)
-	assert.True(t, strings.HasPrefix(ep.DNSName, "_sip._udp."), "NAPTR DNSName %q should start with _sip._udp.", ep.DNSName)
-	require.NotEmpty(t, ep.Targets)
-}
-
-func TestFakeSource_GenerateEndpointForType_RefObject(t *testing.T) {
-	ep := mustGenerateEndpointForType(t, endpoint.RecordTypeA)
-	require.NotNil(t, ep.RefObject())
-	assert.Equal(t, "Pod", ep.RefObject().Kind)
+func TestFakeSource_RecordTypes(t *testing.T) {
+	tests := []struct {
+		recordType string
+		check      func(*testing.T, *endpoint.Endpoint)
+	}{
+		{
+			recordType: endpoint.RecordTypeA,
+			check: func(t *testing.T, ep *endpoint.Endpoint) {
+				t.Helper()
+				require.Len(t, ep.Targets, 1)
+				ip := net.ParseIP(ep.Targets[0])
+				assert.NotNil(t, ip, "A record target %q is not a valid IP", ep.Targets[0])
+				assert.NotNil(t, ip.To4(), "A record target %q must be IPv4", ep.Targets[0])
+				require.NotNil(t, ep.RefObject())
+				assert.Equal(t, "Pod", ep.RefObject().Kind)
+			},
+		},
+		{
+			recordType: endpoint.RecordTypeAAAA,
+			check: func(t *testing.T, ep *endpoint.Endpoint) {
+				t.Helper()
+				require.Len(t, ep.Targets, 1)
+				addr, err := netip.ParseAddr(ep.Targets[0])
+				require.NoError(t, err, "AAAA record target %q is not a valid IP address", ep.Targets[0])
+				assert.True(t, addr.Is6() && !addr.Is4In6(), "AAAA record target %q must be native IPv6", ep.Targets[0])
+			},
+		},
+		{
+			recordType: endpoint.RecordTypeCNAME,
+			check: func(t *testing.T, ep *endpoint.Endpoint) {
+				t.Helper()
+				require.Len(t, ep.Targets, 1)
+				assert.True(t, strings.HasSuffix(ep.Targets[0], "."+defaultFQDNTemplate),
+					"CNAME target %q should be under %s", ep.Targets[0], defaultFQDNTemplate)
+			},
+		},
+		{
+			recordType: endpoint.RecordTypeTXT,
+			check: func(t *testing.T, ep *endpoint.Endpoint) {
+				t.Helper()
+				require.NotEmpty(t, ep.Targets)
+			},
+		},
+		{
+			recordType: endpoint.RecordTypeSRV,
+			check: func(t *testing.T, ep *endpoint.Endpoint) {
+				t.Helper()
+				assert.True(t, strings.HasPrefix(ep.DNSName, "_sip._udp."), "SRV DNSName %q should start with _sip._udp.", ep.DNSName)
+				require.Len(t, ep.Targets, 1)
+				assert.True(t, ep.Targets.ValidateSRVRecord(), "SRV target %q is invalid", ep.Targets[0])
+			},
+		},
+		{
+			recordType: endpoint.RecordTypeNS,
+			check: func(t *testing.T, ep *endpoint.Endpoint) {
+				t.Helper()
+				assert.Equal(t, defaultFQDNTemplate, ep.DNSName)
+				require.Len(t, ep.Targets, 1)
+				assert.True(t, strings.HasSuffix(ep.Targets[0], "."+defaultFQDNTemplate),
+					"NS target %q should be under %s", ep.Targets[0], defaultFQDNTemplate)
+			},
+		},
+		{
+			recordType: endpoint.RecordTypePTR,
+			check: func(t *testing.T, ep *endpoint.Endpoint) {
+				t.Helper()
+				assert.True(t, ep.ValidatePTRRecord(), "PTR record is invalid: %v", ep)
+			},
+		},
+		{
+			recordType: endpoint.RecordTypeMX,
+			check: func(t *testing.T, ep *endpoint.Endpoint) {
+				t.Helper()
+				assert.Equal(t, defaultFQDNTemplate, ep.DNSName)
+				require.Len(t, ep.Targets, 1)
+				_, err := endpoint.NewMXRecord(ep.Targets[0])
+				assert.NoError(t, err, "MX target %q is invalid", ep.Targets[0])
+			},
+		},
+		{
+			recordType: endpoint.RecordTypeNAPTR,
+			check: func(t *testing.T, ep *endpoint.Endpoint) {
+				t.Helper()
+				assert.True(t, strings.HasPrefix(ep.DNSName, "_sip._udp."), "NAPTR DNSName %q should start with _sip._udp.", ep.DNSName)
+				require.NotEmpty(t, ep.Targets)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.recordType, func(t *testing.T) {
+			ep := mustGenerateEndpointForType(t, tt.recordType)
+			tt.check(t, ep)
+		})
+	}
 }
 
 func TestFakeSource_FQDNTemplate(t *testing.T) {
@@ -159,7 +187,35 @@ func TestFakeSource_FQDNTemplate(t *testing.T) {
 	}
 }
 
-// mustGenerateEndpointForType is a test helper that generates an endpoint for the given type.
+func TestFakeSource_AddEventHandler(t *testing.T) {
+	sc, err := NewFakeSource(&Config{})
+	require.NoError(t, err)
+	sc.AddEventHandler(t.Context(), func() {})
+}
+
+func TestFakeSource_NewFakeSource_TemplateError(t *testing.T) {
+	// Verify that a template which parses successfully but fails at execution is caught during NewFakeSource.
+	_, err := NewFakeSource(&Config{
+		TemplateEngine: templatetest.MustEngine(t, "{{call .Name}}", "", "", false),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rendering fqdn template")
+}
+
+func TestFakeSource_generateEndpointForType_UnknownType(t *testing.T) {
+	sc, err := NewFakeSource(&Config{})
+	require.NoError(t, err)
+	fs := sc.(*fakeSource)
+	_, err = fs.generateEndpointForType("UNKNOWN")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported record type")
+}
+
+func TestFakePodName_Truncation(t *testing.T) {
+	long := strings.Repeat("a", 249) // "fake-" (5) + 249 = 254 > 253
+	assert.Len(t, fakePodName(long), 253)
+}
+
 func mustGenerateEndpointForType(t *testing.T, recordType string) *endpoint.Endpoint {
 	t.Helper()
 	sc, err := NewFakeSource(&Config{})
