@@ -52,22 +52,25 @@ const (
 
 var (
 	letterRunes = []rune("abcdefghijklmnopqrstuvwxyz")
+
+	// fakePod is a placeholder Pod used when rendering the FQDN template.
+	fakePod = v1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      types.Fake,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
 )
 
 // NewFakeSource creates a new fakeSource with the given config.
 func NewFakeSource(cfg *Config) (Source, error) {
 	dnsName := defaultFQDNTemplate
 	if cfg.TemplateEngine.IsConfigured() {
-		hostnames, err := cfg.TemplateEngine.ExecFQDN(&v1.Pod{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "Pod",
-				APIVersion: "v1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      types.Fake,
-				Namespace: types.Fake,
-			},
-		})
+		hostnames, err := cfg.TemplateEngine.ExecFQDN(&fakePod)
 		if err != nil {
 			return nil, fmt.Errorf("rendering fqdn template: %w", err)
 		}
@@ -131,18 +134,11 @@ func (sc *fakeSource) generateEndpointForType(recordType string) (*endpoint.Endp
 	}
 
 	if ep != nil {
+		pod := fakePod
+		pod.Name = fakePodName(ep.DNSName)
 		ep.SetIdentifier = types.Fake
 		ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("service/%s/%s", types.Fake, ep.DNSName))
-		ep.WithRefObject(events.NewObjectReference(&v1.Pod{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "Pod",
-				APIVersion: "v1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fakePodName(ep.DNSName),
-				Namespace: v1.NamespaceDefault,
-			},
-		}, types.Fake))
+		ep.WithRefObject(events.NewObjectReference(&pod, types.Fake))
 	}
 	return ep, nil
 }

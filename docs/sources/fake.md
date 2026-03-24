@@ -84,7 +84,7 @@ kubectl get events -n default --field-selector reason=RecordReady
 
 ## Custom domain with `--fqdn-template`
 
-By default the fake source generates endpoints under `example.com`. Use `--fqdn-template` to replace it with your own domain. The template is rendered against a synthetic `Pod` object with `Name=fake` and `Namespace=fake`.
+By default the fake source generates endpoints under `example.com`. Use `--fqdn-template` to replace it with your own domain. The template is rendered against a synthetic `Pod` object with `Name=fake` and `Namespace=default`.
 
 ```console
 # plain domain
