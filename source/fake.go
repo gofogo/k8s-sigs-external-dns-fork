@@ -137,7 +137,7 @@ func (sc *fakeSource) generateEndpointForType(recordType string) (*endpoint.Endp
 		pod := fakePod
 		pod.Name = fakePodName(ep.DNSName)
 		ep.SetIdentifier = types.Fake
-		ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("service/%s/%s", types.Fake, ep.DNSName))
+		ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("%s/%s/%s", types.Fake, pod.Namespace, ep.DNSName))
 		ep.WithRefObject(events.NewObjectReference(&pod, types.Fake))
 	}
 	return ep, nil
