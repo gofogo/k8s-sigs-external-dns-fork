@@ -21,15 +21,25 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/pkg/metrics"
+	"sigs.k8s.io/external-dns/plan"
+)
+
+const (
+	actionCreate          = "create"
+	actionUpdate          = "update"
+	actionDelete          = "delete"
+	operationRecords      = "records"
+	operationApplyChanges = "apply_changes"
 )
 
 var (
-	registryErrorsTotal = metrics.NewCounterWithOpts(
+	registryErrorsTotal = metrics.NewCounterVecWithOpts(
 		prometheus.CounterOpts{
 			Subsystem: "registry",
 			Name:      "errors_total",
-			Help:      "Number of Registry errors.",
+			Help:      "Number of Registry errors partitioned by operation.",
 		},
+		[]string{"operation"},
 	)
 	sourceErrorsTotal = metrics.NewCounterWithOpts(
 		prometheus.CounterOpts{
@@ -72,6 +82,23 @@ var (
 			Name:      "no_op_runs_total",
 			Help:      "Number of reconcile loops ending up with no changes on the DNS provider side.",
 		},
+	)
+	controllerChangesTotal = metrics.NewCounterVecWithOpts(
+		prometheus.CounterOpts{
+			Subsystem: "controller",
+			Name:      "changes_total",
+			Help:      "Number of DNS record changes applied, partitioned by action and record type.",
+		},
+		[]string{"action", "record_type"},
+	)
+	reconcileDuration = metrics.NewHistogramVecWithOpts(
+		prometheus.HistogramOpts{
+			Subsystem: "controller",
+			Name:      "reconcile_duration_seconds",
+			Help:      "Duration of reconciliation loops in seconds.",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"success"},
 	)
 	deprecatedRegistryErrors = metrics.NewCounterWithOpts(
 		prometheus.CounterOpts{
@@ -134,6 +161,8 @@ func init() {
 	metrics.RegisterMetric.MustRegister(deprecatedRegistryErrors)
 	metrics.RegisterMetric.MustRegister(deprecatedSourceErrors)
 	metrics.RegisterMetric.MustRegister(controllerNoChangesTotal)
+	metrics.RegisterMetric.MustRegister(controllerChangesTotal)
+	metrics.RegisterMetric.MustRegister(reconcileDuration)
 
 	metrics.RegisterMetric.MustRegister(registryRecords)
 	metrics.RegisterMetric.MustRegister(sourceRecords)
@@ -166,6 +195,24 @@ func countMatchingAddressRecords(endpoints []*endpoint.Endpoint, registryRecords
 	for recordType, count := range counts {
 		metric.AddWithLabels(count, recordType)
 	}
+}
+
+// recordChanges tallies DNS record changes by action and record type, then bulk-adds
+// to controllerChangesTotal. Batching avoids N lock acquisitions in the Prometheus client
+// when many records share the same type.
+func recordChanges(changes *plan.Changes) {
+	addCounts := func(action string, eps []*endpoint.Endpoint) {
+		counts := make(map[string]float64, len(eps))
+		for _, ep := range eps {
+			counts[ep.RecordType]++
+		}
+		for recordType, count := range counts {
+			controllerChangesTotal.CounterVec.WithLabelValues(action, recordType).Add(count)
+		}
+	}
+	addCounts(actionCreate, changes.Create)
+	addCounts(actionUpdate, changes.UpdateNew)
+	addCounts(actionDelete, changes.Delete)
 }
 
 // countAddressRecords counts each record type in the provided endpoints slice.

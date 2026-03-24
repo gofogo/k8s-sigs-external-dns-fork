@@ -111,6 +111,11 @@ type Config struct {
 	clientGenOnce sync.Once
 }
 
+// Sources returns the list of source type names configured for this Config.
+func (c *Config) Sources() []string {
+	return c.sources
+}
+
 // OverrideConfigOption configures a Config.
 type OverrideConfigOption func(*Config)
 

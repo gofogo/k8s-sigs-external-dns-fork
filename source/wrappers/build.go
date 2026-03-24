@@ -30,6 +30,10 @@ func Build(ctx context.Context, cfg *source.Config) (source.Source, error) {
 	if err != nil {
 		return nil, err
 	}
+	names := cfg.Sources()
+	for i, src := range sources {
+		sources[i] = newInstrumentedSource(src, names[i])
+	}
 	opts := NewConfig(
 		WithDefaultTargets(cfg.DefaultTargets),
 		WithForceDefaultTargets(cfg.ForceDefaultTargets),

@@ -68,6 +68,11 @@ type Controller struct {
 // RunOnce runs a single iteration of a reconciliation loop.
 func (c *Controller) RunOnce(ctx context.Context) error {
 	lastReconcileTimestamp.Gauge.SetToCurrentTime()
+	start := time.Now()
+	success := "false"
+	defer func() {
+		reconcileDuration.HistogramVec.WithLabelValues(success).Observe(time.Since(start).Seconds())
+	}()
 
 	c.runAtMutex.Lock()
 	c.lastRunAt = time.Now()
@@ -75,7 +80,7 @@ func (c *Controller) RunOnce(ctx context.Context) error {
 
 	regRecords, err := c.Registry.Records(ctx)
 	if err != nil {
-		registryErrorsTotal.Counter.Inc()
+		registryErrorsTotal.CounterVec.WithLabelValues(operationRecords).Inc()
 		deprecatedRegistryErrors.Counter.Inc()
 		return err
 	}
@@ -118,9 +123,10 @@ func (c *Controller) RunOnce(ctx context.Context) error {
 	plan = plan.Calculate()
 
 	if plan.Changes.HasChanges() {
+		recordChanges(plan.Changes)
 		err = c.Registry.ApplyChanges(ctx, plan.Changes)
 		if err != nil {
-			registryErrorsTotal.Counter.Inc()
+			registryErrorsTotal.CounterVec.WithLabelValues(operationApplyChanges).Inc()
 			deprecatedRegistryErrors.Counter.Inc()
 			emitChangeEvent(c.EventEmitter, plan.Changes, events.RecordError)
 			return err
@@ -132,7 +138,7 @@ func (c *Controller) RunOnce(ctx context.Context) error {
 	}
 
 	lastSyncTimestamp.Gauge.SetToCurrentTime()
-
+	success = "true"
 	return nil
 }
 

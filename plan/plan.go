@@ -362,16 +362,27 @@ func (p *Plan) providerSpecificChanged(desired, current *endpoint.Endpoint) bool
 // made more sophisticated to codify this.
 func filterRecordsForPlan(records []*endpoint.Endpoint, domainFilter endpoint.MatchAllDomainFilters, managedRecords, excludeRecords []string) []*endpoint.Endpoint {
 	filtered := make([]*endpoint.Endpoint, 0, len(records))
+	var domainFiltered, recordTypeFiltered float64
 
 	for _, record := range records {
 		// Ignore records that do not match the domain filter provided
 		if !domainFilter.Match(record.DNSName) {
 			log.Debugf("ignoring record %s that does not match domain filter", record.DNSName)
+			domainFiltered++
 			continue
 		}
 		if IsManagedRecord(record.RecordType, managedRecords, excludeRecords) {
 			filtered = append(filtered, record)
+		} else {
+			recordTypeFiltered++
 		}
+	}
+
+	if domainFiltered > 0 {
+		filteredEndpointsTotal.CounterVec.WithLabelValues(reasonDomainFilter).Add(domainFiltered)
+	}
+	if recordTypeFiltered > 0 {
+		filteredEndpointsTotal.CounterVec.WithLabelValues(reasonRecordType).Add(recordTypeFiltered)
 	}
 
 	return filtered
