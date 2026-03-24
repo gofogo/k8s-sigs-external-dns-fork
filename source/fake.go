@@ -14,10 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-/*
-Note: currently only supports IP targets (A records), not hostname targets
-*/
-
 package source
 
 import (
@@ -54,52 +50,105 @@ const (
 	defaultFQDNTemplate = "example.com"
 )
 
+var (
+	letterRunes = []rune("abcdefghijklmnopqrstuvwxyz")
+)
+
 // NewFakeSource creates a new fakeSource with the given config.
-// TODO: support cfg.TemplateEngine by rendering the FQDN template against a synthetic
-// Kubernetes object (e.g. metav1.PartialObjectMetadata) so that --fqdn-template
-// is honored when --source=fake is used for dry-runs.
-func NewFakeSource(_ *Config) (Source, error) {
-	return &fakeSource{
-		dnsName: defaultFQDNTemplate,
-	}, nil
+func NewFakeSource(cfg *Config) (Source, error) {
+	dnsName := defaultFQDNTemplate
+	if cfg.TemplateEngine.IsConfigured() {
+		hostnames, err := cfg.TemplateEngine.ExecFQDN(&v1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Pod",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      types.Fake,
+				Namespace: types.Fake,
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("rendering fqdn template: %w", err)
+		}
+		if len(hostnames) > 0 {
+			dnsName = hostnames[0]
+		}
+	}
+	return &fakeSource{dnsName: dnsName}, nil
 }
 
 func (sc *fakeSource) AddEventHandler(_ context.Context, _ func()) {
 }
 
-// Endpoints returns endpoint objects.
+// Endpoints returns one endpoint per supported DNS record type.
 func (sc *fakeSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error) {
-	endpoints := make([]*endpoint.Endpoint, 10)
-
-	for i := range 10 {
-		endpoints[i] = sc.generateEndpoint()
+	endpoints := make([]*endpoint.Endpoint, 0, len(endpoint.KnownRecordTypes))
+	for _, recordType := range endpoint.KnownRecordTypes {
+		ep, err := sc.generateEndpointForType(recordType)
+		if err != nil {
+			return nil, fmt.Errorf("generating %s endpoint: %w", recordType, err)
+		}
+		if ep != nil {
+			endpoints = append(endpoints, ep)
+		}
 	}
-
 	return MergeEndpoints(endpoints), nil
 }
 
-func (sc *fakeSource) generateEndpoint() *endpoint.Endpoint {
-	ep := endpoint.NewEndpoint(
-		generateDNSName(4, sc.dnsName),
-		endpoint.RecordTypeA,
-		generateIPAddress(),
-	)
-	ep.SetIdentifier = types.Fake
-	ep.WithRefObject(events.NewObjectReference(&v1.Pod{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Pod",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      types.Fake + "-" + ep.DNSName,
-			Namespace: v1.NamespaceDefault,
-		},
-	}, types.Fake))
-	return ep
+func (sc *fakeSource) generateEndpointForType(recordType string) (*endpoint.Endpoint, error) {
+	var ep *endpoint.Endpoint
+
+	switch recordType {
+	case endpoint.RecordTypeA:
+		ep = endpoint.NewEndpoint(generateDNSName(4, sc.dnsName), endpoint.RecordTypeA, generateIPv4Address())
+	case endpoint.RecordTypeAAAA:
+		ep = endpoint.NewEndpoint(generateDNSName(4, sc.dnsName), endpoint.RecordTypeAAAA, generateIPv6Address())
+	case endpoint.RecordTypeCNAME:
+		ep = endpoint.NewEndpoint(generateDNSName(4, sc.dnsName), endpoint.RecordTypeCNAME, generateDNSName(4, sc.dnsName))
+	case endpoint.RecordTypeTXT:
+		ep = endpoint.NewEndpoint(generateDNSName(4, sc.dnsName), endpoint.RecordTypeTXT, `"heritage=external-dns,external-dns/owner=fake"`)
+	case endpoint.RecordTypeSRV:
+		// SRV target format: "priority weight port target." (target must end with a dot per RFC 2782)
+		name := generateDNSName(4, sc.dnsName)
+		ep = endpoint.NewEndpoint(fmt.Sprintf("_sip._udp.%s", sc.dnsName), endpoint.RecordTypeSRV, fmt.Sprintf("10 20 5060 %s.", name))
+	case endpoint.RecordTypeNS:
+		ep = endpoint.NewEndpoint(sc.dnsName, endpoint.RecordTypeNS, generateDNSName(3, sc.dnsName))
+	case endpoint.RecordTypePTR:
+		name := generateDNSName(4, sc.dnsName)
+		var err error
+		ep, err = endpoint.NewPTREndpoint(generateIPv4Address(), endpoint.TTL(0), name)
+		if err != nil {
+			return nil, err
+		}
+	case endpoint.RecordTypeMX:
+		ep = endpoint.NewEndpoint(sc.dnsName, endpoint.RecordTypeMX, fmt.Sprintf("10 %s", generateDNSName(4, sc.dnsName)))
+	case endpoint.RecordTypeNAPTR:
+		// NAPTR target format: "order preference flags service regexp replacement"
+		ep = endpoint.NewEndpoint(fmt.Sprintf("_sip._udp.%s", sc.dnsName), endpoint.RecordTypeNAPTR, fmt.Sprintf(`100 10 "u" "E2U+sip" "!^.*$!sip:info@%s!" .`, sc.dnsName))
+	default:
+		return nil, fmt.Errorf("unsupported record type: %s", recordType)
+	}
+
+	if ep != nil {
+		ep.SetIdentifier = types.Fake
+		ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("service/%s/%s", types.Fake, ep.DNSName))
+		ep.WithRefObject(events.NewObjectReference(&v1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Pod",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fakePodName(ep.DNSName),
+				Namespace: v1.NamespaceDefault,
+			},
+		}, types.Fake))
+	}
+	return ep, nil
 }
 
-func generateIPAddress() string {
-	// 192.0.2.[1-255] is reserved by RFC 5737 for documentation and examples
+func generateIPv4Address() string {
+	// 192.0.2.[1-254] is reserved by RFC 5737 for documentation and examples
 	return net.IPv4(
 		byte(192),
 		byte(0),
@@ -108,16 +157,27 @@ func generateIPAddress() string {
 	).String()
 }
 
-var letterRunes = []rune("abcdefghijklmnopqrstuvwxyz")
+func generateIPv6Address() string {
+	// 2001:db8::/32 is reserved by RFC 3849 for documentation and examples
+	return fmt.Sprintf("2001:db8::%x:%x", rand.Intn(0xffff)+1, rand.Intn(0xffff)+1)
+}
+
+// fakePodName returns a valid Kubernetes object name for the fake Pod associated
+// with an endpoint. Names are capped at 253 characters (RFC 1123 subdomain limit).
+func fakePodName(dnsName string) string {
+	const prefix = types.Fake + "-"
+	const maxLen = 253
+	name := prefix + dnsName
+	if len(name) > maxLen {
+		name = name[:maxLen]
+	}
+	return name
+}
 
 func generateDNSName(prefixLength int, dnsName string) string {
-	prefixBytes := make([]rune, prefixLength)
-
-	for i := range prefixBytes {
-		prefixBytes[i] = letterRunes[rand.Intn(len(letterRunes))]
+	prefix := make([]rune, prefixLength)
+	for i := range prefix {
+		prefix[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
-
-	prefixStr := string(prefixBytes)
-
-	return fmt.Sprintf("%s.%s", prefixStr, dnsName)
+	return fmt.Sprintf("%s.%s", string(prefix), dnsName)
 }
