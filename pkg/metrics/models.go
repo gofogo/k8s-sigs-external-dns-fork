@@ -211,6 +211,30 @@ func NewSummaryVecWithOpts(opts prometheus.SummaryOpts, labels []string) Summary
 	}
 }
 
+type HistogramVecMetric struct {
+	Metric
+	HistogramVec *prometheus.HistogramVec
+}
+
+func (h HistogramVecMetric) Get() *Metric {
+	return &h.Metric
+}
+
+func NewHistogramVecWithOpts(opts prometheus.HistogramOpts, labelNames []string) HistogramVecMetric {
+	opts.Namespace = Namespace
+	return HistogramVecMetric{
+		Metric: Metric{
+			Type:      "histogram",
+			Name:      opts.Name,
+			FQDN:      fmt.Sprintf("%s_%s", opts.Subsystem, opts.Name),
+			Namespace: opts.Namespace,
+			Subsystem: opts.Subsystem,
+			Help:      opts.Help,
+		},
+		HistogramVec: prometheus.NewHistogramVec(opts, labelNames),
+	}
+}
+
 func PathProcessor(path string) string {
 	parts := strings.Split(path, "/")
 	return parts[len(parts)-1]

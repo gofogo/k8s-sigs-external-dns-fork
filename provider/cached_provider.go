@@ -28,6 +28,12 @@ import (
 	"sigs.k8s.io/external-dns/plan"
 )
 
+const (
+	opRecords         = "records"
+	opApplyChanges    = "apply_changes"
+	opAdjustEndpoints = "adjust_endpoints"
+)
+
 var (
 	cachedRecordsCallsTotal = metrics.NewCounterVecWithOpts(
 		prometheus.CounterOpts{
@@ -46,11 +52,21 @@ var (
 			Help:      "Number of calls to the provider cache ApplyChanges.",
 		},
 	)
+	providerOperationDuration = metrics.NewHistogramVecWithOpts(
+		prometheus.HistogramOpts{
+			Subsystem: "provider",
+			Name:      "operation_duration_seconds",
+			Help:      "Duration of DNS provider operations in seconds, partitioned by operation type.",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"operation"},
+	)
 )
 
 func init() {
 	metrics.RegisterMetric.MustRegister(cachedRecordsCallsTotal)
 	metrics.RegisterMetric.MustRegister(cachedApplyChangesCallsTotal)
+	metrics.RegisterMetric.MustRegister(providerOperationDuration)
 }
 
 type CachedProvider struct {
@@ -70,7 +86,9 @@ func NewCachedProvider(provider Provider, refreshDelay time.Duration) *CachedPro
 func (c *CachedProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 	if c.needRefresh() {
 		log.Info("Records cache provider: refreshing records list cache")
+		start := time.Now()
 		records, err := c.Provider.Records(ctx)
+		providerOperationDuration.HistogramVec.WithLabelValues(opRecords).Observe(time.Since(start).Seconds())
 		if err != nil {
 			c.cache = nil
 			return nil, err
@@ -84,6 +102,7 @@ func (c *CachedProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, err
 	}
 	return c.cache, nil
 }
+
 func (c *CachedProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	if !changes.HasChanges() {
 		log.Info("Records cache provider: no changes to be applied")
@@ -91,7 +110,17 @@ func (c *CachedProvider) ApplyChanges(ctx context.Context, changes *plan.Changes
 	}
 	c.Reset()
 	cachedApplyChangesCallsTotal.Counter.Inc()
-	return c.Provider.ApplyChanges(ctx, changes)
+	start := time.Now()
+	err := c.Provider.ApplyChanges(ctx, changes)
+	providerOperationDuration.HistogramVec.WithLabelValues(opApplyChanges).Observe(time.Since(start).Seconds())
+	return err
+}
+
+func (c *CachedProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
+	start := time.Now()
+	result, err := c.Provider.AdjustEndpoints(endpoints)
+	providerOperationDuration.HistogramVec.WithLabelValues(opAdjustEndpoints).Observe(time.Since(start).Seconds())
+	return result, err
 }
 
 func (c *CachedProvider) Reset() {

@@ -23,7 +23,21 @@ import (
 	"sigs.k8s.io/external-dns/pkg/metrics"
 )
 
+const (
+	reasonDomainFilter = "domain_filter"
+	reasonRecordType   = "record_type"
+)
+
 var (
+	filteredEndpointsTotal = metrics.NewCounterVecWithOpts(
+		prometheus.CounterOpts{
+			Subsystem: "controller",
+			Name:      "filtered_endpoints_total",
+			Help:      "Number of endpoints removed before planning, partitioned by filter reason.",
+		},
+		[]string{"reason"},
+	)
+
 	// registryOwnerMismatchPerSync tracks records skipped due to owner mismatch.
 	// The "domain" label uses the naked/apex domain (e.g., "example.com") rather than
 	// full FQDNs to prevent cardinality explosion. With thousands of subdomains under
@@ -39,6 +53,7 @@ var (
 )
 
 func init() {
+	metrics.RegisterMetric.MustRegister(filteredEndpointsTotal)
 	metrics.RegisterMetric.MustRegister(registryOwnerMismatchPerSync)
 }
 

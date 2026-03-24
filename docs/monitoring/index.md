@@ -8,7 +8,7 @@ For `external-dns`, all metrics available for scraping are exposed on the `/metr
 To access the metrics:
 
 ```sh
-curl https://localhost:7979/metrics
+curl http://localhost:7979/metrics
 ```
 
 In the metrics output, you'll see the help text, type information, and current value of the `external_dns_registry_endpoints_total` counter:
@@ -34,20 +34,58 @@ For more detailed information on how to instrument application with Prometheus, 
 
 ## What metrics can I get from ExternalDNS and what do they mean?
 
-- The project maintain a [metrics page](./metrics.md) with a list of supported custom metrics.
-- [Go runtime](https://pkg.go.dev/runtime/metrics#hdr-Supported_metrics) metrics also available for scraping.
+- The project maintains a [metrics page](./metrics.md) with a list of all supported custom metrics.
+- [Go runtime](https://pkg.go.dev/runtime/metrics#hdr-Supported_metrics) metrics are also available for scraping.
 
-ExternalDNS exposes 3 types of metrics: Sources, Registry errors and Cache hits.
+ExternalDNS exposes metrics across six subsystems: `controller`, `source`, `registry`, `provider`, `webhook_provider`, and `http`.
+
+### Source errors
 
 `Source`s are mostly Kubernetes API objects. Examples of `source` errors may be connection errors to the Kubernetes API server itself or missing RBAC permissions.
 It can also stem from incompatible configuration in the objects itself like invalid characters, processing a broken fqdnTemplate, etc.
 
+### Registry / Provider errors
+
 `Registry` errors are mostly Provider errors, unless there's some coding flaw in the registry package. Provider errors often arise due to accessing their APIs due to network or missing cloud-provider permissions when reading records.
 When applying a changeset, errors will arise if the changeset applied is incompatible with the current state.
 
-In case of an increased error count, you could correlate them with the `http_request_duration_seconds{handler="instrumented_http"}` metric which should show increased numbers for status codes 4xx (permissions, configuration, invalid changeset) or 5xx (apiserver down).
+The `external_dns_registry_errors_total` metric includes an `operation` label to distinguish between read and write failures:
 
-You can use the host label in the metric to figure out if the request was against the Kubernetes API server (Source errors) or the DNS provider API (Registry/Provider errors).
+| `operation` value | Meaning |
+|:------------------|:--------|
+| `records`         | Failed to read current DNS state from the provider |
+| `apply_changes`   | Failed to write a changeset to the provider |
+
+Read failures (`records`) prevent ExternalDNS from knowing the current state and will block the sync loop. Write failures (`apply_changes`) mean the desired state could not be applied.
+
+### Reconciliation metrics
+
+`external_dns_controller_reconcile_duration_seconds{success="true|false"}` is a histogram tracking how long each reconciliation loop takes. A sustained increase indicates a slow provider or growing record set.
+
+`external_dns_controller_changes_total{action, record_type}` counts every DNS record change applied, broken down by action (`create`, `update`, `delete`) and record type (`A`, `AAAA`, `CNAME`, etc.). This is the primary signal for understanding what ExternalDNS is doing each cycle.
+
+`external_dns_controller_filtered_endpoints_total{reason}` counts endpoints dropped before the planning phase:
+
+| `reason` value  | Meaning |
+|:----------------|:--------|
+| `domain_filter` | Record did not match `--domain-filter` |
+| `record_type`   | Record type excluded via `--managed-record-types` / `--exclude-record-types` |
+
+A non-zero value for `domain_filter` is normal when `--domain-filter` is set. An unexpected rise in `record_type` may indicate misconfigured record type filters.
+
+### Source type breakdown
+
+`external_dns_source_endpoints_by_type{source_type, record_type}` shows how many endpoints each configured source type (e.g., `ingress`, `service`, `gateway-httproute`) is currently contributing. This is the first place to look when endpoint counts change unexpectedly after adding or removing a source.
+
+### Provider operation latency
+
+`external_dns_provider_operation_duration_seconds{operation}` is a histogram of the time spent on actual DNS provider API calls, partitioned by operation (`records`, `apply_changes`, `adjust_endpoints`). This is only recorded when the provider cache is enabled (`--provider-cache-time`); cache hits are not measured since no API call is made.
+
+### HTTP request latency
+
+In case of an increased error count, you can correlate errors with `external_dns_http_request_duration_seconds{handler="instrumented_http"}`, which records latency and status codes for all outbound HTTP calls. This covers the DNS provider API (AWS Route53, etc.) as well as the webhook provider.
+
+Use the `host` label to distinguish between the Kubernetes API server (source errors) and the DNS provider API (registry/provider errors). Use the `status` label to distinguish permission errors (`4xx`) from provider outages (`5xx`).
 
 ## Owner Mismatch Metrics
 
@@ -70,7 +108,7 @@ When scraping ExternalDNS metrics, consider the following best practices:
 
 ### Cardinality Management
 
-- **Vector metrics** (those with labels like `record_type`, `domain`) can generate multiple time series. Monitor your Prometheus storage and memory usage accordingly.
+- **Vector metrics** (those with labels like `record_type`, `source_type`, `domain`) can generate multiple time series. Monitor your Prometheus storage and memory usage accordingly.
 - The `domain` label on owner mismatch metrics is intentionally limited to apex domains to bound cardinality.
 - Use recording rules to pre-aggregate high-cardinality metrics if you only need totals.
 
@@ -83,9 +121,13 @@ When scraping ExternalDNS metrics, consider the following best practices:
 
 Consider alerting on:
 
-- `external_dns_source_errors_total` or `external_dns_registry_errors_total` increasing - indicates connectivity or permission issues.
-- `external_dns_controller_last_sync_timestamp_seconds` not updating - indicates the sync loop may be stuck.
-- `external_dns_registry_skipped_records_owner_mismatch_per_sync` non-zero - indicates ownership conflicts that may need investigation.
+- `rate(external_dns_source_errors_total[5m]) > 0` — source connectivity or RBAC issues.
+- `rate(external_dns_registry_errors_total{operation="records"}[5m]) > 0` — provider read failures; ExternalDNS cannot determine current DNS state.
+- `rate(external_dns_registry_errors_total{operation="apply_changes"}[5m]) > 0` — provider write failures; desired state is not being applied.
+- `external_dns_controller_consecutive_soft_errors > 0` — repeated transient failures; increasing values indicate a persistent problem.
+- `time() - external_dns_controller_last_sync_timestamp_seconds > 2 * <interval>` — sync loop appears stuck.
+- `rate(external_dns_controller_changes_total{action="delete"}[5m]) > <threshold>` — unexpected mass deletion of DNS records.
+- `external_dns_registry_skipped_records_owner_mismatch_per_sync > 0` — ownership conflicts in multi-instance deployments.
 
 ## Resources
 
