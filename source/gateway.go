@@ -19,10 +19,8 @@ package source
 import (
 	"context"
 	"fmt"
-	"net/netip"
 	"sort"
 	"strings"
-	"text/template"
 
 	log "github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
@@ -40,8 +38,8 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/source/annotations"
-	"sigs.k8s.io/external-dns/source/fqdn"
 	"sigs.k8s.io/external-dns/source/informers"
+	"sigs.k8s.io/external-dns/source/template"
 )
 
 const (
@@ -95,7 +93,8 @@ func newGatewayInformerFactory(client gateway.Interface, namespace string, label
 // +externaldns:source:resources=HTTPRoute.gateway.networking.k8s.io
 // +externaldns:source:filters=annotation,label
 // +externaldns:source:namespace=all,single
-// +externaldns:source:fqdn-template=false
+// +externaldns:source:fqdn-template=true
+// +externaldns:source:provider-specific=true
 //
 // +externaldns:source:name=gateway-grpcroute
 // +externaldns:source:category=Gateway API
@@ -103,7 +102,8 @@ func newGatewayInformerFactory(client gateway.Interface, namespace string, label
 // +externaldns:source:resources=GRPCRoute.gateway.networking.k8s.io
 // +externaldns:source:filters=annotation,label
 // +externaldns:source:namespace=all,single
-// +externaldns:source:fqdn-template=false
+// +externaldns:source:fqdn-template=true
+// +externaldns:source:provider-specific=true
 //
 // +externaldns:source:name=gateway-tcproute
 // +externaldns:source:category=Gateway API
@@ -111,7 +111,8 @@ func newGatewayInformerFactory(client gateway.Interface, namespace string, label
 // +externaldns:source:resources=TCPRoute.gateway.networking.k8s.io
 // +externaldns:source:filters=annotation,label
 // +externaldns:source:namespace=all,single
-// +externaldns:source:fqdn-template=false
+// +externaldns:source:fqdn-template=true
+// +externaldns:source:provider-specific=true
 //
 // +externaldns:source:name=gateway-tlsroute
 // +externaldns:source:category=Gateway API
@@ -119,7 +120,8 @@ func newGatewayInformerFactory(client gateway.Interface, namespace string, label
 // +externaldns:source:resources=TLSRoute.gateway.networking.k8s.io
 // +externaldns:source:filters=annotation,label
 // +externaldns:source:namespace=all,single
-// +externaldns:source:fqdn-template=false
+// +externaldns:source:fqdn-template=true
+// +externaldns:source:provider-specific=true
 //
 // +externaldns:source:name=gateway-udproute
 // +externaldns:source:category=Gateway API
@@ -128,6 +130,7 @@ func newGatewayInformerFactory(client gateway.Interface, namespace string, label
 // +externaldns:source:filters=annotation,label
 // +externaldns:source:namespace=all,single
 // +externaldns:source:fqdn-template=true
+// +externaldns:source:provider-specific=true
 type gatewayRouteSource struct {
 	gwName      string
 	gwNamespace string
@@ -142,8 +145,7 @@ type gatewayRouteSource struct {
 
 	nsInformer coreinformers.NamespaceInformer
 
-	fqdnTemplate             *template.Template
-	combineFQDNAnnotation    bool
+	templateEngine           template.Engine
 	ignoreHostnameAnnotation bool
 }
 
@@ -162,10 +164,6 @@ func newGatewayRouteSource(
 		rtLabels = labels.Everything()
 	}
 	rtAnnotations, err := getLabelSelector(config.AnnotationFilter)
-	if err != nil {
-		return nil, err
-	}
-	tmpl, err := fqdn.ParseTemplate(config.FQDNTemplate)
 	if err != nil {
 		return nil, err
 	}
@@ -225,8 +223,7 @@ func newGatewayRouteSource(
 
 		nsInformer: nsInformer,
 
-		fqdnTemplate:             tmpl,
-		combineFQDNAnnotation:    config.CombineFQDNAndAnnotation,
+		templateEngine:           config.TemplateEngine,
 		ignoreHostnameAnnotation: config.IgnoreHostnameAnnotation,
 	}
 	return src, nil
@@ -235,9 +232,9 @@ func newGatewayRouteSource(
 func (src *gatewayRouteSource) AddEventHandler(_ context.Context, handler func()) {
 	log.Debugf("Adding event handlers for %s", src.rtKind)
 	eventHandler := eventHandlerFunc(handler)
-	_, _ = src.gwInformer.Informer().AddEventHandler(eventHandler)
-	_, _ = src.rtInformer.Informer().AddEventHandler(eventHandler)
-	_, _ = src.nsInformer.Informer().AddEventHandler(eventHandler)
+	informers.MustAddEventHandler(src.gwInformer.Informer(), eventHandler)
+	informers.MustAddEventHandler(src.rtInformer.Informer(), eventHandler)
+	informers.MustAddEventHandler(src.nsInformer.Informer(), eventHandler)
 }
 
 func (src *gatewayRouteSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error) {
@@ -285,13 +282,13 @@ func (src *gatewayRouteSource) Endpoints(_ context.Context) ([]*endpoint.Endpoin
 		providerSpecific, setIdentifier := annotations.ProviderSpecificAnnotations(annots)
 		ttl := annotations.TTLFromAnnotations(annots, resource)
 		for host, targets := range hostTargets {
-			routeEndpoints = append(routeEndpoints, EndpointsForHostname(host, targets, ttl, providerSpecific, setIdentifier, resource)...)
+			routeEndpoints = append(routeEndpoints, endpoint.EndpointsForHostname(host, targets, ttl, providerSpecific, setIdentifier, resource)...)
 		}
 		log.Debugf("Endpoints generated from %s %s/%s: %v", src.rtKind, meta.Namespace, meta.Name, routeEndpoints)
 
 		endpoints = append(endpoints, routeEndpoints...)
 	}
-	return endpoints, nil
+	return MergeEndpoints(endpoints), nil
 }
 
 func namespacedName(namespace, name string) types.NamespacedName {
@@ -448,8 +445,8 @@ func (c *gatewayRouteResolver) hosts(rt gatewayRoute) ([]string, error) {
 		hostnames = append(hostnames, string(name))
 	}
 	// TODO: The combine-fqdn-annotation flag is similarly vague.
-	if c.src.fqdnTemplate != nil && (len(hostnames) == 0 || c.src.combineFQDNAnnotation) {
-		hosts, err := fqdn.ExecTemplate(c.src.fqdnTemplate, rt.Object())
+	if c.src.templateEngine.IsConfigured() && (len(hostnames) == 0 || c.src.templateEngine.Combining()) {
+		hosts, err := c.src.templateEngine.ExecFQDN(rt.Object())
 		if err != nil {
 			return nil, err
 		}
@@ -650,8 +647,7 @@ func gwHost(host string) (string, bool) {
 
 // isIPAddr returns whether s in an IP address.
 func isIPAddr(s string) bool {
-	_, err := netip.ParseAddr(s)
-	return err == nil
+	return endpoint.SuitableType(s) != endpoint.RecordTypeCNAME
 }
 
 // isDNS1123Domain returns whether s is a valid domain name according to RFC 1123.

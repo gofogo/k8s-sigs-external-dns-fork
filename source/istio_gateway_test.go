@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	istionetworking "istio.io/api/networking/v1beta1"
-	networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
+	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
 	istiofake "istio.io/client-go/pkg/clientset/versioned/fake"
 	v1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
@@ -34,10 +34,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
+
 	"sigs.k8s.io/external-dns/internal/testutils"
 	"sigs.k8s.io/external-dns/source/annotations"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	templatetest "sigs.k8s.io/external-dns/source/template/testutil"
 )
 
 // This is a compile-time validation that gatewaySource is a Source.
@@ -99,11 +101,9 @@ func (suite *GatewaySuite) SetupTest() {
 		context.TODO(),
 		fakeKubernetesClient,
 		fakeIstioClient,
-		"",
-		"",
-		"{{.Name}}",
-		false,
-		false,
+		&Config{
+			TemplateEngine: templatetest.MustEngine(suite.T(), "{{.Name}}", "", "", false),
+		},
 	)
 	suite.NoError(err, "should initialize gateway source")
 	suite.NoError(err, "should succeed")
@@ -122,70 +122,6 @@ func TestGateway(t *testing.T) {
 	suite.Run(t, new(GatewaySuite))
 	t.Run("endpointsFromGatewayConfig", testEndpointsFromGatewayConfig)
 	t.Run("Endpoints", testGatewayEndpoints)
-}
-
-func TestNewIstioGatewaySource(t *testing.T) {
-	t.Parallel()
-
-	for _, ti := range []struct {
-		title                    string
-		annotationFilter         string
-		fqdnTemplate             string
-		combineFQDNAndAnnotation bool
-		expectError              bool
-	}{
-		{
-			title:        "invalid template",
-			expectError:  true,
-			fqdnTemplate: "{{.Name",
-		},
-		{
-			title:       "valid empty template",
-			expectError: false,
-		},
-		{
-			title:        "valid template",
-			expectError:  false,
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com",
-		},
-		{
-			title:        "valid template",
-			expectError:  false,
-			fqdnTemplate: "{{.Name}}-{{.Namespace}}.ext-dns.test.com, {{.Name}}-{{.Namespace}}.ext-dna.test.com",
-		},
-		{
-			title:                    "valid template",
-			expectError:              false,
-			fqdnTemplate:             "{{.Name}}-{{.Namespace}}.ext-dns.test.com, {{.Name}}-{{.Namespace}}.ext-dna.test.com",
-			combineFQDNAndAnnotation: true,
-		},
-		{
-			title:            "non-empty annotation filter label",
-			expectError:      false,
-			annotationFilter: "kubernetes.io/gateway.class=nginx",
-		},
-	} {
-
-		t.Run(ti.title, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := NewIstioGatewaySource(
-				context.TODO(),
-				fake.NewClientset(),
-				istiofake.NewSimpleClientset(),
-				"",
-				ti.annotationFilter,
-				ti.fqdnTemplate,
-				ti.combineFQDNAndAnnotation,
-				false,
-			)
-			if ti.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
 }
 
 func testEndpointsFromGatewayConfig(t *testing.T) {
@@ -496,21 +432,44 @@ func testEndpointsFromGatewayConfig(t *testing.T) {
 				},
 			},
 		},
+		{
+			title: "provider-specific annotation is converted to endpoint property",
+			lbServices: []fakeIngressGatewayService{
+				{
+					ips: []string{"8.8.8.8"},
+				},
+			},
+			config: fakeGatewayConfig{
+				annotations: map[string]string{
+					annotations.AWSPrefix + "weight": "10",
+				},
+				dnsnames: [][]string{
+					{"foo.bar"},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				{
+					DNSName:    "foo.bar",
+					RecordType: endpoint.RecordTypeA,
+					Targets:    endpoint.Targets{"8.8.8.8"},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						{Name: "aws/weight", Value: "10"},
+					},
+				},
+			},
+		},
 	} {
 
 		t.Run(ti.title, func(t *testing.T) {
 			t.Parallel()
 
 			gatewayCfg := ti.config.Config()
-			if source, err := newTestGatewaySource(ti.lbServices, ti.ingresses); err != nil {
-				require.NoError(t, err)
-			} else if hostnames, err := source.hostNamesFromGateway(gatewayCfg); err != nil {
-				require.NoError(t, err)
-			} else if endpoints, err := source.endpointsFromGateway(hostnames, gatewayCfg); err != nil {
-				require.NoError(t, err)
-			} else {
-				validateEndpoints(t, endpoints, ti.expected)
-			}
+			source, err := newTestGatewaySource(t, ti.lbServices, ti.ingresses)
+			require.NoError(t, err)
+			hostnames := source.hostNamesFromGateway(gatewayCfg)
+			endpoints, err := source.endpointsFromGateway(hostnames, gatewayCfg)
+			require.NoError(t, err)
+			testutils.ValidateEndpoints(t, endpoints, ti.expected)
 		})
 	}
 }
@@ -1487,7 +1446,7 @@ func testGatewayEndpoints(t *testing.T) {
 
 			for _, lb := range ti.lbServices {
 				service := lb.Service()
-				_, err := fakeKubernetesClient.CoreV1().Services(service.Namespace).Create(context.Background(), service, metav1.CreateOptions{})
+				_, err := fakeKubernetesClient.CoreV1().Services(service.Namespace).Create(t.Context(), service, metav1.CreateOptions{})
 				require.NoError(t, err)
 			}
 
@@ -1496,37 +1455,38 @@ func testGatewayEndpoints(t *testing.T) {
 				if ingress.Namespace != targetNamespace {
 					targetNamespace = v1.NamespaceAll
 				}
-				_, err := fakeKubernetesClient.NetworkingV1().Ingresses(ingress.Namespace).Create(context.Background(), ingress, metav1.CreateOptions{})
+				_, err := fakeKubernetesClient.NetworkingV1().Ingresses(ingress.Namespace).Create(t.Context(), ingress, metav1.CreateOptions{})
 				require.NoError(t, err)
 			}
 
 			fakeIstioClient := istiofake.NewSimpleClientset()
 			for _, config := range ti.configItems {
 				gatewayCfg := config.Config()
-				_, err := fakeIstioClient.NetworkingV1beta1().Gateways(ti.targetNamespace).Create(context.Background(), gatewayCfg, metav1.CreateOptions{})
+				_, err := fakeIstioClient.NetworkingV1().Gateways(ti.targetNamespace).Create(t.Context(), gatewayCfg, metav1.CreateOptions{})
 				require.NoError(t, err)
 			}
 
 			gatewaySource, err := NewIstioGatewaySource(
-				context.TODO(),
+				t.Context(),
 				fakeKubernetesClient,
 				fakeIstioClient,
-				targetNamespace,
-				ti.annotationFilter,
-				ti.fqdnTemplate,
-				ti.combineFQDNAndAnnotation,
-				ti.ignoreHostnameAnnotation,
+				&Config{
+					Namespace:                targetNamespace,
+					TemplateEngine:           templatetest.MustEngine(t, ti.fqdnTemplate, "", "", ti.combineFQDNAndAnnotation),
+					IgnoreHostnameAnnotation: ti.ignoreHostnameAnnotation,
+					AnnotationFilter:         ti.annotationFilter,
+				},
 			)
 			require.NoError(t, err)
 
-			res, err := gatewaySource.Endpoints(context.Background())
+			res, err := gatewaySource.Endpoints(t.Context())
 			if ti.expectError {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
 			}
 
-			validateEndpoints(t, res, ti.expected)
+			testutils.ValidateEndpoints(t, res, ti.expected)
 		})
 	}
 }
@@ -1602,7 +1562,7 @@ func TestGatewaySource_GWSelectorMatchServiceSelector(t *testing.T) {
 			_, err := fakeKubeClient.CoreV1().Services(svc.Namespace).Create(t.Context(), svc, metav1.CreateOptions{})
 			require.NoError(t, err)
 
-			gw := &networkingv1beta1.Gateway{
+			gw := &networkingv1.Gateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "fake-gateway",
 					Namespace: "default",
@@ -1617,18 +1577,14 @@ func TestGatewaySource_GWSelectorMatchServiceSelector(t *testing.T) {
 				},
 			}
 
-			_, err = fakeIstioClient.NetworkingV1beta1().Gateways(gw.Namespace).Create(context.Background(), gw, metav1.CreateOptions{})
+			_, err = fakeIstioClient.NetworkingV1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
 			require.NoError(t, err)
 
 			src, err := NewIstioGatewaySource(
 				t.Context(),
 				fakeKubeClient,
 				fakeIstioClient,
-				"",
-				"",
-				"",
-				false,
-				false,
+				&Config{},
 			)
 			require.NoError(t, err)
 			require.NotNil(t, src)
@@ -1636,109 +1592,150 @@ func TestGatewaySource_GWSelectorMatchServiceSelector(t *testing.T) {
 			res, err := src.Endpoints(t.Context())
 			require.NoError(t, err)
 
-			validateEndpoints(t, res, tt.expected)
+			testutils.ValidateEndpoints(t, res, tt.expected)
 		})
 	}
 }
 
 func TestTransformerInIstioGatewaySource(t *testing.T) {
-	svc := &v1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "fake-service",
-			Namespace: "default",
-			Labels: map[string]string{
-				"label1": "value1",
-				"label2": "value2",
-				"label3": "value3",
-			},
-			Annotations: map[string]string{
-				"user-annotation": "value",
-				"external-dns.alpha.kubernetes.io/hostname": "test-hostname",
-				"external-dns.alpha.kubernetes.io/random":   "value",
-				"other/annotation":                          "value",
-			},
-			UID: "someuid",
-		},
-		Spec: v1.ServiceSpec{
-			Selector: map[string]string{
-				"selector":  "one",
-				"selector2": "two",
-				"selector3": "three",
-			},
-			ExternalIPs: []string{"1.2.3.4"},
-			Ports: []v1.ServicePort{
-				{
-					Name:       "http",
-					Port:       80,
-					TargetPort: intstr.FromInt32(8080),
-					Protocol:   v1.ProtocolTCP,
-				},
-				{
-					Name:       "https",
-					Port:       443,
-					TargetPort: intstr.FromInt32(8443),
-					Protocol:   v1.ProtocolTCP,
-				},
-			},
-			Type: v1.ServiceTypeLoadBalancer,
-		},
-		Status: v1.ServiceStatus{
-			LoadBalancer: v1.LoadBalancerStatus{
-				Ingress: []v1.LoadBalancerIngress{
-					{IP: "5.6.7.8", Hostname: "lb.example.com"},
-				},
-			},
-			Conditions: []metav1.Condition{
-				{
-					Type:               "Available",
-					Status:             metav1.ConditionTrue,
-					Reason:             "MinimumReplicasAvailable",
-					Message:            "Service is available",
-					LastTransitionTime: metav1.Now(),
-				},
-			},
-		},
+	newSource := func(t *testing.T, kClient *fake.Clientset, istioClient *istiofake.Clientset) *gatewaySource {
+		t.Helper()
+		src, err := NewIstioGatewaySource(t.Context(), kClient, istioClient, &Config{})
+		require.NoError(t, err)
+		gs, ok := src.(*gatewaySource)
+		require.True(t, ok)
+		return gs
 	}
 
-	fakeClient := fake.NewClientset()
+	t.Run("service strips managed fields and status conditions", func(t *testing.T) {
+		svc := &v1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "fake-service",
+				Namespace: "default",
+				Labels: map[string]string{
+					"label1": "value1",
+					"label2": "value2",
+					"label3": "value3",
+				},
+				Annotations: map[string]string{
+					"user-annotation": "value",
+					"external-dns.alpha.kubernetes.io/hostname": "test-hostname",
+					"external-dns.alpha.kubernetes.io/random":   "value",
+					"other/annotation":                          "value",
+					v1.LastAppliedConfigAnnotation:              `{"apiVersion":"v1"}`,
+				},
+				UID: "someuid",
+				ManagedFields: []metav1.ManagedFieldsEntry{
+					{Manager: "kubectl", Operation: metav1.ManagedFieldsOperationApply},
+				},
+			},
+			Spec: v1.ServiceSpec{
+				Selector:    map[string]string{"selector": "one"},
+				ExternalIPs: []string{"1.2.3.4"},
+				Type:        v1.ServiceTypeLoadBalancer,
+			},
+			Status: v1.ServiceStatus{
+				LoadBalancer: v1.LoadBalancerStatus{
+					Ingress: []v1.LoadBalancerIngress{{IP: "5.6.7.8"}},
+				},
+				Conditions: []metav1.Condition{
+					{Type: "Available", Status: metav1.ConditionTrue, Reason: "Ready"},
+				},
+			},
+		}
+		kClient := fake.NewClientset(svc)
+		gs := newSource(t, kClient, istiofake.NewSimpleClientset())
 
-	_, err := fakeClient.CoreV1().Services(svc.Namespace).Create(context.Background(), svc, metav1.CreateOptions{})
-	require.NoError(t, err)
+		retrieved, err := gs.serviceInformer.Lister().Services(svc.Namespace).Get(svc.Name)
+		require.NoError(t, err)
 
-	src, err := NewIstioGatewaySource(
-		t.Context(),
-		fakeClient,
-		istiofake.NewSimpleClientset(),
-		"",
-		"",
-		"",
-		false,
-		false)
-	require.NoError(t, err)
-	gwSource, ok := src.(*gatewaySource)
-	require.True(t, ok)
+		assert.Equal(t, svc.Name, retrieved.Name)
+		assert.Equal(t, svc.Labels, retrieved.Labels)
+		assert.Equal(t, svc.UID, retrieved.UID)
+		assert.Empty(t, retrieved.ManagedFields)
+		assert.NotContains(t, retrieved.Annotations, v1.LastAppliedConfigAnnotation)
+		assert.Contains(t, retrieved.Annotations, "user-annotation")
+		// Status.LoadBalancer preserved — used for endpoint generation
+		assert.Equal(t, svc.Status.LoadBalancer, retrieved.Status.LoadBalancer)
+		// Status.Conditions stripped
+		assert.Empty(t, retrieved.Status.Conditions)
+	})
 
-	rService, err := gwSource.serviceInformer.Lister().Services(svc.Namespace).Get(svc.Name)
-	require.NoError(t, err)
+	t.Run("ingress strips managed fields", func(t *testing.T) {
+		ingress := &networkv1.Ingress{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-ingress",
+				Namespace: "default",
+				Labels:    map[string]string{"label1": "value1"},
+				Annotations: map[string]string{
+					"user-annotation":              "value",
+					v1.LastAppliedConfigAnnotation: `{"apiVersion":"networking.k8s.io/v1"}`,
+				},
+				UID: "ingressuid",
+				ManagedFields: []metav1.ManagedFieldsEntry{
+					{Manager: "kubectl", Operation: metav1.ManagedFieldsOperationApply},
+				},
+			},
+			Status: networkv1.IngressStatus{
+				LoadBalancer: networkv1.IngressLoadBalancerStatus{
+					Ingress: []networkv1.IngressLoadBalancerIngress{{IP: "1.2.3.4"}},
+				},
+			},
+		}
+		kClient := fake.NewClientset(ingress)
+		gs := newSource(t, kClient, istiofake.NewSimpleClientset())
 
-	assert.Equal(t, "fake-service", rService.Name)
-	assert.Empty(t, rService.Labels)
-	assert.Empty(t, rService.Annotations)
-	assert.Empty(t, rService.UID)
-	assert.NotEmpty(t, rService.Status.LoadBalancer)
-	assert.Empty(t, rService.Status.Conditions)
-	assert.Equal(t, map[string]string{
-		"selector":  "one",
-		"selector2": "two",
-		"selector3": "three",
-	}, rService.Spec.Selector)
+		retrieved, err := gs.ingressInformer.Lister().Ingresses(ingress.Namespace).Get(ingress.Name)
+		require.NoError(t, err)
+
+		assert.Equal(t, ingress.Name, retrieved.Name)
+		assert.Equal(t, ingress.Labels, retrieved.Labels)
+		assert.Equal(t, ingress.UID, retrieved.UID)
+		assert.Empty(t, retrieved.ManagedFields)
+		assert.NotContains(t, retrieved.Annotations, v1.LastAppliedConfigAnnotation)
+		assert.Contains(t, retrieved.Annotations, "user-annotation")
+		// Status.LoadBalancer preserved — used for endpoint generation
+		assert.Equal(t, ingress.Status.LoadBalancer, retrieved.Status.LoadBalancer)
+	})
+
+	t.Run("gateway strips managed fields", func(t *testing.T) {
+		gw := &networkingv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-gateway",
+				Namespace: "default",
+				Labels:    map[string]string{"label1": "value1"},
+				Annotations: map[string]string{
+					"user-annotation":              "value",
+					v1.LastAppliedConfigAnnotation: `{"apiVersion":"networking.istio.io/v1beta1"}`,
+				},
+				UID: "gatewayuid",
+				ManagedFields: []metav1.ManagedFieldsEntry{
+					{Manager: "kubectl", Operation: metav1.ManagedFieldsOperationApply},
+				},
+			},
+		}
+		istioClient := istiofake.NewSimpleClientset()
+		_, err := istioClient.NetworkingV1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
+		require.NoError(t, err)
+		gs := newSource(t, fake.NewClientset(), istioClient)
+
+		retrieved, err := gs.gatewayInformer.Lister().Gateways(gw.Namespace).Get(gw.Name)
+		require.NoError(t, err)
+
+		assert.Equal(t, gw.Name, retrieved.Name)
+		assert.Equal(t, gw.Labels, retrieved.Labels)
+		assert.Equal(t, gw.UID, retrieved.UID)
+		assert.Empty(t, retrieved.ManagedFields)
+		assert.NotContains(t, retrieved.Annotations, v1.LastAppliedConfigAnnotation)
+		assert.Contains(t, retrieved.Annotations, "user-annotation")
+	})
 }
 
 func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 	fakeKubeClient := fake.NewClientset()
 	fakeIstioClient := istiofake.NewSimpleClientset()
 
-	gw := &networkingv1beta1.Gateway{
+	gw := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "argocd",
 			Namespace: "argocd",
@@ -1859,18 +1856,14 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	_, err := fakeIstioClient.NetworkingV1beta1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
+	_, err := fakeIstioClient.NetworkingV1().Gateways(gw.Namespace).Create(t.Context(), gw, metav1.CreateOptions{})
 	require.NoError(t, err)
 
 	src, err := NewIstioGatewaySource(
 		t.Context(),
 		fakeKubeClient,
 		fakeIstioClient,
-		"",
-		"",
-		"",
-		false,
-		false,
+		&Config{},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, src)
@@ -1878,41 +1871,38 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 	got, err := src.Endpoints(t.Context())
 	require.NoError(t, err)
 
-	validateEndpoints(t, got, []*endpoint.Endpoint{
-		endpoint.NewEndpoint("example.org", endpoint.RecordTypeA, "34.66.66.77").WithLabel(endpoint.ResourceLabelKey, "gateway/argocd/argocd"),
+	testutils.ValidateEndpoints(t, got, []*endpoint.Endpoint{
 		endpoint.NewEndpoint("example.org", endpoint.RecordTypeA, "34.66.66.77").WithLabel(endpoint.ResourceLabelKey, "gateway/argocd/argocd"),
 	})
 }
 
 // gateway specific helper functions
-func newTestGatewaySource(loadBalancerList []fakeIngressGatewayService, ingressList []fakeIngress) (*gatewaySource, error) {
+func newTestGatewaySource(t *testing.T, loadBalancerList []fakeIngressGatewayService, ingressList []fakeIngress) (*gatewaySource, error) {
 	fakeKubernetesClient := fake.NewClientset()
 	fakeIstioClient := istiofake.NewSimpleClientset()
 
 	for _, lb := range loadBalancerList {
 		service := lb.Service()
-		_, err := fakeKubernetesClient.CoreV1().Services(service.Namespace).Create(context.Background(), service, metav1.CreateOptions{})
+		_, err := fakeKubernetesClient.CoreV1().Services(service.Namespace).Create(t.Context(), service, metav1.CreateOptions{})
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, ing := range ingressList {
 		ingress := ing.Ingress()
-		_, err := fakeKubernetesClient.NetworkingV1().Ingresses(ingress.Namespace).Create(context.Background(), ingress, metav1.CreateOptions{})
+		_, err := fakeKubernetesClient.NetworkingV1().Ingresses(ingress.Namespace).Create(t.Context(), ingress, metav1.CreateOptions{})
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	src, err := NewIstioGatewaySource(
-		context.TODO(),
+		t.Context(),
 		fakeKubernetesClient,
 		fakeIstioClient,
-		"",
-		"",
-		"{{.Name}}",
-		false,
-		false,
+		&Config{
+			TemplateEngine: templatetest.MustEngine(t, "{{.FQDN}}", "", "", false),
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -1974,8 +1964,8 @@ type fakeGatewayConfig struct {
 	selector    map[string]string
 }
 
-func (c fakeGatewayConfig) Config() *networkingv1beta1.Gateway {
-	gw := &networkingv1beta1.Gateway{
+func (c fakeGatewayConfig) Config() *networkingv1.Gateway {
+	gw := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        c.name,
 			Namespace:   c.namespace,

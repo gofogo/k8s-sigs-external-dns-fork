@@ -24,9 +24,11 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
+
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/internal/testutils"
 	"sigs.k8s.io/external-dns/source/annotations"
+	templatetest "sigs.k8s.io/external-dns/source/template/testutil"
 )
 
 func TestServiceSourceFqdnTemplatingExamples(t *testing.T) {
@@ -873,31 +875,28 @@ func TestServiceSourceFqdnTemplatingExamples(t *testing.T) {
 				}
 			}
 
+			cfg := &Config{
+				TemplateEngine:                 templatetest.MustEngine(t, tt.fqdnTemplate, "", "", tt.combineFQDN),
+				PublishHostIP:                  tt.publishHostIp,
+				ServiceTypeFilter:              tt.serviceTypesFilter,
+				PublishInternal:                true,
+				AlwaysPublishNotReadyAddresses: true,
+				ExposeInternalIPv6:             true,
+				ExcludeUnschedulable:           true,
+				LabelFilter:                    labels.Everything(),
+			}
+
 			src, err := NewServiceSource(
 				t.Context(),
 				kubeClient,
-				"",
-				"",
-				tt.fqdnTemplate,
-				tt.combineFQDN,
-				"",
-				true,
-				tt.publishHostIp,
-				true,
-				tt.serviceTypesFilter,
-				false,
-				labels.Everything(),
-				false,
-				false,
-				true,
-				true,
+				cfg,
 			)
 			require.NoError(t, err)
 
 			endpoints, err := src.Endpoints(t.Context())
 			require.NoError(t, err)
 
-			validateEndpoints(t, endpoints, tt.expected)
+			testutils.ValidateEndpoints(t, endpoints, tt.expected)
 
 			// TODO; when all resources have the resource label, we could add this check to the validateEndpoints function.
 			for _, ep := range endpoints {

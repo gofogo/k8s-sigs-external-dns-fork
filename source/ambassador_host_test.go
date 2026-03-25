@@ -17,9 +17,10 @@ limitations under the License.
 package source
 
 import (
-	"context"
 	"fmt"
 	"testing"
+
+	"sigs.k8s.io/external-dns/internal/testutils"
 
 	ambassador "github.com/datawire/ambassador/pkg/api/getambassador.io/v2"
 	"github.com/stretchr/testify/assert"
@@ -627,24 +628,29 @@ func TestAmbassadorHostSource(t *testing.T) {
 			namespace := "default"
 
 			// Create Ambassador service
-			_, err := fakeKubernetesClient.CoreV1().Services(defaultAmbassadorNamespace).Create(context.Background(), &ti.service, metav1.CreateOptions{})
+			_, err := fakeKubernetesClient.CoreV1().Services(defaultAmbassadorNamespace).Create(t.Context(), &ti.service, metav1.CreateOptions{})
 			assert.NoError(t, err)
 
 			// Create host resource
 			host, err := createAmbassadorHost(&ti.host)
 			assert.NoError(t, err)
 
-			_, err = fakeDynamicClient.Resource(ambHostGVR).Namespace(namespace).Create(context.Background(), host, metav1.CreateOptions{})
+			_, err = fakeDynamicClient.Resource(ambHostGVR).Namespace(namespace).Create(t.Context(), host, metav1.CreateOptions{})
 			assert.NoError(t, err)
 
-			source, err := NewAmbassadorHostSource(context.TODO(), fakeDynamicClient, fakeKubernetesClient, namespace, ti.annotationFilter, ti.labelSelector)
+			source, err := NewAmbassadorHostSource(t.Context(), fakeDynamicClient, fakeKubernetesClient,
+				&Config{
+					Namespace:        namespace,
+					AnnotationFilter: ti.annotationFilter,
+					LabelFilter:      ti.labelSelector,
+				})
 			assert.NoError(t, err)
 			assert.NotNil(t, source)
 
-			endpoints, err := source.Endpoints(context.Background())
+			endpoints, err := source.Endpoints(t.Context())
 			assert.NoError(t, err)
 			// Validate returned endpoints against expected endpoints.
-			validateEndpoints(t, endpoints, ti.expected)
+			testutils.ValidateEndpoints(t, endpoints, ti.expected)
 		})
 	}
 }
