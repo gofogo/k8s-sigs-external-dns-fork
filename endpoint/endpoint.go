@@ -535,6 +535,11 @@ func (e *Endpoint) CheckEndpoint() bool {
 		if !e.isAlias() {
 			return e.Targets.ValidateIPRecord(recordType)
 		}
+	case RecordTypeCNAME:
+		if len(e.Targets) == 0 {
+			log.Debugf("Skipping CNAME endpoint %q with no targets", e.DNSName)
+			return false
+		}
 	case RecordTypeMX:
 		return e.Targets.ValidateMXRecord()
 	case RecordTypeSRV:

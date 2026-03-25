@@ -41,6 +41,7 @@ func (ms *dedupSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, err
 	log.Debug("dedupSource: collecting endpoints and removing duplicates")
 	result := make([]*endpoint.Endpoint, 0)
 	collected := make(map[string]struct{})
+	cnameTargets := make(map[string]string) // DNSName+"/"+SetIdentifier -> first target seen
 
 	endpoints, err := ms.source.Endpoints(ctx)
 	if err != nil {
@@ -60,6 +61,16 @@ func (ms *dedupSource) Endpoints(ctx context.Context) ([]*endpoint.Endpoint, err
 
 		if len(ep.Targets) > 1 {
 			ep.Targets = endpoint.NewTargets(ep.Targets...)
+		}
+
+		if ep.RecordType == endpoint.RecordTypeCNAME {
+			cnameKey := ep.DNSName + "/" + ep.SetIdentifier
+			if existing, ok := cnameTargets[cnameKey]; ok && existing != ep.Targets[0] {
+				// TODO: add metric for CNAME conflicts
+				log.Warnf("Only one CNAME per name — %s CNAME %s and %s CNAME %s is invalid DNS. A resolver wouldn't know which canonical name to follow.", ep.DNSName, existing, ep.DNSName, ep.Targets[0])
+			} else if !ok {
+				cnameTargets[cnameKey] = ep.Targets[0]
+			}
 		}
 
 		identifier := strings.Join([]string{ep.RecordType, ep.DNSName, ep.SetIdentifier, ep.Targets.String()}, "/")

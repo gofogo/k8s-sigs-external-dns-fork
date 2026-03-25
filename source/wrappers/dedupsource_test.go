@@ -419,6 +419,15 @@ func TestDedupSource_WarnsOnInvalidEndpoint(t *testing.T) {
 			},
 			wantLogMsg: "Skipping endpoint [:web.example.org] due to invalid configuration [PTR:other.example.org]",
 		},
+		{
+			name: "CNAME with no targets",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeCNAME,
+				Targets:    endpoint.Targets{},
+			},
+			wantLogMsg: "Skipping endpoint [:example.org] due to invalid configuration [CNAME:]",
+		},
 	}
 
 	for _, tt := range tests {
@@ -637,4 +646,56 @@ func TestDedupSource_RefObjects(t *testing.T) {
 			mockSource.AssertExpectations(t)
 		})
 	}
+}
+
+func TestDedupSource_WarnsCNAMEConflict(t *testing.T) {
+	t.Run("warns on CNAME conflict", func(t *testing.T) {
+		hook := logtest.LogsUnderTestWithLogLevel(log.WarnLevel, t)
+
+		mockSource := new(testutils.MockSource)
+		mockSource.On("Endpoints").Return([]*endpoint.Endpoint{
+			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "a.elb.com"),
+			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "b.elb.com"),
+		}, nil)
+
+		src := NewDedupSource(mockSource)
+		_, err := src.Endpoints(t.Context())
+		require.NoError(t, err)
+
+		logtest.TestHelperLogContainsWithLogLevel("Only one CNAME per name", log.WarnLevel, hook, t)
+		logtest.TestHelperLogContains("example.com CNAME a.elb.com", hook, t)
+		logtest.TestHelperLogContains("example.com CNAME b.elb.com", hook, t)
+	})
+
+	t.Run("no warning for identical CNAMEs", func(t *testing.T) {
+		hook := logtest.LogsUnderTestWithLogLevel(log.WarnLevel, t)
+
+		mockSource := new(testutils.MockSource)
+		mockSource.On("Endpoints").Return([]*endpoint.Endpoint{
+			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "a.elb.com"),
+			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "a.elb.com"),
+		}, nil)
+
+		src := NewDedupSource(mockSource)
+		_, err := src.Endpoints(t.Context())
+		require.NoError(t, err)
+
+		logtest.TestHelperLogNotContains("Only one CNAME per name", hook, t)
+	})
+
+	t.Run("no warning for same DNSName with different SetIdentifier", func(t *testing.T) {
+		hook := logtest.LogsUnderTestWithLogLevel(log.WarnLevel, t)
+
+		mockSource := new(testutils.MockSource)
+		mockSource.On("Endpoints").Return([]*endpoint.Endpoint{
+			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "a.elb.com").WithSetIdentifier("weight-1"),
+			endpoint.NewEndpoint("example.com", endpoint.RecordTypeCNAME, "b.elb.com").WithSetIdentifier("weight-2"),
+		}, nil)
+
+		src := NewDedupSource(mockSource)
+		_, err := src.Endpoints(t.Context())
+		require.NoError(t, err)
+
+		logtest.TestHelperLogNotContains("Only one CNAME per name", hook, t)
+	})
 }
