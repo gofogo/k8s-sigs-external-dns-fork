@@ -187,6 +187,28 @@ func TestFakeSource_FQDNTemplate(t *testing.T) {
 	}
 }
 
+func TestFakeSource_FQDNTemplate_MultiDomain(t *testing.T) {
+	domains := []string{"one.example.com", "two.example.com", "three.example.com"}
+	sc, err := NewFakeSource(&Config{
+		TemplateEngine: templatetest.MustEngine(t, strings.Join(domains, ","), "", "", false),
+	})
+	require.NoError(t, err)
+
+	endpoints, err := sc.Endpoints(t.Context())
+	require.NoError(t, err)
+
+	assert.Len(t, endpoints, len(domains)*len(endpoint.KnownRecordTypes))
+
+	for _, ep := range endpoints {
+		switch ep.RecordType {
+		case endpoint.RecordTypeA:
+			assert.NotEmpty(t, ep.Targets, "A record %s should have at least one target", ep.DNSName)
+		case endpoint.RecordTypeAAAA:
+			assert.NotEmpty(t, ep.Targets, "AAAA record %s should have at least one target", ep.DNSName)
+		}
+	}
+}
+
 func TestFakeSource_AddEventHandler(t *testing.T) {
 	sc, err := NewFakeSource(&Config{})
 	require.NoError(t, err)
@@ -206,7 +228,7 @@ func TestFakeSource_generateEndpointForType_UnknownType(t *testing.T) {
 	sc, err := NewFakeSource(&Config{})
 	require.NoError(t, err)
 	fs := sc.(*fakeSource)
-	_, err = fs.generateEndpointForType("UNKNOWN")
+	_, err = fs.generateEndpointForType("UNKNOWN", defaultFQDNTemplate)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported record type")
 }
@@ -221,7 +243,7 @@ func mustGenerateEndpointForType(t *testing.T, recordType string) *endpoint.Endp
 	sc, err := NewFakeSource(&Config{})
 	require.NoError(t, err)
 	fs := sc.(*fakeSource)
-	ep, err := fs.generateEndpointForType(recordType)
+	ep, err := fs.generateEndpointForType(recordType, defaultFQDNTemplate)
 	require.NoError(t, err)
 	require.NotNil(t, ep, "endpoint for type %s should not be nil", recordType)
 	return ep
