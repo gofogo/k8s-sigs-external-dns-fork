@@ -86,6 +86,7 @@ func (sc *fakeSource) AddEventHandler(_ context.Context, _ func()) {
 }
 
 // Endpoints returns one endpoint per supported DNS record type per configured domain.
+// A and AAAA records carry one target per domain.
 func (sc *fakeSource) Endpoints(_ context.Context) ([]*endpoint.Endpoint, error) {
 	endpoints := make([]*endpoint.Endpoint, 0, len(sc.dnsNames)*len(endpoint.KnownRecordTypes))
 	for _, dnsName := range sc.dnsNames {
