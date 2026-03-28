@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -81,6 +82,9 @@ type Config struct {
 	ConnectorServer                string
 	CRDSourceAPIVersion            string
 	CRDSourceKind                  string
+	CRDClientQPS                   float32
+	CRDClientBurst                 int
+	CRDClientWrapTransport         func(http.RoundTripper) http.RoundTripper
 	KubeConfig                     string
 	APIServerURL                   string
 	ServiceTypeFilter              []string

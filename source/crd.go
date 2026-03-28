@@ -111,6 +111,13 @@ func NewCRDClientForAPIVersionKind(
 	config.GroupVersion = &groupVersion
 	config.APIPath = "/apis"
 	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
+	if cfg.CRDClientQPS > 0 {
+		config.QPS = cfg.CRDClientQPS
+		config.Burst = cfg.CRDClientBurst
+	}
+	if cfg.CRDClientWrapTransport != nil {
+		config.WrapTransport = cfg.CRDClientWrapTransport
+	}
 
 	crdClient, err := rest.UnversionedRESTClientFor(config)
 	if err != nil {
