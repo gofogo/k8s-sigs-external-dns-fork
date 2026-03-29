@@ -1641,7 +1641,7 @@ func TestIngressWithConfiguration(t *testing.T) {
 						},
 					},
 					Spec: networkv1.IngressSpec{
-						IngressClassName: testutils.ToPtr("alb"),
+						IngressClassName: new("alb"),
 						Rules: []networkv1.IngressRule{
 							{Host: "keycloak.blah.com"},
 						},
