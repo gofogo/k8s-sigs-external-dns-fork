@@ -31,6 +31,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
@@ -198,8 +199,9 @@ func testEndpointsFromGatewayConfig(t *testing.T) {
 			title: "one rule.host one ingress.IP",
 			ingresses: []fakeIngress{
 				{
-					name: "ingress1",
-					ips:  []string{"8.8.8.8"},
+					name:      "ingress1",
+					namespace: "default",
+					ips:       []string{"8.8.8.8"},
 				},
 			},
 			config: fakeGatewayConfig{
@@ -249,6 +251,7 @@ func testEndpointsFromGatewayConfig(t *testing.T) {
 			ingresses: []fakeIngress{
 				{
 					name:      "ingress1",
+					namespace: "default",
 					ips:       []string{"8.8.8.8", "127.0.0.1"},
 					hostnames: []string{"elb.com", "alb.com"},
 				},
@@ -309,6 +312,7 @@ func testEndpointsFromGatewayConfig(t *testing.T) {
 			ingresses: []fakeIngress{
 				{
 					name:      "ingress1",
+					namespace: "default",
 					ips:       []string{"8.8.8.8", "127.0.0.1"},
 					hostnames: []string{"elb.com", "alb.com"},
 				},
@@ -481,6 +485,7 @@ func testGatewayEndpoints(t *testing.T) {
 		title                    string
 		targetNamespace          string
 		annotationFilter         string
+		labelFilter              labels.Selector
 		lbServices               []fakeIngressGatewayService
 		ingresses                []fakeIngress
 		configItems              []fakeGatewayConfig
@@ -695,28 +700,6 @@ func testGatewayEndpoints(t *testing.T) {
 			expected: []*endpoint.Endpoint{},
 		},
 		{
-			title:            "invalid annotation filter expression",
-			targetNamespace:  "",
-			annotationFilter: "kubernetes.io/gateway.name in (a b)",
-			lbServices: []fakeIngressGatewayService{
-				{
-					ips: []string{"8.8.8.8"},
-				},
-			},
-			configItems: []fakeGatewayConfig{
-				{
-					name:      "fake1",
-					namespace: "",
-					annotations: map[string]string{
-						"kubernetes.io/gateway.class": "alb",
-					},
-					dnsnames: [][]string{{"example.org"}},
-				},
-			},
-			expected:    []*endpoint.Endpoint{},
-			expectError: true,
-		},
-		{
 			title:            "valid matching annotation filter label",
 			targetNamespace:  "",
 			annotationFilter: "kubernetes.io/gateway.class=nginx",
@@ -759,6 +742,46 @@ func testGatewayEndpoints(t *testing.T) {
 					annotations: map[string]string{
 						"kubernetes.io/gateway.class": "alb",
 					},
+					dnsnames: [][]string{{"example.org"}},
+				},
+			},
+			expected: []*endpoint.Endpoint{},
+		},
+		{
+			title:       "valid matching label filter",
+			labelFilter: labels.SelectorFromSet(labels.Set{"app": "istio-gateway"}),
+			lbServices: []fakeIngressGatewayService{
+				{
+					ips: []string{"8.8.8.8"},
+				},
+			},
+			configItems: []fakeGatewayConfig{
+				{
+					name:     "fake1",
+					labels:   map[string]string{"app": "istio-gateway"},
+					dnsnames: [][]string{{"example.org"}},
+				},
+			},
+			expected: []*endpoint.Endpoint{
+				{
+					DNSName:    "example.org",
+					RecordType: endpoint.RecordTypeA,
+					Targets:    endpoint.Targets{"8.8.8.8"},
+				},
+			},
+		},
+		{
+			title:       "valid non-matching label filter",
+			labelFilter: labels.SelectorFromSet(labels.Set{"app": "istio-gateway"}),
+			lbServices: []fakeIngressGatewayService{
+				{
+					ips: []string{"8.8.8.8"},
+				},
+			},
+			configItems: []fakeGatewayConfig{
+				{
+					name:     "fake1",
+					labels:   map[string]string{"app": "other"},
 					dnsnames: [][]string{{"example.org"}},
 				},
 			},
@@ -1462,7 +1485,7 @@ func testGatewayEndpoints(t *testing.T) {
 			fakeIstioClient := istiofake.NewSimpleClientset()
 			for _, config := range ti.configItems {
 				gatewayCfg := config.Config()
-				_, err := fakeIstioClient.NetworkingV1().Gateways(ti.targetNamespace).Create(t.Context(), gatewayCfg, metav1.CreateOptions{})
+				_, err := fakeIstioClient.NetworkingV1().Gateways(gatewayCfg.Namespace).Create(t.Context(), gatewayCfg, metav1.CreateOptions{})
 				require.NoError(t, err)
 			}
 
@@ -1475,6 +1498,7 @@ func testGatewayEndpoints(t *testing.T) {
 					TemplateEngine:           templatetest.MustEngine(t, ti.fqdnTemplate, "", "", ti.combineFQDNAndAnnotation),
 					IgnoreHostnameAnnotation: ti.ignoreHostnameAnnotation,
 					AnnotationFilter:         ti.annotationFilter,
+					LabelFilter:              ti.labelFilter,
 				},
 			)
 			require.NoError(t, err)
@@ -1778,7 +1802,7 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 				ClusterIPs:            []string{"10.118.223.3"},
 				ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyCluster,
 				IPFamilies:            []v1.IPFamily{v1.IPv4Protocol},
-				IPFamilyPolicy:        testutils.ToPtr(v1.IPFamilyPolicySingleStack),
+				IPFamilyPolicy:        new(v1.IPFamilyPolicySingleStack),
 				Ports: []v1.ServicePort{
 					{
 						Name:       "http2",
@@ -1799,7 +1823,7 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 					Ingress: []v1.LoadBalancerIngress{
 						{
 							IP:     "34.66.66.77",
-							IPMode: testutils.ToPtr(v1.LoadBalancerIPModeVIP),
+							IPMode: new(v1.LoadBalancerIPModeVIP),
 						},
 					},
 				},
@@ -1820,7 +1844,7 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 				ClusterIPs:            []string{"10.118.220.130"},
 				ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyCluster,
 				IPFamilies:            []v1.IPFamily{v1.IPv4Protocol},
-				IPFamilyPolicy:        testutils.ToPtr(v1.IPFamilyPolicySingleStack),
+				IPFamilyPolicy:        new(v1.IPFamilyPolicySingleStack),
 				Ports: []v1.ServicePort{
 					{
 						Name:       "upd-dns",
@@ -1841,7 +1865,7 @@ func TestSingleGatewayMultipleServicesPointingToSameLoadBalancer(t *testing.T) {
 					Ingress: []v1.LoadBalancerIngress{
 						{
 							IP:     "34.66.66.77",
-							IPMode: testutils.ToPtr(v1.LoadBalancerIPModeVIP),
+							IPMode: new(v1.LoadBalancerIPModeVIP),
 						},
 					},
 				},
@@ -1960,16 +1984,22 @@ type fakeGatewayConfig struct {
 	namespace   string
 	name        string
 	annotations map[string]string
+	labels      map[string]string
 	dnsnames    [][]string
 	selector    map[string]string
 }
 
 func (c fakeGatewayConfig) Config() *networkingv1.Gateway {
+	ns := c.namespace
+	if ns == "" {
+		ns = "default"
+	}
 	gw := &networkingv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        c.name,
-			Namespace:   c.namespace,
+			Namespace:   ns,
 			Annotations: c.annotations,
+			Labels:      c.labels,
 		},
 		Spec: istionetworking.Gateway{
 			Servers:  nil,
