@@ -233,12 +233,7 @@ scenarios:
         recordType: A
 
   - name: cname-dedup-across-sources
-    description: >
-      Test that dedupSource correctly deduplicates identical CNAME endpoints from
-      different sources. Both the Service and the Ingress resolve example.local to
-      the same hostname target (elb.example.com), producing identical CNAME endpoints.
-      The dedupSource key includes Targets.String(), so the duplicate is dropped and
-      only one CNAME record survives.
+    description: Deduplicates identical CNAMEs when multiple sources produce the same hostname target
     config:
       sources: ["service", "ingress"]
     resources:
