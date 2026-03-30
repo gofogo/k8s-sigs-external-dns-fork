@@ -3,16 +3,44 @@ timeout: 5000s
 options:
   substitution_option: ALLOW_LOOSE
   machineType: 'N1_HIGHCPU_8'
+volumes:
+  - name: go-modules
+    path: /go/pkg/mod
 steps:
+  # Pre-warm the Go module cache so test and build steps don't compete for downloads.
+  - name: 'docker.io/library/golang:1.26-bookworm'
+    entrypoint: go
+    volumes:
+      - name: go-modules
+        path: /go/pkg/mod
+    args:
+      - mod
+      - download
+
+  # Run tests in a separate step so the build step starts with a clean memory slate.
   - name: 'docker.io/library/golang:1.26-bookworm'
     entrypoint: make
+    volumes:
+      - name: go-modules
+        path: /go/pkg/mod
+    args:
+      - test
+
+  # Build and push multi-arch images using the pre-warmed cache.
+  - name: 'docker.io/library/golang:1.26-bookworm'
+    entrypoint: make
+    volumes:
+      - name: go-modules
+        path: /go/pkg/mod
     env:
       - VERSION=$_GIT_TAG
-      - PULL_BASE_REF=$_PULL_BASE_REF
+      - GIT_REVISION=$_GIT_COMMIT
+      - IMAGE=gcr.io/k8s-staging-external-dns/external-dns
     args:
-      - release.staging
+      - build.push/multiarch
 substitutions:
   # _GIT_TAG will be filled with a git-based tag for the image, of the form vYYYYMMDD-hash, and
   # can be used as a substitution
   _GIT_TAG: "12345"
+  _GIT_COMMIT: ""
   _PULL_BASE_REF: 'master'
