@@ -255,6 +255,7 @@ func TestRun(t *testing.T) {
 		Registry:           r,
 		Policy:             &plan.SyncPolicy{},
 		ManagedRecordTypes: cfg.ManagedDNSRecordTypes,
+		Interval:           time.Minute,
 	}
 	ctrl.nextRunAt = time.Now().Add(-time.Millisecond)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -503,6 +504,10 @@ func (r *toggleRegistry) Records(_ context.Context) ([]*endpoint.Endpoint, error
 		return nil, provider.SoftError
 	}
 	return []*endpoint.Endpoint{}, nil
+}
+
+func (r *toggleRegistry) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
+	return endpoints, nil
 }
 
 func (r *toggleRegistry) ApplyChanges(_ context.Context, _ *plan.Changes) error {

@@ -53,7 +53,9 @@ type Controller struct {
 	// The runAtMutex is for atomic updating of nextRunAt and lastRunAt
 	runAtMutex sync.Mutex
 	// The lastRunAt used for throttling and batching reconciliation
-	lastRunAt    time.Time
+	lastRunAt time.Time
+	// wakeUp is signalled by ScheduleRunOnce to interrupt Run()'s sleep early
+	wakeUp chan struct{}
 	EventEmitter events.EventEmitter
 	// MangedRecordTypes are DNS record types that will be considered for management.
 	ManagedRecordTypes []string
@@ -165,6 +167,13 @@ func (c *Controller) ScheduleRunOnce(now time.Time) {
 			c.nextRunAt,
 		),
 	)
+	// Wake up Run() so it can recalculate its sleep duration.
+	// Sending to a nil channel in a select is safe: the case is never ready,
+	// so default is taken. This handles the case where wakeUp is not yet initialized.
+	select {
+	case c.wakeUp <- struct{}{}:
+	default:
+	}
 }
 
 func (c *Controller) ShouldRunOnce(now time.Time) bool {
@@ -177,34 +186,58 @@ func (c *Controller) ShouldRunOnce(now time.Time) bool {
 	return true
 }
 
-// Run runs RunOnce in a loop with a delay until context is canceled
-func (c *Controller) Run(ctx context.Context) {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+// Run runs RunOnce in a loop with a delay until context is canceled.
+// It returns a non-nil error if RunOnce encounters a hard (non-soft) error.
+func (c *Controller) Run(ctx context.Context) error {
+	// Initialize wakeUp if not set by buildController (e.g. in tests using struct literals).
+	if c.wakeUp == nil {
+		c.wakeUp = make(chan struct{}, 1)
+	}
 	var softErrorCount int
 	for {
-		if c.ShouldRunOnce(time.Now()) {
-			if err := c.RunOnce(ctx); err != nil {
-				if errors.Is(err, provider.SoftError) {
-					softErrorCount++
-					consecutiveSoftErrors.Gauge.Set(float64(softErrorCount))
-					log.Errorf("Failed to do run once: %v (consecutive soft errors: %d)", err, softErrorCount)
-				} else {
-					log.Fatalf("Failed to do run once: %v", err) // nolint: gocritic // exitAfterDefer
-				}
-			} else {
-				if softErrorCount > 0 {
-					log.Infof("Reconciliation succeeded after %d consecutive soft errors", softErrorCount)
-				}
-				softErrorCount = 0
-				consecutiveSoftErrors.Gauge.Set(0)
-			}
+		// Sleep until the next scheduled run, but allow early wakeup via
+		// ScheduleRunOnce (event-driven) or context cancellation.
+		// A zero-duration timer is used when the run is already overdue so that
+		// ctx.Done() is always checked in the same select — preventing a tight
+		// loop that never observes cancellation when Interval is zero.
+		c.runAtMutex.Lock()
+		wait := time.Until(c.nextRunAt)
+		c.runAtMutex.Unlock()
+		if wait < 0 {
+			wait = 0
 		}
+
+		timer := time.NewTimer(wait)
 		select {
-		case <-ticker.C:
 		case <-ctx.Done():
+			timer.Stop()
 			log.Info("Terminating main controller loop")
-			return
+			return nil
+		case <-c.wakeUp:
+			timer.Stop()
+			continue // Re-evaluate nextRunAt; ScheduleRunOnce may have moved it.
+		case <-timer.C:
+		}
+
+		if !c.ShouldRunOnce(time.Now()) {
+			// Spurious wakeup: nextRunAt was moved later by ScheduleRunOnce.
+			continue
+		}
+
+		if err := c.RunOnce(ctx); err != nil {
+			if errors.Is(err, provider.SoftError) {
+				softErrorCount++
+				consecutiveSoftErrors.Gauge.Set(float64(softErrorCount))
+				log.Errorf("Failed to do run once: %v (consecutive soft errors: %d)", err, softErrorCount)
+			} else {
+				return fmt.Errorf("run once: %w", err)
+			}
+		} else {
+			if softErrorCount > 0 {
+				log.Infof("Reconciliation succeeded after %d consecutive soft errors", softErrorCount)
+			}
+			softErrorCount = 0
+			consecutiveSoftErrors.Gauge.Set(0)
 		}
 	}
 }
