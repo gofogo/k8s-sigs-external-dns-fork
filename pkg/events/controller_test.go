@@ -273,7 +273,7 @@ func TestController_ProcessNextWorkItem(t *testing.T) {
 			// 0-delay rate limiter: AddRateLimited calls Add immediately, enabling synchronous looping.
 			queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
 				workqueue.NewTypedMaxOfRateLimiter[any](
-					workqueue.NewTypedItemFastSlowRateLimiter[any](0, 0, maxReTriesPerEvent+1),
+					workqueue.NewTypedItemFastSlowRateLimiter[any](0, 0, maxRetriesPerEvent+1),
 				),
 				workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
 			),
@@ -282,7 +282,7 @@ func TestController_ProcessNextWorkItem(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "test-event", Namespace: "default"},
 		})
 		// First maxTriesPerEvent calls requeue; the final call exhausts retries and drops.
-		for range maxReTriesPerEvent + 1 {
+		for range maxRetriesPerEvent + 1 {
 			ctrl.processNextWorkItem(t.Context())
 		}
 		logtest.TestHelperLogContains("dropping event", hook, t)
@@ -317,7 +317,7 @@ func TestController_ProcessNextWorkItem_RequeuesOnError(t *testing.T) {
 	kubeClient := fake.NewClientset()
 	kubeClient.PrependReactor("create", "events", func(_ clienttesting.Action) (bool, runtime.Object, error) {
 		createAttempts++
-		if createAttempts <= maxReTriesPerEvent {
+		if createAttempts <= maxRetriesPerEvent {
 			return true, nil, fmt.Errorf("transient API error")
 		}
 		return true, nil, nil
@@ -326,7 +326,7 @@ func TestController_ProcessNextWorkItem_RequeuesOnError(t *testing.T) {
 	eventCreated := make(chan struct{}, 1)
 	kubeClient.PrependReactor("create", "events", func(_ clienttesting.Action) (bool, runtime.Object, error) {
 		createAttempts++
-		if createAttempts <= maxReTriesPerEvent {
+		if createAttempts <= maxRetriesPerEvent {
 			return true, nil, fmt.Errorf("transient API error")
 		}
 		eventCreated <- struct{}{}

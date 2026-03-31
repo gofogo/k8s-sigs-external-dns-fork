@@ -33,7 +33,7 @@ import (
 const (
 	workers            = 1
 	controllerName     = "external-dns"
-	maxReTriesPerEvent = 3
+	maxRetriesPerEvent = 3
 	maxQueuedEvents    = 100
 )
 
@@ -103,17 +103,14 @@ func (ec *Controller) processNextWorkItem(ctx context.Context) bool {
 		return true
 	}
 	_, err := ec.client.Events(event.Namespace).Create(ctx, event, ec.createOpts)
-	if apierrors.IsNotFound(err) {
+	switch {
+	case apierrors.IsNotFound(err):
 		log.Warnf("dropping event %s/%s: namespace not found. %v", event.Namespace, event.Name, err)
-		ec.queue.Forget(key)
+	case err != nil && ec.queue.NumRequeues(key) < maxRetriesPerEvent:
+		log.Errorf("not able to create event %s/%s, retrying. %v", event.Namespace, event.Name, err)
+		ec.queue.AddRateLimited(key)
 		return true
-	}
-	if err != nil {
-		if ec.queue.NumRequeues(key) < maxReTriesPerEvent {
-			log.Errorf("not able to create event %s/%s, retrying. %v", event.Namespace, event.Name, err)
-			ec.queue.AddRateLimited(key)
-			return true
-		}
+	case err != nil:
 		log.Errorf("dropping event %s/%s after %d retries. %v", event.Namespace, event.Name, ec.queue.NumRequeues(key), err)
 	}
 	ec.queue.Forget(key)
