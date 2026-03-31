@@ -225,7 +225,7 @@ func TestEndpointsForHostname(t *testing.T) {
 }
 
 func TestAttachRefObject(t *testing.T) {
-	ref := &events.ObjectReference{Kind: "Service", Namespace: "default", Name: "svc"}
+	ref := events.NewObjectReferenceFromParts("Service", "", "default", "svc", "", "")
 	eps := []*Endpoint{
 		NewEndpoint("a.example.com", RecordTypeA, "1.2.3.4"),
 		NewEndpoint("b.example.com", RecordTypeA, "5.6.7.8"),

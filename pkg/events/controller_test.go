@@ -85,7 +85,7 @@ users:
 	ctrl, err := NewEventController(client, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, ctrl)
-	require.False(t, ctrl.dryRun)
+	require.Empty(t, ctrl.createOpts.DryRun)
 }
 
 func TestController_Run_NoEmitEvents(t *testing.T) {
@@ -119,7 +119,6 @@ func TestController_Run_EmitEvents(t *testing.T) {
 			workqueue.DefaultTypedControllerRateLimiter[any](),
 			workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
 		),
-		hostname:        controllerName,
 		maxQueuedEvents: 1,
 	}
 
@@ -157,7 +156,6 @@ func TestController_Queue_EmitEvents(t *testing.T) {
 			workqueue.DefaultTypedControllerRateLimiter[any](),
 			workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
 		),
-		hostname:        controllerName,
 		maxQueuedEvents: 1,
 	}
 
@@ -196,9 +194,9 @@ func TestController_Add(t *testing.T) {
 		{
 			title:           "queue full drops events and logs warning",
 			maxQueuedEvents: 0, // 0 >= 0 is always true, so queue is immediately "full"
-			events:          []Event{NewEvent(&ObjectReference{Name: "test", Namespace: "default"}, "msg", ActionCreate, RecordReady)},
+			events:          []Event{NewEvent(&ObjectReference{name: "test", namespace: "default"}, "msg", ActionCreate, RecordReady)},
 			wantQueueLen:    0,
-			wantWarnLog:     "event queue is full, dropping 1 events",
+			wantWarnLog:     "event queue is full, dropped 1 events",
 		},
 		{
 			title:           "nil event is skipped",
@@ -250,8 +248,8 @@ func TestController_ProcessNextWorkItem(t *testing.T) {
 			return true, nil, nil
 		})
 		ctrl := &Controller{
-			client: kubeClient.EventsV1(),
-			dryRun: true,
+			client:     kubeClient.EventsV1(),
+			createOpts: metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}},
 			queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
 				workqueue.DefaultTypedControllerRateLimiter[any](),
 				workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
@@ -275,7 +273,7 @@ func TestController_ProcessNextWorkItem(t *testing.T) {
 			// 0-delay rate limiter: AddRateLimited calls Add immediately, enabling synchronous looping.
 			queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
 				workqueue.NewTypedMaxOfRateLimiter[any](
-					workqueue.NewTypedItemFastSlowRateLimiter[any](0, 0, maxTriesPerEvent+1),
+					workqueue.NewTypedItemFastSlowRateLimiter[any](0, 0, maxReTriesPerEvent+1),
 				),
 				workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
 			),
@@ -284,7 +282,7 @@ func TestController_ProcessNextWorkItem(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "test-event", Namespace: "default"},
 		})
 		// First maxTriesPerEvent calls requeue; the final call exhausts retries and drops.
-		for range maxTriesPerEvent + 1 {
+		for range maxReTriesPerEvent + 1 {
 			ctrl.processNextWorkItem(t.Context())
 		}
 		logtest.TestHelperLogContains("dropping event", hook, t)
@@ -319,7 +317,7 @@ func TestController_ProcessNextWorkItem_RequeuesOnError(t *testing.T) {
 	kubeClient := fake.NewClientset()
 	kubeClient.PrependReactor("create", "events", func(_ clienttesting.Action) (bool, runtime.Object, error) {
 		createAttempts++
-		if createAttempts <= maxTriesPerEvent {
+		if createAttempts <= maxReTriesPerEvent {
 			return true, nil, fmt.Errorf("transient API error")
 		}
 		return true, nil, nil
@@ -328,7 +326,7 @@ func TestController_ProcessNextWorkItem_RequeuesOnError(t *testing.T) {
 	eventCreated := make(chan struct{}, 1)
 	kubeClient.PrependReactor("create", "events", func(_ clienttesting.Action) (bool, runtime.Object, error) {
 		createAttempts++
-		if createAttempts <= maxTriesPerEvent {
+		if createAttempts <= maxReTriesPerEvent {
 			return true, nil, fmt.Errorf("transient API error")
 		}
 		eventCreated <- struct{}{}
@@ -344,7 +342,6 @@ func TestController_ProcessNextWorkItem_RequeuesOnError(t *testing.T) {
 			),
 			workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
 		),
-		hostname:        controllerName,
 		maxQueuedEvents: maxQueuedEvents,
 	}
 

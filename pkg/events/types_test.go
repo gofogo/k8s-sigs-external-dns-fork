@@ -84,10 +84,10 @@ func TestEvent_Reference(t *testing.T) {
 	for _, tt := range tests {
 		ev := Event{
 			ref: ObjectReference{
-				Kind:      tt.kind,
-				Namespace: tt.namespace,
-				Name:      tt.name,
-				Source:    "fake-source",
+				kind:      tt.kind,
+				namespace: tt.namespace,
+				name:      tt.name,
+				source:    "fake-source",
 			},
 		}
 		require.Equal(t, tt.expected, ev.description())
@@ -157,14 +157,14 @@ func TestEvent_NewEvents(t *testing.T) {
 
 func TestEvent_Transpose(t *testing.T) {
 	ev := NewEvent(&ObjectReference{
-		Kind:      "Pod",
-		Namespace: "default",
-		Name:      "nginx",
+		kind:      "Pod",
+		namespace: "default",
+		name:      "nginx",
 	}, "test message", ActionCreate, RecordReady)
 
 	event := ev.event()
 	require.NotNil(t, event)
-	require.Contains(t, event.ObjectMeta.Name, ev.ref.Name)
+	require.Contains(t, event.ObjectMeta.Name, ev.ref.name)
 	require.Equal(t, "default", event.ObjectMeta.Namespace)
 	require.Equal(t, string(ActionCreate), event.Action)
 	require.Equal(t, string(RecordReady), event.Reason)
@@ -178,7 +178,7 @@ func TestEvent_Transpose(t *testing.T) {
 	event = ev.event()
 	require.Equal(t, longMsg[:1021]+"...", event.Note)
 
-	ev.ref.Name = ""
+	ev.ref.name = ""
 	require.Nil(t, ev.event())
 }
 
@@ -296,10 +296,10 @@ func TestNewEventFromEndpoint(t *testing.T) {
 				targets:    []string{"10.0.0.1", "10.0.0.2"},
 				owner:      "my-owner",
 				refObject: &ObjectReference{
-					Kind:      "Service",
-					Namespace: "default",
-					Name:      "my-service",
-					Source:    "service",
+					kind:      "Service",
+					namespace: "default",
+					name:      "my-service",
+					source:    "service",
 				},
 			},
 			action: ActionCreate,
@@ -308,9 +308,9 @@ func TestNewEventFromEndpoint(t *testing.T) {
 				require.Equal(t, ActionCreate, ev.action)
 				require.Equal(t, RecordReady, ev.reason)
 				require.Equal(t, EventTypeNormal, ev.eType)
-				require.Equal(t, "Service", ev.ref.Kind)
-				require.Equal(t, "default", ev.ref.Namespace)
-				require.Equal(t, "my-service", ev.ref.Name)
+				require.Equal(t, "Service", ev.ref.kind)
+				require.Equal(t, "default", ev.ref.namespace)
+				require.Equal(t, "my-service", ev.ref.name)
 				require.Contains(t, ev.message, "record:test.example.com")
 				require.Contains(t, ev.message, "owner:my-owner")
 				require.Contains(t, ev.message, "type:A")
@@ -328,10 +328,10 @@ func TestNewEventFromEndpoint(t *testing.T) {
 				targets:    []string{"target.example.com"},
 				owner:      "",
 				refObject: &ObjectReference{
-					Kind:      "Ingress",
-					Namespace: "prod",
-					Name:      "my-ingress",
-					Source:    "ingress",
+					kind:      "Ingress",
+					namespace: "prod",
+					name:      "my-ingress",
+					source:    "ingress",
 				},
 			},
 			action: ActionDelete,
@@ -353,17 +353,17 @@ func TestNewEventFromEndpoint(t *testing.T) {
 				targets:    []string{"192.168.1.1"},
 				owner:      "default",
 				refObject: &ObjectReference{
-					Kind:      "Node",
-					Namespace: "", // cluster-scoped
-					Name:      "node1",
-					Source:    "node",
+					kind:      "Node",
+					namespace: "", // cluster-scoped
+					name:      "node1",
+					source:    "node",
 				},
 			},
 			action: ActionCreate,
 			reason: RecordReady,
 			asserts: func(t *testing.T, ev Event) {
 				require.Equal(t, ActionCreate, ev.action)
-				require.Empty(t, ev.ref.Namespace)
+				require.Empty(t, ev.ref.namespace)
 
 				k8sEvent := ev.event()
 				require.NotNil(t, k8sEvent)
@@ -402,12 +402,12 @@ func TestNewObjectReference(t *testing.T) {
 			},
 			source: "pod",
 			expected: &ObjectReference{
-				Kind:       "Pod",
-				ApiVersion: "v1",
-				Namespace:  "default",
-				Name:       "my-pod",
-				UID:        "pod-uid-123",
-				Source:     "pod",
+				kind:       "Pod",
+				apiVersion: "v1",
+				namespace:  "default",
+				name:       "my-pod",
+				uid:        "pod-uid-123",
+				source:     "pod",
 			},
 		},
 		{
@@ -421,12 +421,12 @@ func TestNewObjectReference(t *testing.T) {
 			},
 			source: "pod",
 			expected: &ObjectReference{
-				Kind:       "Pod",
-				ApiVersion: "v1",
-				Namespace:  "kube-system",
-				Name:       "informer-pod",
-				UID:        "informer-uid-456",
-				Source:     "pod",
+				kind:       "Pod",
+				apiVersion: "v1",
+				namespace:  "kube-system",
+				name:       "informer-pod",
+				uid:        "informer-uid-456",
+				source:     "pod",
 			},
 		},
 		{
@@ -440,12 +440,12 @@ func TestNewObjectReference(t *testing.T) {
 			},
 			source: "service",
 			expected: &ObjectReference{
-				Kind:       "Service",
-				ApiVersion: "v1",
-				Namespace:  "prod",
-				Name:       "my-service",
-				UID:        "svc-uid-789",
-				Source:     "service",
+				kind:       "Service",
+				apiVersion: "v1",
+				namespace:  "prod",
+				name:       "my-service",
+				uid:        "svc-uid-789",
+				source:     "service",
 			},
 		},
 		{
@@ -458,12 +458,12 @@ func TestNewObjectReference(t *testing.T) {
 			},
 			source: "node",
 			expected: &ObjectReference{
-				Kind:       "Node",
-				ApiVersion: "v1",
-				Namespace:  "",
-				Name:       "worker-node-1",
-				UID:        "node-uid-abc",
-				Source:     "node",
+				kind:       "Node",
+				apiVersion: "v1",
+				namespace:  "",
+				name:       "worker-node-1",
+				uid:        "node-uid-abc",
+				source:     "node",
 			},
 		},
 		{
@@ -477,12 +477,12 @@ func TestNewObjectReference(t *testing.T) {
 			},
 			source: "endpoints",
 			expected: &ObjectReference{
-				Kind:       "Endpoints",
-				ApiVersion: "v1",
-				Namespace:  "default",
-				Name:       "my-endpoints",
-				UID:        "ep-uid-def",
-				Source:     "endpoints",
+				kind:       "Endpoints",
+				apiVersion: "v1",
+				namespace:  "default",
+				name:       "my-endpoints",
+				uid:        "ep-uid-def",
+				source:     "endpoints",
 			},
 		},
 	}
@@ -490,12 +490,12 @@ func TestNewObjectReference(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := NewObjectReference(tt.obj, tt.source)
-			require.Equal(t, tt.expected.Kind, result.Kind)
-			require.Equal(t, tt.expected.ApiVersion, result.ApiVersion)
-			require.Equal(t, tt.expected.Namespace, result.Namespace)
-			require.Equal(t, tt.expected.Name, result.Name)
-			require.Equal(t, tt.expected.UID, result.UID)
-			require.Equal(t, tt.expected.Source, result.Source)
+			require.Equal(t, tt.expected.kind, result.kind)
+			require.Equal(t, tt.expected.apiVersion, result.apiVersion)
+			require.Equal(t, tt.expected.namespace, result.namespace)
+			require.Equal(t, tt.expected.name, result.name)
+			require.Equal(t, tt.expected.uid, result.uid)
+			require.Equal(t, tt.expected.source, result.source)
 		})
 	}
 }
@@ -514,7 +514,7 @@ func (c *customObject) DeepCopyObject() runtime.Object {
 }
 
 func TestEvent_Accessors(t *testing.T) {
-	ref := &ObjectReference{Kind: "Pod", Namespace: "default", Name: "nginx"}
+	ref := &ObjectReference{kind: "Pod", namespace: "default", name: "nginx"}
 	ev := NewEvent(ref, "msg", ActionDelete, RecordDeleted)
 
 	assert.Equal(t, ActionDelete, ev.Action())
@@ -543,11 +543,11 @@ func TestNewObjectReference_ReflectionFallback(t *testing.T) {
 	ref := NewObjectReference(obj, "custom")
 
 	// Kind should be derived from reflection (struct name)
-	require.Equal(t, "customObject", ref.Kind)
+	require.Equal(t, "customObject", ref.kind)
 	// APIVersion will be empty since it's not in scheme
-	require.Empty(t, ref.ApiVersion)
-	require.Equal(t, "custom-ns", ref.Namespace)
-	require.Equal(t, "custom-resource", ref.Name)
-	require.Equal(t, "custom-uid-123", string(ref.UID))
-	require.Equal(t, "custom", ref.Source)
+	require.Empty(t, ref.apiVersion)
+	require.Equal(t, "custom-ns", ref.namespace)
+	require.Equal(t, "custom-resource", ref.name)
+	require.Equal(t, "custom-uid-123", string(ref.uid))
+	require.Equal(t, "custom", ref.source)
 }
