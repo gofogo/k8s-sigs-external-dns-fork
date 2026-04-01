@@ -19,6 +19,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Set up Go
+        uses: actions/setup-go@def8c394e3ad351a79bc93815e4a585520fe993b # v6.2.0
+        with:
+          go-version-file: 'go.mod'
+
       # https://github.com/apache/skywalking-eyes
       - name: Check dependency licenses
         uses: apache/skywalking-eyes/dependency@61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1 # v0.8.0

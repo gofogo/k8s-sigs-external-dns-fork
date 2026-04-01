@@ -6,7 +6,6 @@ header:
 dependency:
   files:
     - go.mod
-    - go.tool.mod
   # MPL-2.0 HashiCorp indirect dependencies — weak-compatible with Apache-2.0
   # go-cleanhttp, go-retryablehttp: provider/exoscale -> egoscale/v2 -> hashicorp
   # errwrap, go-multierror, go-uuid: provider/rfc2136 -> bodgit/tsig/gss -> hashicorp
