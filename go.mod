@@ -1,5 +1,5 @@
 module sigs.k8s.io/external-dns
-// test
+
 go 1.26.1
 
 require (
