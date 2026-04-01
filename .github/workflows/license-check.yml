@@ -1,4 +1,4 @@
-name: License Check
+name: license check
 
 on:
   pull_request:
@@ -25,4 +25,4 @@ jobs:
         with:
           config: .licenserc.yaml
           mode: check
-          log: info
+          log: debug
