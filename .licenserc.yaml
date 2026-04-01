@@ -1,3 +1,7 @@
+header:
+  license:
+    spdx-id: Apache-2.0
+
 dependency:
   files:
     - go.mod
