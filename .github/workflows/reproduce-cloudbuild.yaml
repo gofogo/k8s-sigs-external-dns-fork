@@ -59,9 +59,9 @@ jobs:
             -e GOMAXPROCS=4 \
             golang:1.26-bookworm \
             bash -c '
-              GOARCH=amd64              go build ./... &
-              GOARCH=arm64              go build ./... &
-              GOARCH=arm   GOARM=7      go build ./... &
+              GOARCH=amd64              go build -buildvcs=false ./... &
+              GOARCH=arm64              go build -buildvcs=false ./... &
+              GOARCH=arm   GOARM=7      go build -buildvcs=false ./... &
               wait
             '
 
@@ -80,8 +80,8 @@ jobs:
             -e GOFLAGS=-p=2 \
             golang:1.26-bookworm \
             bash -c '
-              GOARCH=amd64              go build ./... &
-              GOARCH=arm64              go build ./... &
-              GOARCH=arm   GOARM=7      go build ./... &
+              GOARCH=amd64              go build -buildvcs=false ./... &
+              GOARCH=arm64              go build -buildvcs=false ./... &
+              GOARCH=arm   GOARM=7      go build -buildvcs=false ./... &
               wait
             '
