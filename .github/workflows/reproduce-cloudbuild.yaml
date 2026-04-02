@@ -74,7 +74,7 @@ jobs:
       - name: Build multiarch with fix (GOFLAGS=-p=2)
         run: |
           docker run --rm \
-            --cpus=8 \
+            --cpus=4 \
             --memory=7g --memory-swap=7g \
             -v ${{ github.workspace }}:/app -w /app \
             -e GOFLAGS=-p=2 \
