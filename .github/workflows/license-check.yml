@@ -25,4 +25,4 @@ jobs:
         with:
           config: .licenserc.yaml
           mode: check
-          log: debug
+          flags: "-w"
