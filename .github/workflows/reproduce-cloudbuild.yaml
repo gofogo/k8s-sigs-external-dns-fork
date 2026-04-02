@@ -1,0 +1,43 @@
+name: Reproduce CloudBuild
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  cloudbuild-repro:
+    runs-on: ubuntu-latest  # 7 GB RAM — same ballpark as N1_HIGHCPU_8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Show runner resources
+        run: |
+          echo "=== CPUs ==="
+          nproc
+          cat /proc/cpuinfo | grep "model name" | head -1
+
+          echo "=== Memory ==="
+          free -h
+          cat /proc/meminfo | grep -E "MemTotal|MemAvailable|SwapTotal"
+
+          echo "=== cgroups memory limit (if any) ==="
+          cat /sys/fs/cgroup/memory.max 2>/dev/null || \
+          cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || \
+          echo "no cgroup limit"
+
+          echo "=== Go sees ==="
+          go env GOMAXPROCS 2>/dev/null || true
+          nproc  # what Go runtime.NumCPU() will return
+
+      - name: Simulate Cloud Build (no memory guard, high parallelism)
+        env:
+          GOMAXPROCS: 8   # simulate N1_HIGHCPU_8 core count
+          # no GOMEMLIMIT — matches Cloud Build
+        run: |
+          GOARCH=amd64 go build ./... &
+          GOARCH=arm64 go build ./... &
+          GOARCH=arm   GOARM=7 go build ./... &
+          wait
