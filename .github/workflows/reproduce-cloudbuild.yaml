@@ -41,3 +41,46 @@ jobs:
           GOARCH=arm64 go build ./... &
           GOARCH=arm   GOARM=7 go build ./... &
           wait
+
+  oom-repro:
+    name: Reproduce OOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build multiarch inside memory/CPU-capped container (expect OOM)
+        run: |
+          docker run --rm \
+            --name oom-test \
+            --cpus=8 \
+            --memory=7g --memory-swap=7g \
+            -v ${{ github.workspace }}:/app -w /app \
+            golang:1.26-bookworm \
+            bash -c '
+              GOARCH=amd64              go build ./... &
+              GOARCH=arm64              go build ./... &
+              GOARCH=arm   GOARM=7      go build ./... &
+              wait
+            '
+
+      - name: Check OOMKilled flag
+        if: always()
+        run: |
+          STATUS=$(docker inspect oom-test --format '{{.State.OOMKilled}}' 2>/dev/null || echo "container already removed")
+          echo "OOMKilled: $STATUS"
+
+      - name: Build multiarch with fix (GOFLAGS=-p=2)
+        run: |
+          docker run --rm \
+            --cpus=8 \
+            --memory=7g --memory-swap=7g \
+            -v ${{ github.workspace }}:/app -w /app \
+            -e GOFLAGS=-p=2 \
+            golang:1.26-bookworm \
+            bash -c '
+              GOARCH=amd64              go build ./... &
+              GOARCH=arm64              go build ./... &
+              GOARCH=arm   GOARM=7      go build ./... &
+              wait
+            '
