@@ -220,3 +220,117 @@ func TestGetByKey_TypeAssertionFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "object is not of type")
 	assert.Nil(t, result)
 }
+
+func TestIndexSelectorWithFunctions(t *testing.T) {
+	makePod := func(name, namespace string, labelsMap, annotationsMap map[string]string) *corev1.Pod {
+		p := &corev1.Pod{}
+		p.SetName(name)
+		p.SetNamespace(namespace)
+		p.SetLabels(labelsMap)
+		p.SetAnnotations(annotationsMap)
+		return p
+	}
+
+	type testCase struct {
+		name     string
+		indexers cache.Indexers
+		obj      any
+		wantKeys []string
+		wantNil  bool
+		wantErr  bool
+	}
+
+	tests := []testCase{
+		{
+			name: "single predicate match includes object",
+			indexers: IndexerWithOptions[*corev1.Pod](
+				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return p.GetName() == "wanted" }),
+			),
+			obj:      makePod("wanted", "default", nil, nil),
+			wantKeys: []string{"default/wanted"},
+		},
+		{
+			name: "single predicate mismatch excludes object",
+			indexers: IndexerWithOptions[*corev1.Pod](
+				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return p.GetName() == "wanted" }),
+			),
+			obj:     makePod("other", "default", nil, nil),
+			wantNil: true,
+		},
+		{
+			name: "multiple predicates all pass includes object",
+			indexers: IndexerWithOptions[*corev1.Pod](
+				IndexSelectorWithConditions(
+					func(p *corev1.Pod) bool { return p.GetNamespace() == "prod" },
+					func(p *corev1.Pod) bool { return p.GetLabels()["app"] == "web" },
+				),
+			),
+			obj:      makePod("p", "prod", map[string]string{"app": "web"}, nil),
+			wantKeys: []string{"prod/p"},
+		},
+		{
+			name: "multiple predicates one fails excludes object",
+			indexers: IndexerWithOptions[*corev1.Pod](
+				IndexSelectorWithConditions(
+					func(p *corev1.Pod) bool { return p.GetNamespace() == "prod" },
+					func(p *corev1.Pod) bool { return p.GetLabels()["app"] == "web" },
+				),
+			),
+			obj:     makePod("p", "prod", map[string]string{"app": "api"}, nil),
+			wantNil: true,
+		},
+		{
+			name: "wrong concrete predicate type excludes object",
+			indexers: IndexerWithOptions[*corev1.Pod](
+				IndexSelectorWithConditions(func(_ *corev1.Service) bool { return true }),
+			),
+			obj:     makePod("p", "default", nil, nil),
+			wantNil: true,
+		},
+		{
+			name: "combined annotation and predicate both pass includes object",
+			indexers: IndexerWithOptions[*corev1.Pod](
+				IndexSelectorWithAnnotationFilter("env=prod"),
+				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return p.GetLabels()["app"] == "web" }),
+			),
+			obj:      makePod("p", "default", map[string]string{"app": "web"}, map[string]string{"env": "prod"}),
+			wantKeys: []string{"default/p"},
+		},
+		{
+			name: "combined annotation fails excludes object",
+			indexers: IndexerWithOptions[*corev1.Pod](
+				IndexSelectorWithAnnotationFilter("env=prod"),
+				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return p.GetLabels()["app"] == "web" }),
+			),
+			obj:     makePod("p", "default", map[string]string{"app": "web"}, map[string]string{"env": "staging"}),
+			wantNil: true,
+		},
+		{
+			name: "combined predicate fails excludes object",
+			indexers: IndexerWithOptions[*corev1.Pod](
+				IndexSelectorWithAnnotationFilter("env=prod"),
+				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return p.GetLabels()["app"] == "web" }),
+			),
+			obj:     makePod("p", "default", map[string]string{"app": "api"}, map[string]string{"env": "prod"}),
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			keys, err := tt.indexers[IndexWithSelectors](tt.obj)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			if tt.wantNil {
+				assert.Nil(t, keys)
+				return
+			}
+			assert.Equal(t, tt.wantKeys, keys)
+		})
+	}
+}
