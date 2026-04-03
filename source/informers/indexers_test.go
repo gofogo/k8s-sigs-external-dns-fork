@@ -286,7 +286,7 @@ func TestIndexSelectorWithFunctions(t *testing.T) {
 		{
 			name: "outer type mismatch returns error",
 			indexers: IndexerWithOptions[*corev1.Pod](
-				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return true }),
+				IndexSelectorWithConditions(func(_ *corev1.Pod) bool { return true }),
 			),
 			obj:     &corev1.Service{},
 			wantErr: true,
