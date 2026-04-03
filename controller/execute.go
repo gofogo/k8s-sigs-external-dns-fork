@@ -62,7 +62,10 @@ func Execute() {
 		log.Infof("Using custom annotation prefix: %s", cfg.AnnotationPrefix)
 	}
 
-	configureLogger(cfg)
+	err := configureLogger(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if cfg.DryRun {
 		log.Info("running in dry-run mode. No changes to DNS records will be made.")
@@ -187,15 +190,16 @@ func buildController(
 }
 
 // This function configures the logger format and level based on the provided configuration.
-func configureLogger(cfg *externaldns.Config) {
+func configureLogger(cfg *externaldns.Config) error {
 	if cfg.LogFormat == "json" {
 		log.SetFormatter(&log.JSONFormatter{})
 	}
 	ll, err := log.ParseLevel(cfg.LogLevel)
 	if err != nil {
-		log.Fatalf("failed to parse log level: %v", err)
+		return err
 	}
 	log.SetLevel(ll)
+	return nil
 }
 
 // handleSigterm listens for a SIGTERM signal and triggers the provided cancel function
