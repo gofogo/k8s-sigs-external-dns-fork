@@ -62,8 +62,7 @@ func Execute() {
 		log.Infof("Using custom annotation prefix: %s", cfg.AnnotationPrefix)
 	}
 
-	err := configureLogger(cfg)
-	if err != nil {
+	if err := configureLogger(cfg); err != nil {
 		log.Fatal(err)
 	}
 
