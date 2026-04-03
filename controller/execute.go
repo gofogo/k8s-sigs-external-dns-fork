@@ -134,7 +134,9 @@ func Execute() {
 	}
 
 	ctrl.ScheduleRunOnce(time.Now())
-	ctrl.Run(ctx)
+	if err := ctrl.Run(ctx); err != nil {
+		log.Fatalf("Controller run loop failed: %v", err)
+	}
 }
 
 func buildController(
@@ -181,6 +183,7 @@ func buildController(
 		MinEventSyncInterval: cfg.MinEventSyncInterval,
 		TXTOwnerOld:          cfg.TXTOwnerOld,
 		EventEmitter:         eventEmitter,
+		wakeUp:               make(chan struct{}, 1),
 	}, nil
 }
 
