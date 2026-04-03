@@ -509,6 +509,10 @@ func (r *toggleRegistry) ApplyChanges(_ context.Context, _ *plan.Changes) error 
 	return nil
 }
 
+func (r *toggleRegistry) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
+	return endpoints, nil
+}
+
 func TestToggleRegistry(t *testing.T) {
 	source := getTestSource()
 	cfg := getTestConfig()
