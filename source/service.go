@@ -96,11 +96,9 @@ func NewServiceSource(
 	kubeClient kubernetes.Interface,
 	config *Config,
 ) (Source, error) {
-	namespace := config.Namespace
-
 	// Use shared informers to listen for add/update/delete of services/pods/nodes in the specified namespace.
 	// Set the resync period to 0 to prevent processing when nothing has changed
-	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(namespace))
+	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(kubeClient, 0, kubeinformers.WithNamespace(config.Namespace))
 	serviceInformer := informerFactory.Core().V1().Services()
 
 	// Transform the slice into a map so it will be way much easier and fast to filter later
@@ -171,7 +169,7 @@ func NewServiceSource(
 
 	return &serviceSource{
 		client:                         kubeClient,
-		namespace:                      namespace,
+		namespace:                      config.Namespace,
 		compatibility:                  config.Compatibility,
 		templateEngine:                 config.TemplateEngine,
 		ignoreHostnameAnnotation:       config.IgnoreHostnameAnnotation,
