@@ -611,9 +611,8 @@ func TestRunOnce_EmitChangeEvent(t *testing.T) {
 }
 
 func TestRun_HardError(t *testing.T) {
-	provider := getTestProvider()
 	cfg := getTestConfig()
-	r, err := registryfactory.Select(cfg, provider)
+	r, err := registryfactory.Select(getTestConfig(), getTestProvider())
 	require.NoError(t, err)
 
 	source := new(testutils.MockSource)
@@ -624,7 +623,7 @@ func TestRun_HardError(t *testing.T) {
 		Registry:           r,
 		Policy:             &plan.SyncPolicy{},
 		ManagedRecordTypes: cfg.ManagedDNSRecordTypes,
-		Interval:           10 * time.Millisecond,
+		Interval:           5 * time.Second,
 	}
 
 	// Set nextRunAt to the past to trigger ShouldRunOnce immediately on the first tick
