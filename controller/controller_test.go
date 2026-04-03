@@ -629,12 +629,8 @@ func TestRun_HardError(t *testing.T) {
 
 	// Set nextRunAt to the past to trigger ShouldRunOnce immediately on the first tick
 	ctrl.nextRunAt = time.Now().Add(-time.Millisecond)
-
-	// We don't need a background goroutine for Run because the hard error will cause
-	// it to return immediately instead of entering an infinite ticker loop.
 	err = ctrl.Run(t.Context())
 
-	// Assert the hard error caused Run to terminate and wrap the error accordingly
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "failed to do run once")
 	assert.ErrorContains(t, err, "simulated hard error")
