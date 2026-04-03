@@ -119,8 +119,8 @@ func IndexerWithOptions[T metav1.Object](optFns ...func(options *IndexSelectorOp
 			if options.labelSelector != nil && !options.labelSelector.Matches(labels.Set(entity.GetLabels())) {
 				return nil, nil
 			}
-			for _, filter := range options.conditions {
-				if !filter(entity) {
+			for _, condition := range options.conditions {
+				if !condition(entity) {
 					return nil, nil
 				}
 			}
