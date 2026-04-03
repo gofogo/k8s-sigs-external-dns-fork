@@ -456,12 +456,7 @@ func buildHeadlessEndpoints(svc *v1.Service, targetsByHeadlessDomainAndType map[
 			deduppedTargets[target] = struct{}{}
 			targets = append(targets, target)
 		}
-		var ep *endpoint.Endpoint
-		if ttl.IsConfigured() {
-			ep = endpoint.NewEndpointWithTTL(headlessKey.DNSName, headlessKey.RecordType, ttl, targets...)
-		} else {
-			ep = endpoint.NewEndpoint(headlessKey.DNSName, headlessKey.RecordType, targets...)
-		}
+		ep := endpoint.NewEndpointWithTTL(headlessKey.DNSName, headlessKey.RecordType, ttl, targets...)
 		if ep != nil {
 			ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("service/%s/%s", svc.Namespace, svc.Name))
 			endpoints = append(endpoints, ep)
@@ -758,26 +753,15 @@ func (sc *serviceSource) extractNodePortEndpoints(svc *v1.Service, hostname stri
 			// build a target with a priority of 0, weight of 50, and pointing the given port on the given host
 			target := fmt.Sprintf("0 50 %d %s", port.NodePort, provider.EnsureTrailingDot(hostname))
 
-			// take the service name from the K8s Service object
-			// it is safe to use since it is DNS compatible
-			// see https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-label-names
-			serviceName := svc.Name
-
 			// figure out the protocol
 			protocol := strings.ToLower(string(port.Protocol))
 			if protocol == "" {
 				protocol = "tcp"
 			}
 
-			recordName := fmt.Sprintf("_%s._%s.%s", serviceName, protocol, hostname)
+			recordName := fmt.Sprintf("_%s._%s.%s", svc.Name, protocol, hostname)
 
-			var ep *endpoint.Endpoint
-			if ttl.IsConfigured() {
-				ep = endpoint.NewEndpointWithTTL(recordName, endpoint.RecordTypeSRV, ttl, target)
-			} else {
-				ep = endpoint.NewEndpoint(recordName, endpoint.RecordTypeSRV, target)
-			}
-
+			ep := endpoint.NewEndpointWithTTL(recordName, endpoint.RecordTypeSRV, ttl, target)
 			if ep != nil {
 				ep.WithLabel(endpoint.ResourceLabelKey, fmt.Sprintf("service/%s/%s", svc.Namespace, svc.Name))
 				endpoints = append(endpoints, ep)
