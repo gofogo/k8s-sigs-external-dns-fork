@@ -134,7 +134,9 @@ func Execute() {
 	}
 
 	ctrl.ScheduleRunOnce(time.Now())
-	ctrl.Run(ctx)
+	if err := ctrl.Run(ctx); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func buildController(
