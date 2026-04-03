@@ -236,7 +236,6 @@ func TestIndexSelectorWithFunctions(t *testing.T) {
 		indexers cache.Indexers
 		obj      any
 		wantKeys []string
-		wantNil  bool
 		wantErr  bool
 	}
 
@@ -254,8 +253,7 @@ func TestIndexSelectorWithFunctions(t *testing.T) {
 			indexers: IndexerWithOptions[*corev1.Pod](
 				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return p.GetName() == "wanted" }),
 			),
-			obj:     makePod("other", "default", nil, nil),
-			wantNil: true,
+			obj: makePod("other", "default", nil, nil),
 		},
 		{
 			name: "multiple predicates all pass includes object",
@@ -276,16 +274,22 @@ func TestIndexSelectorWithFunctions(t *testing.T) {
 					func(p *corev1.Pod) bool { return p.GetLabels()["app"] == "web" },
 				),
 			),
-			obj:     makePod("p", "prod", map[string]string{"app": "api"}, nil),
-			wantNil: true,
+			obj: makePod("p", "prod", map[string]string{"app": "api"}, nil),
 		},
 		{
 			name: "wrong concrete predicate type excludes object",
 			indexers: IndexerWithOptions[*corev1.Pod](
 				IndexSelectorWithConditions(func(_ *corev1.Service) bool { return true }),
 			),
-			obj:     makePod("p", "default", nil, nil),
-			wantNil: true,
+			obj: makePod("p", "default", nil, nil),
+		},
+		{
+			name: "outer type mismatch returns error",
+			indexers: IndexerWithOptions[*corev1.Pod](
+				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return true }),
+			),
+			obj:     &corev1.Service{},
+			wantErr: true,
 		},
 		{
 			name: "combined annotation and predicate both pass includes object",
@@ -302,8 +306,7 @@ func TestIndexSelectorWithFunctions(t *testing.T) {
 				IndexSelectorWithAnnotationFilter("env=prod"),
 				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return p.GetLabels()["app"] == "web" }),
 			),
-			obj:     makePod("p", "default", map[string]string{"app": "web"}, map[string]string{"env": "staging"}),
-			wantNil: true,
+			obj: makePod("p", "default", map[string]string{"app": "web"}, map[string]string{"env": "staging"}),
 		},
 		{
 			name: "combined predicate fails excludes object",
@@ -311,25 +314,19 @@ func TestIndexSelectorWithFunctions(t *testing.T) {
 				IndexSelectorWithAnnotationFilter("env=prod"),
 				IndexSelectorWithConditions(func(p *corev1.Pod) bool { return p.GetLabels()["app"] == "web" }),
 			),
-			obj:     makePod("p", "default", map[string]string{"app": "api"}, map[string]string{"env": "prod"}),
-			wantNil: true,
+			obj: makePod("p", "default", map[string]string{"app": "api"}, map[string]string{"env": "prod"}),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			keys, err := tt.indexers[IndexWithSelectors](tt.obj)
-
 			if tt.wantErr {
 				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-
-			if tt.wantNil {
 				assert.Nil(t, keys)
 				return
 			}
+			assert.NoError(t, err)
 			assert.Equal(t, tt.wantKeys, keys)
 		})
 	}
