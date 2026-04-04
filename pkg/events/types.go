@@ -188,7 +188,7 @@ func (e *Event) event() *eventsv1.Event {
 
 	event := &eventsv1.Event{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      sanitize(e.ref.Name),
+			Name:      sanitize(e.ref.Name, timestamp.Time),
 			Namespace: namespace,
 		},
 		EventTime:           timestamp,
@@ -207,27 +207,28 @@ func (e *Event) event() *eventsv1.Event {
 	return event
 }
 
-// Sanitize input to comply with RFC 1123 subdomain naming requirements
-func sanitize(input string) string {
-	t := metav1.Time{Time: time.Now()}
-	if input == "" {
-		return fmt.Sprintf("a.%x", t.UnixNano())
-	}
+// sanitize converts input to a valid RFC 1123 subdomain name, appending a hex
+// timestamp suffix for uniqueness. t should be the same timestamp used for EventTime.
+func sanitize(input string, t time.Time) string {
+	suffix := fmt.Sprintf(".%x", t.UnixNano())
 	sanitized := invalidChars.ReplaceAllString(strings.ToLower(input), "-")
 
 	// the name should start with an alphanumeric character
-	if len(sanitized) > 0 && !startsWithAlphaNumeric.MatchString(sanitized) {
+	if !startsWithAlphaNumeric.MatchString(sanitized) {
 		sanitized = "a" + sanitized
 	}
 
+	// truncate to leave room for the suffix, keeping total ≤ 253 (RFC 1123 subdomain limit)
+	if maxBase := 253 - len(suffix); len(sanitized) > maxBase {
+		sanitized = sanitized[:maxBase]
+	}
+
 	// the name should end with an alphanumeric character
-	if len(sanitized) > 0 && !endsWithAlphaNumeric.MatchString(sanitized) {
+	if !endsWithAlphaNumeric.MatchString(sanitized) {
 		sanitized += "z"
 	}
 
-	sanitized = invalidChars.ReplaceAllString(sanitized, "-")
-
-	return fmt.Sprintf("%v.%x", sanitized, t.UnixNano())
+	return sanitized + suffix
 }
 
 // WithDryRun returns a ConfigOption that sets dry-run mode; events are skipped when enabled.
