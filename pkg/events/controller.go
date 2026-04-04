@@ -19,6 +19,8 @@ package events
 import (
 	"context"
 	"os"
+	"sync"
+	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 	eventsv1 "k8s.io/api/events/v1"
@@ -43,6 +45,8 @@ type EventEmitter interface {
 }
 
 type Controller struct {
+	mu              sync.Mutex
+	running         atomic.Bool
 	client          v1.EventsV1Interface
 	queue           workqueue.TypedRateLimitingInterface[any]
 	emitEvents      sets.Set[Reason]
@@ -75,6 +79,8 @@ func (ec *Controller) Run(ctx context.Context) {
 }
 
 func (ec *Controller) run(ctx context.Context) {
+	ec.running.Store(true)
+	defer ec.running.Store(false)
 	log.Info("event Controller started")
 	defer log.Info("event Controller terminated")
 	defer utilruntime.HandleCrash()
@@ -121,6 +127,12 @@ func (ec *Controller) processNextWorkItem(ctx context.Context) bool {
 }
 
 func (ec *Controller) Add(events ...Event) {
+	if !ec.running.Load() {
+		log.Warnf("controller not running, dropping %d events", len(events))
+		return
+	}
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
 	if ec.queue.Len() >= ec.maxQueuedEvents {
 		log.Warnf("event queue is full, dropping %d events", len(events))
 		return
