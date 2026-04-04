@@ -128,7 +128,7 @@ func (ec *Controller) processNextWorkItem(ctx context.Context) bool {
 
 func (ec *Controller) Add(events ...Event) {
 	if !ec.running.Load() {
-		log.Warnf("controller not running, dropping %d events", len(events))
+		log.Debugf("controller not running, dropping %d events", len(events))
 		return
 	}
 	ec.mu.Lock()
