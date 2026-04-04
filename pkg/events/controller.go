@@ -99,7 +99,7 @@ func (ec *Controller) processNextWorkItem(ctx context.Context) bool {
 	_, err := ec.client.Events(event.Namespace).Create(ctx, event, ec.createOpts)
 	if err != nil && !apierrors.IsNotFound(err) {
 		if ec.queue.NumRequeues(event) < maxRetriesPerEvent {
-			log.Errorf("not able to create event, retrying for key/%s. %v", event, err)
+			log.Errorf("not able to create event, retrying for key/%s. %v", event.Name, err)
 			ec.queue.AddRateLimited(event)
 			return true
 		}
