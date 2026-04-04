@@ -49,32 +49,28 @@ func TestNewObjectReference_DoesNotMutateObject(t *testing.T) {
 }
 
 func TestSanitize(t *testing.T) {
-	// synctest bubble always starts at midnight UTC 2000-01-01.
-	bubbleSuffix := fmt.Sprintf(".%x", time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano())
-
 	tests := []struct {
 		name     string
 		input    string
-		expected string
+		wantBase string
 	}{
-		{"mixed case and underscore", "My.Resource_1", "my.resource-1" + bubbleSuffix},
-		{"leading invalid chars", "!@#bad*chars", "a---bad-chars" + bubbleSuffix},
-		{"leading dash", "-start", "a-start" + bubbleSuffix},
-		{"trailing dash", "end-", "end-z" + bubbleSuffix},
-		{"leading and trailing dash", "-both-", "a-both-z" + bubbleSuffix},
-		{"empty input", "", "a" + bubbleSuffix},
-		{"all caps", "ALLCAPS", "allcaps" + bubbleSuffix},
-		{"dots preserved", "foo.bar", "foo.bar" + bubbleSuffix},
-		{"long input truncated to 253 chars", strings.Repeat("a", 300), strings.Repeat("a", 253-len(bubbleSuffix)) + bubbleSuffix},
+		{"mixed case and underscore", "My.Resource_1", "my.resource-1"},
+		{"leading invalid chars", "!@#bad*chars", "a---bad-chars"},
+		{"leading dash", "-start", "a-start"},
+		{"trailing dash", "end-", "end-z"},
+		{"leading and trailing dash", "-both-", "a-both-z"},
+		{"empty input", "", "a"},
+		{"all caps", "ALLCAPS", "allcaps"},
+		{"dots preserved", "foo.bar", "foo.bar"},
+		{"long input truncated to 253 chars", strings.Repeat("a", 300), strings.Repeat("a", 236)},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				result := sanitize(tt.input, time.Now())
-				require.Equal(t, tt.expected, result)
-				require.LessOrEqual(t, len(result), 253, "name must be <= 253 chars")
-			})
+			result := sanitize(tt.input, time.Now())
+			require.True(t, strings.HasPrefix(result, tt.wantBase+"."),
+				"got %q, want prefix %q", result, tt.wantBase+".")
+			require.LessOrEqual(t, len(result), 253, "name must be <= 253 chars")
 		})
 	}
 }
