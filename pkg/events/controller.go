@@ -103,7 +103,7 @@ func (ec *Controller) processNextWorkItem(ctx context.Context) bool {
 			ec.queue.AddRateLimited(event)
 			return true
 		}
-		log.Errorf("dropping event %s/%s with key/%q after %d retries. %v", event.Namespace, event.Name, event, ec.queue.NumRequeues(event), err)
+		log.Errorf("dropping event %s/%s after %d retries. %v", event.Namespace, event.Name, ec.queue.NumRequeues(event), err)
 	}
 	ec.queue.Forget(event)
 	return true
