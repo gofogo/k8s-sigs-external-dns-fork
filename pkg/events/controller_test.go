@@ -17,12 +17,14 @@ limitations under the License.
 package events
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -151,6 +153,7 @@ func TestController_Queue_EmitEvents(t *testing.T) {
 		},
 	}, "fake-source"), "record created", ActionCreate, RecordReady)
 
+	ctrl.running.Store(true)
 	ctrl.Add(event)
 
 	item, shutdown := ctrl.queue.Get()
@@ -189,6 +192,7 @@ func TestController_Add(t *testing.T) {
 			ctrl, err := NewEventController(fake.NewClientset().EventsV1(), &Config{emitEvents: sets.New(RecordReady)})
 			ctrl.maxQueuedEvents = tt.maxQueuedEvents
 			require.NoError(t, err)
+			ctrl.running.Store(true)
 
 			ctrl.Add(tt.events...)
 			assert.Equal(t, tt.wantQueueLen, ctrl.queue.Len())
@@ -249,6 +253,43 @@ func TestController_Emit_SkipsUnconfiguredReason(t *testing.T) {
 
 	assert.Equal(t, 0, ctrl.queue.Len())
 	logtest.TestHelperLogContains("skipping event", hook, t)
+}
+
+func TestController_Run_MultipleWorkers(t *testing.T) {
+	const numWorkers = 3
+	const numEvents = 9
+
+	var created atomic.Int32
+	allCreated := make(chan struct{})
+
+	kubeClient := fake.NewClientset()
+	kubeClient.PrependReactor("create", "events", func(_ clienttesting.Action) (bool, runtime.Object, error) {
+		if created.Add(1) == numEvents {
+			close(allCreated)
+		}
+		return true, nil, nil
+	})
+
+	ctrl, err := NewEventController(kubeClient.EventsV1(), &Config{emitEvents: sets.New(RecordReady)})
+	require.NoError(t, err)
+	ctrl.workers = numWorkers
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ctrl.Run(ctx)
+
+	for i := range numEvents {
+		ctrl.Add(NewEvent(NewObjectReference(&v1.Pod{
+			TypeMeta:   metav1.TypeMeta{Kind: "Pod", APIVersion: "v1"},
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("pod-%d", i), Namespace: v1.NamespaceDefault},
+		}, "fake-source"), "record created", ActionCreate, RecordReady))
+	}
+
+	select {
+	case <-allCreated:
+	case <-time.After(wait.ForeverTestTimeout):
+		t.Fatalf("only %d/%d events created before timeout", created.Load(), numEvents)
+	}
 }
 
 func TestController_ProcessNextWorkItem_RequestOnError(t *testing.T) {

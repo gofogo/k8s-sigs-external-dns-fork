@@ -18,6 +18,8 @@ package events
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 	eventsv1 "k8s.io/api/events/v1"
@@ -45,8 +47,12 @@ type Controller struct {
 	client          v1.EventsV1Interface
 	queue           workqueue.TypedRateLimitingInterface[*eventsv1.Event]
 	emitEvents      sets.Set[Reason]
-	maxQueuedEvents int
 	createOpts      metav1.CreateOptions
+	maxQueuedEvents int
+	workers         int
+
+	mu      sync.Mutex
+	running atomic.Bool
 }
 
 func NewEventController(client v1.EventsV1Interface, cfg *Config) (*Controller, error) {
@@ -64,6 +70,7 @@ func NewEventController(client v1.EventsV1Interface, cfg *Config) (*Controller, 
 		emitEvents:      cfg.emitEvents,
 		maxQueuedEvents: maxQueuedEvents,
 		createOpts:      createOpts,
+		workers:         workers,
 	}, nil
 }
 
@@ -71,6 +78,7 @@ func (ec *Controller) Run(ctx context.Context) {
 	if len(ec.emitEvents) == 0 {
 		return
 	}
+	ec.running.Store(true)
 	go ec.run(ctx)
 }
 
@@ -79,13 +87,14 @@ func (ec *Controller) run(ctx context.Context) {
 	defer log.Info("event Controller terminated")
 	defer utilruntime.HandleCrash()
 	var waitGroup wait.Group
-	for range workers {
+	for range ec.workers {
 		waitGroup.StartWithContext(ctx, func(ctx context.Context) {
 			for ec.processNextWorkItem(ctx) {
 			}
 		})
 	}
 	<-ctx.Done()
+	ec.running.Store(false)
 	ec.queue.ShutDownWithDrain()
 	waitGroup.Wait()
 }
@@ -110,6 +119,12 @@ func (ec *Controller) processNextWorkItem(ctx context.Context) bool {
 }
 
 func (ec *Controller) Add(events ...Event) {
+	if !ec.running.Load() {
+		log.Debugf("controller not running, dropping %d events", len(events))
+		return
+	}
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
 	if ec.queue.Len() >= ec.maxQueuedEvents {
 		log.Warnf("event queue is full, dropping %d events", len(events))
 		return
