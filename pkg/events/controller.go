@@ -84,6 +84,7 @@ func (ec *Controller) Run(ctx context.Context) {
 
 func (ec *Controller) run(ctx context.Context) {
 	log.Info("event Controller started")
+	defer ec.running.Store(false) // safety net for abnormal exits it ensures cleanup.
 	defer log.Info("event Controller terminated")
 	defer utilruntime.HandleCrash()
 	var waitGroup wait.Group
@@ -94,7 +95,7 @@ func (ec *Controller) run(ctx context.Context) {
 		})
 	}
 	<-ctx.Done()
-	ec.running.Store(false)
+	ec.running.Store(false) // to prevent adding new items to the queue after workers have stopped processing items
 	ec.queue.ShutDownWithDrain()
 	waitGroup.Wait()
 }
