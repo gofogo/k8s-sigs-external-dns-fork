@@ -17,11 +17,14 @@ limitations under the License.
 package events
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -36,10 +39,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes/fake"
 	eventsclient "k8s.io/client-go/kubernetes/typed/events/v1"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/workqueue"
-
 	clienttesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/clientcmd"
 
 	logtest "sigs.k8s.io/external-dns/internal/testutils/log"
 )
@@ -85,7 +86,7 @@ users:
 	ctrl, err := NewEventController(client, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, ctrl)
-	require.False(t, ctrl.dryRun)
+	require.Empty(t, ctrl.createOpts.DryRun)
 }
 
 func TestController_Run_NoEmitEvents(t *testing.T) {
@@ -102,7 +103,6 @@ func TestController_Run_NoEmitEvents(t *testing.T) {
 
 func TestController_Run_EmitEvents(t *testing.T) {
 	log.SetLevel(log.ErrorLevel)
-	ctx := t.Context()
 
 	eventCreated := make(chan struct{})
 	kubeClient := fake.NewClientset()
@@ -111,19 +111,10 @@ func TestController_Run_EmitEvents(t *testing.T) {
 		return true, nil, nil
 	})
 
-	eventsClient := kubeClient.EventsV1()
-	ctrl := &Controller{
-		client:     eventsClient,
-		emitEvents: sets.New[Reason](RecordReady),
-		queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
-			workqueue.DefaultTypedControllerRateLimiter[any](),
-			workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
-		),
-		hostname:        controllerName,
-		maxQueuedEvents: 1,
-	}
+	ctrl, err := NewEventController(kubeClient.EventsV1(), &Config{emitEvents: sets.New(RecordReady)})
+	require.NoError(t, err)
 
-	ctrl.Run(ctx)
+	ctrl.Run(t.Context())
 
 	event := NewEvent(NewObjectReference(&v1.Pod{
 		TypeMeta: metav1.TypeMeta{
@@ -147,19 +138,8 @@ func TestController_Run_EmitEvents(t *testing.T) {
 }
 
 func TestController_Queue_EmitEvents(t *testing.T) {
-	log.SetLevel(log.ErrorLevel)
-
-	eventsClient := fake.NewClientset().EventsV1()
-	ctrl := &Controller{
-		client:     eventsClient,
-		emitEvents: sets.New[Reason](RecordReady),
-		queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
-			workqueue.DefaultTypedControllerRateLimiter[any](),
-			workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
-		),
-		hostname:        controllerName,
-		maxQueuedEvents: 1,
-	}
+	ctrl, err := NewEventController(fake.NewClientset().EventsV1(), &Config{emitEvents: sets.New(RecordReady)})
+	require.NoError(t, err)
 
 	event := NewEvent(NewObjectReference(&v1.Pod{
 		TypeMeta: metav1.TypeMeta{
@@ -173,16 +153,15 @@ func TestController_Queue_EmitEvents(t *testing.T) {
 		},
 	}, "fake-source"), "record created", ActionCreate, RecordReady)
 
+	ctrl.running.Store(true)
 	ctrl.Add(event)
 
-	queueItem, shutdown := ctrl.queue.Get()
+	item, shutdown := ctrl.queue.Get()
 	require.False(t, shutdown)
-	value, ok := queueItem.(*eventsv1.Event)
-	assert.True(t, ok)
-	assert.NotNil(t, value)
+	assert.NotNil(t, item)
 
-	assert.Contains(t, value.Name, "fake-object.")
-	assert.Contains(t, value.Reason, RecordReady)
+	assert.Contains(t, item.Name, "fake-object.")
+	assert.Contains(t, item.Reason, RecordReady)
 }
 
 func TestController_Add(t *testing.T) {
@@ -210,14 +189,11 @@ func TestController_Add(t *testing.T) {
 	} {
 		t.Run(tt.title, func(t *testing.T) {
 			hook := logtest.LogsUnderTestWithLogLevel(log.WarnLevel, t)
-			ctrl := &Controller{
-				emitEvents:      sets.New[Reason](RecordReady),
-				maxQueuedEvents: tt.maxQueuedEvents,
-				queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
-					workqueue.DefaultTypedControllerRateLimiter[any](),
-					workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
-				),
-			}
+			ctrl, err := NewEventController(fake.NewClientset().EventsV1(), &Config{emitEvents: sets.New(RecordReady)})
+			ctrl.maxQueuedEvents = tt.maxQueuedEvents
+			require.NoError(t, err)
+			ctrl.running.Store(true)
+
 			ctrl.Add(tt.events...)
 			assert.Equal(t, tt.wantQueueLen, ctrl.queue.Len())
 			if tt.wantWarnLog != "" {
@@ -228,20 +204,6 @@ func TestController_Add(t *testing.T) {
 }
 
 func TestController_ProcessNextWorkItem(t *testing.T) {
-	t.Run("invalid key logs error and returns true", func(t *testing.T) {
-		hook := logtest.LogsUnderTestWithLogLevel(log.ErrorLevel, t)
-		ctrl := &Controller{
-			client: fake.NewClientset().EventsV1(),
-			queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
-				workqueue.DefaultTypedControllerRateLimiter[any](),
-				workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
-			),
-		}
-		ctrl.queue.Add("not-an-event")
-		assert.True(t, ctrl.processNextWorkItem(t.Context()))
-		logtest.TestHelperLogContains("failed to convert key to Event", hook, t)
-	})
-
 	t.Run("dryRun sets DryRunAll on create options", func(t *testing.T) {
 		var capturedDryRun []string
 		kubeClient := fake.NewClientset()
@@ -249,14 +211,8 @@ func TestController_ProcessNextWorkItem(t *testing.T) {
 			capturedDryRun = action.(clienttesting.CreateActionImpl).CreateOptions.DryRun
 			return true, nil, nil
 		})
-		ctrl := &Controller{
-			client: kubeClient.EventsV1(),
-			dryRun: true,
-			queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
-				workqueue.DefaultTypedControllerRateLimiter[any](),
-				workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
-			),
-		}
+		ctrl, err := NewEventController(kubeClient.EventsV1(), &Config{dryRun: true})
+		require.NoError(t, err)
 		ctrl.queue.Add(&eventsv1.Event{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-event", Namespace: "default"},
 		})
@@ -270,21 +226,14 @@ func TestController_ProcessNextWorkItem(t *testing.T) {
 		kubeClient.PrependReactor("create", "events", func(_ clienttesting.Action) (bool, runtime.Object, error) {
 			return true, nil, fmt.Errorf("persistent error")
 		})
-		ctrl := &Controller{
-			client: kubeClient.EventsV1(),
-			// 0-delay rate limiter: AddRateLimited calls Add immediately, enabling synchronous looping.
-			queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
-				workqueue.NewTypedMaxOfRateLimiter[any](
-					workqueue.NewTypedItemFastSlowRateLimiter[any](0, 0, maxTriesPerEvent+1),
-				),
-				workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
-			),
-		}
+		ctrl, err := NewEventController(kubeClient.EventsV1(), &Config{emitEvents: sets.New(RecordReady)})
+		require.NoError(t, err)
+
 		ctrl.queue.Add(&eventsv1.Event{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-event", Namespace: "default"},
 		})
 		// First maxTriesPerEvent calls requeue; the final call exhausts retries and drops.
-		for range maxTriesPerEvent + 1 {
+		for range maxRetriesPerEvent + 1 {
 			ctrl.processNextWorkItem(t.Context())
 		}
 		logtest.TestHelperLogContains("dropping event", hook, t)
@@ -293,14 +242,9 @@ func TestController_ProcessNextWorkItem(t *testing.T) {
 
 func TestController_Emit_SkipsUnconfiguredReason(t *testing.T) {
 	hook := logtest.LogsUnderTestWithLogLevel(log.DebugLevel, t)
-
-	ctrl := &Controller{
-		emitEvents: sets.New[Reason](RecordReady),
-		queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
-			workqueue.DefaultTypedControllerRateLimiter[any](),
-			workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
-		),
-	}
+	kubeClient := fake.NewClientset()
+	ctrl, err := NewEventController(kubeClient.EventsV1(), &Config{emitEvents: sets.New(RecordReady)})
+	require.NoError(t, err)
 
 	ctrl.emit(&eventsv1.Event{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-event", Namespace: "default"},
@@ -311,44 +255,63 @@ func TestController_Emit_SkipsUnconfiguredReason(t *testing.T) {
 	logtest.TestHelperLogContains("skipping event", hook, t)
 }
 
-func TestController_ProcessNextWorkItem_RequeuesOnError(t *testing.T) {
-	log.SetLevel(log.ErrorLevel)
-	ctx := t.Context()
+func TestController_Run_MultipleWorkers(t *testing.T) {
+	const numWorkers = 3
+	const numEvents = 9
 
-	createAttempts := 0
+	var created atomic.Int32
+	allCreated := make(chan struct{})
+
 	kubeClient := fake.NewClientset()
 	kubeClient.PrependReactor("create", "events", func(_ clienttesting.Action) (bool, runtime.Object, error) {
-		createAttempts++
-		if createAttempts <= maxTriesPerEvent {
-			return true, nil, fmt.Errorf("transient API error")
+		if created.Add(1) == numEvents {
+			close(allCreated)
 		}
 		return true, nil, nil
 	})
 
+	ctrl, err := NewEventController(kubeClient.EventsV1(), &Config{emitEvents: sets.New(RecordReady)})
+	require.NoError(t, err)
+	ctrl.workers = numWorkers
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ctrl.Run(ctx)
+
+	for i := range numEvents {
+		ctrl.Add(NewEvent(NewObjectReference(&v1.Pod{
+			TypeMeta:   metav1.TypeMeta{Kind: "Pod", APIVersion: "v1"},
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("pod-%d", i), Namespace: v1.NamespaceDefault},
+		}, "fake-source"), "record created", ActionCreate, RecordReady))
+	}
+
+	select {
+	case <-allCreated:
+	case <-time.After(wait.ForeverTestTimeout):
+		t.Fatalf("only %d/%d events created before timeout", created.Load(), numEvents)
+	}
+}
+
+func TestController_ProcessNextWorkItem_RequestOnError(t *testing.T) {
+	log.SetOutput(io.Discard)
+
+	createAttempts := 0
+	kubeClient := fake.NewClientset()
+
 	eventCreated := make(chan struct{}, 1)
 	kubeClient.PrependReactor("create", "events", func(_ clienttesting.Action) (bool, runtime.Object, error) {
 		createAttempts++
-		if createAttempts <= maxTriesPerEvent {
+		if createAttempts <= maxRetriesPerEvent {
 			return true, nil, fmt.Errorf("transient API error")
 		}
 		eventCreated <- struct{}{}
 		return true, nil, nil
 	})
 
-	ctrl := &Controller{
-		client:     kubeClient.EventsV1(),
-		emitEvents: sets.New[Reason](RecordReady),
-		queue: workqueue.NewTypedRateLimitingQueueWithConfig[any](
-			workqueue.NewTypedMaxOfRateLimiter[any](
-				workqueue.NewTypedItemFastSlowRateLimiter[any](1*time.Millisecond, 1*time.Millisecond, 5),
-			),
-			workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
-		),
-		hostname:        controllerName,
-		maxQueuedEvents: maxQueuedEvents,
-	}
+	ctrl, err := NewEventController(kubeClient.EventsV1(), &Config{emitEvents: sets.New(RecordReady)})
+	require.NoError(t, err)
 
-	ctrl.Run(ctx)
+	ctrl.Run(t.Context())
 
 	event := NewEvent(NewObjectReference(&v1.Pod{
 		TypeMeta: metav1.TypeMeta{

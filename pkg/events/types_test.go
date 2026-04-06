@@ -17,8 +17,11 @@ limitations under the License.
 package events
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,24 +50,27 @@ func TestNewObjectReference_DoesNotMutateObject(t *testing.T) {
 
 func TestSanitize(t *testing.T) {
 	tests := []struct {
+		name     string
 		input    string
-		expected string // expected prefix of sanitized output
+		wantBase string
 	}{
-		{"My.Resource_1", "my.resource-1."},
-		{"!@#bad*chars", "a---bad-chars."},
-		{"-start", "a-start."},
-		{"end-", "end-z."},
-		{"-both-", "a-both-z."},
-		{"", "a."},
-		{"ALLCAPS", "allcaps."},
-		{"foo.bar", "foo.bar."},
+		{"mixed case and underscore", "My.Resource_1", "my.resource-1"},
+		{"leading invalid chars", "!@#bad*chars", "a---bad-chars"},
+		{"leading dash", "-start", "a-start"},
+		{"trailing dash", "end-", "end-z"},
+		{"leading and trailing dash", "-both-", "a-both-z"},
+		{"empty input", "", "a"},
+		{"all caps", "ALLCAPS", "allcaps"},
+		{"dots preserved", "foo.bar", "foo.bar"},
+		{"long input truncated to 253 chars", strings.Repeat("a", 300), strings.Repeat("a", 236)},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := sanitize(tt.input)
-			require.True(t, strings.HasPrefix(result, tt.expected), "expected prefix %q, got %q", tt.expected, result)
-			require.Greater(t, len(result), len(tt.expected))
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitize(tt.input, time.Now())
+			require.True(t, strings.HasPrefix(result, tt.wantBase+"."),
+				"got %q, want prefix %q", result, tt.wantBase+".")
+			require.LessOrEqual(t, len(result), 253, "name must be <= 253 chars")
 		})
 	}
 }
@@ -180,6 +186,25 @@ func TestEvent_Transpose(t *testing.T) {
 
 	ev.ref.Name = ""
 	require.Nil(t, ev.event())
+}
+
+func TestEvent_NameAndEventTimeConsistent(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		now := time.Now() // deterministic bubble time: 2000-01-01 00:00:00 UTC
+		expectedSuffix := fmt.Sprintf(".%x", now.UnixNano())
+
+		ev := NewEvent(&ObjectReference{
+			Kind: "Pod", Namespace: "default", Name: "nginx",
+		}, "msg", ActionCreate, RecordReady)
+
+		k8sEvent := ev.event()
+		require.NotNil(t, k8sEvent)
+
+		require.True(t, strings.HasSuffix(k8sEvent.Name, expectedSuffix),
+			"name %q must end with timestamp suffix %q", k8sEvent.Name, expectedSuffix)
+		require.Equal(t, now.UnixNano(), k8sEvent.EventTime.UnixNano(),
+			"EventTime must match the same timestamp used in the name")
+	})
 }
 
 func TestWithEmitEvents(t *testing.T) {

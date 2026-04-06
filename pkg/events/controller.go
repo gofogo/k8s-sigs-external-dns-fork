@@ -18,7 +18,8 @@ package events
 
 import (
 	"context"
-	"os"
+	"sync"
+	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 	eventsv1 "k8s.io/api/events/v1"
@@ -32,10 +33,10 @@ import (
 )
 
 const (
-	workers          = 1
-	controllerName   = "external-dns"
-	maxTriesPerEvent = 3
-	maxQueuedEvents  = 100
+	workers            = 1
+	controllerName     = "external-dns"
+	maxRetriesPerEvent = 3
+	maxQueuedEvents    = 100
 )
 
 type EventEmitter interface {
@@ -44,26 +45,32 @@ type EventEmitter interface {
 
 type Controller struct {
 	client          v1.EventsV1Interface
-	queue           workqueue.TypedRateLimitingInterface[any]
+	queue           workqueue.TypedRateLimitingInterface[*eventsv1.Event]
 	emitEvents      sets.Set[Reason]
+	createOpts      metav1.CreateOptions
 	maxQueuedEvents int
-	dryRun          bool
-	hostname        string
+	workers         int
+
+	mu      sync.Mutex
+	running atomic.Bool
 }
 
 func NewEventController(client v1.EventsV1Interface, cfg *Config) (*Controller, error) {
-	queue := workqueue.NewTypedRateLimitingQueueWithConfig[any](
-		workqueue.DefaultTypedControllerRateLimiter[any](),
-		workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
+	queue := workqueue.NewTypedRateLimitingQueueWithConfig(
+		workqueue.DefaultTypedControllerRateLimiter[*eventsv1.Event](),
+		workqueue.TypedRateLimitingQueueConfig[*eventsv1.Event]{Name: controllerName},
 	)
-	hostname, _ := os.Hostname()
+	createOpts := metav1.CreateOptions{}
+	if cfg.dryRun {
+		createOpts.DryRun = []string{metav1.DryRunAll}
+	}
 	return &Controller{
 		client:          client,
 		queue:           queue,
 		emitEvents:      cfg.emitEvents,
 		maxQueuedEvents: maxQueuedEvents,
-		dryRun:          cfg.dryRun,
-		hostname:        hostname,
+		createOpts:      createOpts,
+		workers:         workers,
 	}, nil
 }
 
@@ -71,56 +78,54 @@ func (ec *Controller) Run(ctx context.Context) {
 	if len(ec.emitEvents) == 0 {
 		return
 	}
+	ec.running.Store(true)
 	go ec.run(ctx)
 }
 
 func (ec *Controller) run(ctx context.Context) {
 	log.Info("event Controller started")
+	defer ec.running.Store(false) // safety net for abnormal exits it ensures cleanup.
 	defer log.Info("event Controller terminated")
 	defer utilruntime.HandleCrash()
 	var waitGroup wait.Group
-	for range workers {
+	for range ec.workers {
 		waitGroup.StartWithContext(ctx, func(ctx context.Context) {
 			for ec.processNextWorkItem(ctx) {
 			}
 		})
 	}
 	<-ctx.Done()
+	ec.running.Store(false) // to prevent adding new items to the queue after workers have stopped processing items
 	ec.queue.ShutDownWithDrain()
 	waitGroup.Wait()
 }
 
 func (ec *Controller) processNextWorkItem(ctx context.Context) bool {
-	key, quit := ec.queue.Get()
+	event, quit := ec.queue.Get()
 	if quit {
 		return false
 	}
-	defer ec.queue.Done(key)
-	event, ok := key.(*eventsv1.Event)
-	if !ok {
-		log.Errorf("failed to convert key to Event: %q", key)
-		return true
-	}
-	var dryRun []string
-	if ec.dryRun {
-		dryRun = []string{metav1.DryRunAll}
-	}
-	_, err := ec.client.Events(event.Namespace).Create(ctx, event, metav1.CreateOptions{
-		DryRun: dryRun,
-	})
+	defer ec.queue.Done(event)
+	_, err := ec.client.Events(event.Namespace).Create(ctx, event, ec.createOpts)
 	if err != nil && !apierrors.IsNotFound(err) {
-		if ec.queue.NumRequeues(key) < maxTriesPerEvent {
-			log.Errorf("not able to create event, retrying for key/%s. %v", key, err)
-			ec.queue.AddRateLimited(key)
+		if ec.queue.NumRequeues(event) < maxRetriesPerEvent {
+			log.Errorf("not able to create event, retrying for key/%s. %v", event.Name, err)
+			ec.queue.AddRateLimited(event)
 			return true
 		}
-		log.Errorf("dropping event %s/%s with key/%q after %d retries. %v", event.Namespace, event.Name, key, ec.queue.NumRequeues(key), err)
+		log.Errorf("dropping event %s/%s after %d retries. %v", event.Namespace, event.Name, ec.queue.NumRequeues(event), err)
 	}
-	ec.queue.Forget(key)
+	ec.queue.Forget(event)
 	return true
 }
 
 func (ec *Controller) Add(events ...Event) {
+	if !ec.running.Load() {
+		log.Debugf("controller not running, dropping %d events", len(events))
+		return
+	}
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
 	if ec.queue.Len() >= ec.maxQueuedEvents {
 		log.Warnf("event queue is full, dropping %d events", len(events))
 		return
@@ -139,6 +144,5 @@ func (ec *Controller) emit(event *eventsv1.Event) {
 		log.Debugf("skipping event %s/%s/%s with reason %s as not configured to emit", event.Kind, event.Namespace, event.Name, event.Reason)
 		return
 	}
-	event.ReportingController = controllerName
 	ec.queue.Add(event)
 }
