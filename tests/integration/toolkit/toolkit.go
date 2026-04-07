@@ -257,12 +257,12 @@ func scenarioToConfig(scenarioCfg ScenarioConfig, opts ...source.OverrideConfigO
 // wraps them with the same pipeline used by the controller.
 // If the "crd" source is requested, a minimal fake Kubernetes REST API server is
 // started (serving only DNSEndpoint resources) so the CRD source's
-// controller-runtime cache can initialise without a real cluster.
+// controller-runtime cache can initialize without a real cluster.
 func CreateWrappedSource(
 	ctx context.Context,
 	loaded *LoadedResources,
 	scenarioCfg ScenarioConfig) (source.Source, error) {
-	var gen source.ClientGenerator = newMockClientGenerator(loaded.K8sClient)
+	var gen = newMockClientGenerator(loaded.K8sClient)
 
 	if slices.Contains(scenarioCfg.Sources, "crd") {
 		restCfg := newFakeDNSEndpointServer(ctx, loaded.DNSEndpoints)

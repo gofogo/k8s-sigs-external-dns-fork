@@ -82,7 +82,7 @@ type ParsedResources struct {
 // LoadedResources holds the fake clients populated by LoadResources.
 type LoadedResources struct {
 	// K8sClient is the fake Kubernetes clientset for core/networking/discovery resources.
-	K8sClient    *fake.Clientset
+	K8sClient *fake.Clientset
 	// DNSEndpoints are the parsed DNSEndpoint CRD objects ready to be injected into
 	// the CRD source fake cache.
 	DNSEndpoints []*apiv1alpha1.DNSEndpoint

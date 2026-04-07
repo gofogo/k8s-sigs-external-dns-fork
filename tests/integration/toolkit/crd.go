@@ -62,14 +62,14 @@ func newCRDClientGenerator(k8sClient *fake.Clientset, restCfg *rest.Config) crdC
 
 // newFakeDNSEndpointServer starts a minimal in-process HTTP server that serves
 // just enough of the Kubernetes API for the CRD source's controller-runtime cache
-// to initialise and sync:
+// to initialize and sync:
 //
 //   - /api, /apis, /apis/externaldns.k8s.io — API discovery
 //   - /apis/externaldns.k8s.io/v1alpha1 — APIResourceList
 //   - /apis/externaldns.k8s.io/v1alpha1/dnsendpoints — List + Watch
 //   - /apis/externaldns.k8s.io/v1alpha1/namespaces/{ns}/dnsendpoints — same
 //
-// The server is closed automatically when ctx is cancelled.
+// The server is closed automatically when ctx is canceled.
 func newFakeDNSEndpointServer(ctx context.Context, dnsEndpoints []*apiv1alpha1.DNSEndpoint) *rest.Config {
 	h := &dnsEndpointHandler{endpoints: dnsEndpoints}
 	srv := httptest.NewServer(h)
@@ -113,7 +113,7 @@ func isDNSEndpointPath(path string) bool {
 		strings.HasSuffix(path, "/"+dnsEndpointResource)
 }
 
-func writeJSON(w http.ResponseWriter, v interface{}) {
+func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }
@@ -227,14 +227,14 @@ func (h *dnsEndpointHandler) serveWatch(w http.ResponseWriter, r *http.Request) 
 
 	if r.URL.Query().Get("sendInitialEvents") == "true" {
 		for _, item := range h.filteredEndpoints(extractNamespace(r.URL.Path)) {
-			_ = enc.Encode(map[string]interface{}{"type": "ADDED", "object": item})
+			_ = enc.Encode(map[string]any{"type": "ADDED", "object": item})
 		}
-		_ = enc.Encode(map[string]interface{}{
+		_ = enc.Encode(map[string]any{
 			"type": "BOOKMARK",
-			"object": map[string]interface{}{
+			"object": map[string]any{
 				"apiVersion": apiv1alpha1.GroupVersion.String(),
 				"kind":       apiv1alpha1.DNSEndpointKind,
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"resourceVersion": "1",
 					"annotations": map[string]string{
 						initialEventsEndKey: "true",
@@ -245,19 +245,19 @@ func (h *dnsEndpointHandler) serveWatch(w http.ResponseWriter, r *http.Request) 
 		flusher.Flush()
 	} else {
 		// Ordinary watch: send a plain BOOKMARK and keep the stream open.
-		_ = enc.Encode(map[string]interface{}{
+		_ = enc.Encode(map[string]any{
 			"type": "BOOKMARK",
-			"object": map[string]interface{}{
+			"object": map[string]any{
 				"apiVersion": apiv1alpha1.GroupVersion.String(),
 				"kind":       apiv1alpha1.DNSEndpointKind,
-				"metadata":   map[string]interface{}{"resourceVersion": "1"},
+				"metadata":   map[string]any{"resourceVersion": "1"},
 			},
 		})
 		flusher.Flush()
 	}
 
 	// Block until the client closes the connection (after initial sync the
-	// reflector calls w.Stop(), cancelling the request context).
+	// reflector calls w.Stop(), canceling the request context).
 	<-r.Context().Done()
 }
 
