@@ -18,7 +18,6 @@ package events
 
 import (
 	"context"
-	"os"
 
 	log "github.com/sirupsen/logrus"
 	eventsv1 "k8s.io/api/events/v1"
@@ -32,10 +31,10 @@ import (
 )
 
 const (
-	workers          = 1
-	controllerName   = "external-dns"
-	maxTriesPerEvent = 3
-	maxQueuedEvents  = 100
+	workers            = 1
+	controllerName     = "external-dns"
+	maxRetriesPerEvent = 3
+	maxQueuedEvents    = 100
 )
 
 type EventEmitter interface {
@@ -47,8 +46,7 @@ type Controller struct {
 	queue           workqueue.TypedRateLimitingInterface[any]
 	emitEvents      sets.Set[Reason]
 	maxQueuedEvents int
-	dryRun          bool
-	hostname        string
+	createOpts      metav1.CreateOptions
 }
 
 func NewEventController(client v1.EventsV1Interface, cfg *Config) (*Controller, error) {
@@ -56,14 +54,16 @@ func NewEventController(client v1.EventsV1Interface, cfg *Config) (*Controller, 
 		workqueue.DefaultTypedControllerRateLimiter[any](),
 		workqueue.TypedRateLimitingQueueConfig[any]{Name: controllerName},
 	)
-	hostname, _ := os.Hostname()
+	createOpts := metav1.CreateOptions{}
+	if cfg.dryRun {
+		createOpts.DryRun = []string{metav1.DryRunAll}
+	}
 	return &Controller{
 		client:          client,
 		queue:           queue,
 		emitEvents:      cfg.emitEvents,
 		maxQueuedEvents: maxQueuedEvents,
-		dryRun:          cfg.dryRun,
-		hostname:        hostname,
+		createOpts:      createOpts,
 	}, nil
 }
 
@@ -99,38 +99,39 @@ func (ec *Controller) processNextWorkItem(ctx context.Context) bool {
 	event, ok := key.(*eventsv1.Event)
 	if !ok {
 		log.Errorf("failed to convert key to Event: %q", key)
+		ec.queue.Forget(key)
 		return true
 	}
-	var dryRun []string
-	if ec.dryRun {
-		dryRun = []string{metav1.DryRunAll}
-	}
-	_, err := ec.client.Events(event.Namespace).Create(ctx, event, metav1.CreateOptions{
-		DryRun: dryRun,
-	})
-	if err != nil && !apierrors.IsNotFound(err) {
-		if ec.queue.NumRequeues(key) < maxTriesPerEvent {
-			log.Errorf("not able to create event, retrying for key/%s. %v", key, err)
-			ec.queue.AddRateLimited(key)
-			return true
-		}
-		log.Errorf("dropping event %s/%s with key/%q after %d retries. %v", event.Namespace, event.Name, key, ec.queue.NumRequeues(key), err)
+	_, err := ec.client.Events(event.Namespace).Create(ctx, event, ec.createOpts)
+	switch {
+	case apierrors.IsNotFound(err):
+		log.Warnf("dropping event %s/%s: namespace not found. %v", event.Namespace, event.Name, err)
+	case err != nil && ec.queue.NumRequeues(key) < maxRetriesPerEvent:
+		log.Errorf("not able to create event %s/%s, retrying. %v", event.Namespace, event.Name, err)
+		ec.queue.AddRateLimited(key)
+		return true
+	case err != nil:
+		log.Errorf("dropping event %s/%s after %d retries. %v", event.Namespace, event.Name, ec.queue.NumRequeues(key), err)
 	}
 	ec.queue.Forget(key)
 	return true
 }
 
 func (ec *Controller) Add(events ...Event) {
-	if ec.queue.Len() >= ec.maxQueuedEvents {
-		log.Warnf("event queue is full, dropping %d events", len(events))
-		return
-	}
+	dropped := 0
 	for _, e := range events {
+		if ec.queue.Len() >= ec.maxQueuedEvents {
+			dropped++
+			continue
+		}
 		event := e.event()
 		if event == nil {
 			continue
 		}
 		ec.emit(event)
+	}
+	if dropped > 0 {
+		log.Warnf("event queue is full, dropped %d events", dropped)
 	}
 }
 
@@ -139,6 +140,5 @@ func (ec *Controller) emit(event *eventsv1.Event) {
 		log.Debugf("skipping event %s/%s/%s with reason %s as not configured to emit", event.Kind, event.Namespace, event.Name, event.Reason)
 		return
 	}
-	event.ReportingController = controllerName
 	ec.queue.Add(event)
 }
