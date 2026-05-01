@@ -44,7 +44,7 @@ func (t *errorTransportV6) RoundTrip(_ *http.Request) (*http.Response, error) {
 
 func TestNewPiholeClientV6(t *testing.T) {
 	// Test correct error on no server provided
-	_, err := newPiholeClientV6(PiholeConfig{APIVersion: "6"})
+	_, err := newPiholeClientV6(PiholeConfig{})
 	if err == nil {
 		t.Error("Expected error from config with no server")
 	} else if !errors.Is(err, ErrNoPiholeServer) {
@@ -54,7 +54,7 @@ func TestNewPiholeClientV6(t *testing.T) {
 	// Test new client with no password. Should create the client cleanly.
 	cl, err := newPiholeClientV6(PiholeConfig{
 		Server:     "test",
-		APIVersion: "6",
+	
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestNewPiholeClientV6(t *testing.T) {
 
 	// Test invalid password
 	_, err = newPiholeClientV6(
-		PiholeConfig{Server: srvr.URL, APIVersion: "6", Password: "wrong"},
+		PiholeConfig{Server: srvr.URL, Password: "wrong"},
 	)
 	if err == nil {
 		t.Error("Expected error for creating client with invalid password")
@@ -122,13 +122,13 @@ func TestNewPiholeClientV6(t *testing.T) {
 
 	// Test correct password
 	cl, err = newPiholeClientV6(
-		PiholeConfig{Server: srvr.URL, APIVersion: "6", Password: "correct"},
+		PiholeConfig{Server: srvr.URL, Password: "correct"},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cl.(*piholeClientV6).token != "supersecret" {
-		t.Error("Parsed invalid token from login response:", cl.(*piholeClient).token)
+		t.Error("Parsed invalid token from login response:", cl.(*piholeClientV6).token)
 	}
 }
 
@@ -192,7 +192,7 @@ func TestListRecordsV6(t *testing.T) {
 	// Create a client
 	cfg := PiholeConfig{
 		Server:     srvr.URL,
-		APIVersion: "6",
+	
 	}
 	cl, err := newPiholeClientV6(cfg)
 	if err != nil {
@@ -341,7 +341,7 @@ func TestErrorsV6(t *testing.T) {
 	// Create a client
 	cfgErrURL := PiholeConfig{
 		Server:     "not an url",
-		APIVersion: "6",
+	
 	}
 	clErrURL, err := newPiholeClientV6(cfgErrURL)
 	if err != nil {
@@ -369,7 +369,7 @@ func TestErrorsV6(t *testing.T) {
 	// Create a client
 	cfgErr := PiholeConfig{
 		Server:     srvrErrJson.URL,
-		APIVersion: "6",
+	
 	}
 	clErr, _ := newPiholeClientV6(cfgErr)
 
@@ -425,7 +425,7 @@ func TestErrorsV6(t *testing.T) {
 	// Create a client
 	cfgErr = PiholeConfig{
 		Server:     srvrErr.URL,
-		APIVersion: "6",
+	
 	}
 	clErr, _ = newPiholeClientV6(cfgErr)
 
@@ -498,7 +498,7 @@ func TestTokenValidity(t *testing.T) {
 	// Create a client
 	cfgOK := PiholeConfig{
 		Server:     srvok.URL,
-		APIVersion: "6",
+	
 	}
 	clOK, err := newPiholeClientV6(cfgOK)
 	clOK.(*piholeClientV6).token = "valid"
@@ -526,7 +526,7 @@ func TestTokenValidity(t *testing.T) {
 	// Create a client
 	cfg := PiholeConfig{
 		Server:     srvr.URL,
-		APIVersion: "6",
+	
 	}
 	cl, err := newPiholeClientV6(cfg)
 	if err != nil {
@@ -640,7 +640,7 @@ func TestDo(t *testing.T) {
 	// Create a client
 	cfg := PiholeConfig{
 		Server:     srvDo.URL,
-		APIVersion: "6",
+	
 	}
 	cl, err := newPiholeClientV6(cfg)
 	cl.(*piholeClientV6).token = "valid"
@@ -733,7 +733,7 @@ func TestDoRetryOne(t *testing.T) {
 	// Create a client
 	cfgRetryOK := PiholeConfig{
 		Server:     srvRetry.URL,
-		APIVersion: "6",
+	
 	}
 	clRetryOK, err := newPiholeClientV6(cfgRetryOK)
 	clRetryOK.(*piholeClientV6).token = "valid"
@@ -846,7 +846,6 @@ func TestCreateRecordV6(t *testing.T) {
 	// Create a client
 	cfg := PiholeConfig{
 		Server:       srvr.URL,
-		APIVersion:   "6",
 		DomainFilter: endpoint.NewDomainFilter([]string{"example.com"}),
 	}
 	cl, err := newPiholeClientV6(cfg)
@@ -960,7 +959,6 @@ func TestCreateRecordV6(t *testing.T) {
 	// Create a client
 	cfgDr := PiholeConfig{
 		Server:       srvr.URL,
-		APIVersion:   "6",
 		DomainFilter: endpoint.NewDomainFilter([]string{"example.com"}),
 		DryRun:       true,
 	}
@@ -1009,7 +1007,7 @@ func TestDeleteRecordV6(t *testing.T) {
 	// Create a client
 	cfg := PiholeConfig{
 		Server:     srvr.URL,
-		APIVersion: "6",
+	
 	}
 	cl, err := newPiholeClientV6(cfg)
 	if err != nil {

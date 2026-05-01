@@ -21,11 +21,7 @@ import (
 	"reflect"
 	"testing"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/require"
-
 	"sigs.k8s.io/external-dns/endpoint"
-	logtest "sigs.k8s.io/external-dns/internal/testutils/log"
 	"sigs.k8s.io/external-dns/plan"
 )
 
@@ -85,41 +81,6 @@ func TestNewProvider(t *testing.T) {
 	}
 }
 
-func TestNewPiholeProvider_APIVersions(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  PiholeConfig
-		wantMsg bool
-	}{
-		{
-			name: "API version 5 with server",
-			config: PiholeConfig{
-				APIVersion: "5",
-				Server:     "test.example.com",
-			},
-			wantMsg: true,
-		},
-		{
-			name: "API version 6 with server",
-			config: PiholeConfig{
-				APIVersion: "6",
-				Server:     "test.example.com",
-			},
-			wantMsg: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hook := logtest.LogsUnderTestWithLogLevel(log.DebugLevel, t)
-			_, err := newProvider(tt.config)
-			require.NoError(t, err)
-			if tt.wantMsg {
-				logtest.TestHelperLogContains(warningMsg, hook, t)
-			}
-		})
-	}
-}
 
 func TestProvider_InitialState(t *testing.T) {
 	requests := requestTracker{}

@@ -102,8 +102,7 @@ func (r *requestTrackerV6) clear() {
 func TestErrorHandling(t *testing.T) {
 	requests := requestTrackerV6{}
 	p := &PiholeProvider{
-		api:        &testPiholeClientV6{endpoints: make([]*endpoint.Endpoint, 0), requests: &requests},
-		apiVersion: "6",
+		api: &testPiholeClientV6{endpoints: make([]*endpoint.Endpoint, 0), requests: &requests},
 	}
 
 	p.api.(*testPiholeClientV6).trigger = "AERROR"
@@ -128,12 +127,12 @@ func TestErrorHandling(t *testing.T) {
 
 func TestNewPiholeProviderV6(t *testing.T) {
 	// Test invalid configuration
-	_, err := newProvider(PiholeConfig{APIVersion: "7"})
+	_, err := newProvider(PiholeConfig{})
 	if err == nil {
 		t.Error("Expected error from invalid configuration")
 	}
 	// Test valid configuration
-	_, err = newProvider(PiholeConfig{Server: "test.example.com", APIVersion: "6"})
+	_, err = newProvider(PiholeConfig{Server: "test.example.com"})
 	if err != nil {
 		t.Error("Expected no error from valid configuration, got:", err)
 	}
@@ -142,8 +141,7 @@ func TestNewPiholeProviderV6(t *testing.T) {
 func TestProviderV6(t *testing.T) {
 	requests := requestTrackerV6{}
 	p := &PiholeProvider{
-		api:        &testPiholeClientV6{endpoints: make([]*endpoint.Endpoint, 0), requests: &requests},
-		apiVersion: "6",
+		api: &testPiholeClientV6{endpoints: make([]*endpoint.Endpoint, 0), requests: &requests},
 	}
 
 	t.Run("Initial Records", func(t *testing.T) {
@@ -257,8 +255,7 @@ func TestProviderV6(t *testing.T) {
 func TestProviderV6MultipleTargets(t *testing.T) {
 	requests := requestTrackerV6{}
 	p := &PiholeProvider{
-		api:        &testPiholeClientV6{endpoints: make([]*endpoint.Endpoint, 0), requests: &requests},
-		apiVersion: "6",
+		api: &testPiholeClientV6{endpoints: make([]*endpoint.Endpoint, 0), requests: &requests},
 	}
 
 	t.Run("Update with multiple targets - merge and deduplicate", func(t *testing.T) {

@@ -43,7 +43,14 @@ const (
 	apiConfigDNS    = "/api/config/dns"
 )
 
-// piholeClient implements the piholeAPI.
+// piholeAPI is the interface for interacting with Pi-hole's DNS records.
+type piholeAPI interface {
+	listRecords(ctx context.Context, rtype string) ([]*endpoint.Endpoint, error)
+	createRecord(ctx context.Context, ep *endpoint.Endpoint) error
+	deleteRecord(ctx context.Context, ep *endpoint.Endpoint) error
+}
+
+// piholeClientV6 implements the piholeAPI.
 type piholeClientV6 struct {
 	cfg        PiholeConfig
 	httpClient *http.Client
