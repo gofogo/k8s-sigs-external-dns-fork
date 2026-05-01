@@ -81,7 +81,6 @@ func TestNewProvider(t *testing.T) {
 	}
 }
 
-
 func TestProvider_InitialState(t *testing.T) {
 	requests := requestTracker{}
 	p := &PiholeProvider{

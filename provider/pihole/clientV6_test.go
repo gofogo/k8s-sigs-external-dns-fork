@@ -53,8 +53,7 @@ func TestNewPiholeClientV6(t *testing.T) {
 
 	// Test new client with no password. Should create the client cleanly.
 	cl, err := newPiholeClientV6(PiholeConfig{
-		Server:     "test",
-	
+		Server: "test",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -191,8 +190,7 @@ func TestListRecordsV6(t *testing.T) {
 
 	// Create a client
 	cfg := PiholeConfig{
-		Server:     srvr.URL,
-	
+		Server: srvr.URL,
 	}
 	cl, err := newPiholeClientV6(cfg)
 	if err != nil {
@@ -340,8 +338,7 @@ func TestErrorsV6(t *testing.T) {
 
 	// Create a client
 	cfgErrURL := PiholeConfig{
-		Server:     "not an url",
-	
+		Server: "not an url",
 	}
 	clErrURL, err := newPiholeClientV6(cfgErrURL)
 	if err != nil {
@@ -368,8 +365,7 @@ func TestErrorsV6(t *testing.T) {
 	defer srvrErrJson.Close()
 	// Create a client
 	cfgErr := PiholeConfig{
-		Server:     srvrErrJson.URL,
-	
+		Server: srvrErrJson.URL,
 	}
 	clErr, _ := newPiholeClientV6(cfgErr)
 
@@ -424,8 +420,7 @@ func TestErrorsV6(t *testing.T) {
 
 	// Create a client
 	cfgErr = PiholeConfig{
-		Server:     srvrErr.URL,
-	
+		Server: srvrErr.URL,
 	}
 	clErr, _ = newPiholeClientV6(cfgErr)
 
@@ -497,8 +492,7 @@ func TestTokenValidity(t *testing.T) {
 	})
 	// Create a client
 	cfgOK := PiholeConfig{
-		Server:     srvok.URL,
-	
+		Server: srvok.URL,
 	}
 	clOK, err := newPiholeClientV6(cfgOK)
 	clOK.(*piholeClientV6).token = "valid"
@@ -525,8 +519,7 @@ func TestTokenValidity(t *testing.T) {
 	//
 	// Create a client
 	cfg := PiholeConfig{
-		Server:     srvr.URL,
-	
+		Server: srvr.URL,
 	}
 	cl, err := newPiholeClientV6(cfg)
 	if err != nil {
@@ -639,8 +632,7 @@ func TestDo(t *testing.T) {
 
 	// Create a client
 	cfg := PiholeConfig{
-		Server:     srvDo.URL,
-	
+		Server: srvDo.URL,
 	}
 	cl, err := newPiholeClientV6(cfg)
 	cl.(*piholeClientV6).token = "valid"
@@ -732,8 +724,7 @@ func TestDoRetryOne(t *testing.T) {
 	defer srvRetry.Close()
 	// Create a client
 	cfgRetryOK := PiholeConfig{
-		Server:     srvRetry.URL,
-	
+		Server: srvRetry.URL,
 	}
 	clRetryOK, err := newPiholeClientV6(cfgRetryOK)
 	clRetryOK.(*piholeClientV6).token = "valid"
@@ -1006,8 +997,7 @@ func TestDeleteRecordV6(t *testing.T) {
 
 	// Create a client
 	cfg := PiholeConfig{
-		Server:     srvr.URL,
-	
+		Server: srvr.URL,
 	}
 	cl, err := newPiholeClientV6(cfg)
 	if err != nil {
