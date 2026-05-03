@@ -117,12 +117,11 @@ func TestEventEmitter_Add_VerifyMockCalledWithAnyEvent(t *testing.T) {
 	emitter.AssertExpectations(t)
 }
 
-func TestEventEmitter_Add_EmptyEventsPanics(t *testing.T) {
-	emitter := NewFakeEventEmitter()
+func TestEventEmitter_Add_EmptyEventsIsNoOp(t *testing.T) {
+	emitter := &EventEmitter{}
 
-	// The Add method accesses events[0] without checking if events is empty
-	// This will panic if called with no arguments
-	assert.Panics(t, func() {
+	assert.NotPanics(t, func() {
 		emitter.Add()
-	}, "Add() should panic when called with no events")
+	})
+	emitter.AssertNumberOfCalls(t, "Add", 0)
 }
