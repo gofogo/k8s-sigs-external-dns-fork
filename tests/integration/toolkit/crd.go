@@ -253,8 +253,7 @@ func (h *dnsEndpointHandler) serveWatch(w http.ResponseWriter, r *http.Request) 
 	}
 	flusher.Flush()
 
-	// Block until the client closes the connection (after initial sync the
-	// reflector calls w.Stop(), canceling the request context).
+	// Block until the client closes the connection.
 	<-r.Context().Done()
 }
 

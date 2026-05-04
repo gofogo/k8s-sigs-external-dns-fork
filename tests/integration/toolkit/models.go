@@ -80,7 +80,7 @@ type ParsedResources struct {
 	DNSEndpoints   []*apiv1alpha1.DNSEndpoint
 }
 
-// LoadedResources holds the fake clients populated by LoadResources.
+// LoadedResources holds the clients.
 type LoadedResources struct {
 	// K8sClient is the fake Kubernetes clientset for core/networking/discovery resources.
 	K8sClient *fake.Clientset
