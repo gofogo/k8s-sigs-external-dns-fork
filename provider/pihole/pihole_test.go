@@ -46,6 +46,13 @@ var (
 	})
 )
 
+func assertEndpointsEqual(t *testing.T, got, want []*endpoint.Endpoint) {
+	t.Helper()
+	if diff := cmp.Diff(want, got, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort); diff != "" {
+		t.Error(diff)
+	}
+}
+
 type testPiholeClient struct {
 	endpoints []*endpoint.Endpoint
 	requests  *requestTracker
@@ -171,12 +178,8 @@ func TestProvider(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !cmp.Equal(newRecords, records, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort) {
-			t.Error("Records are not equal:", cmp.Diff(newRecords, records, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort))
-		}
-		if !cmp.Equal(requests.createRequests, records, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort) {
-			t.Error("Create requests are not equal:", cmp.Diff(requests.createRequests, records, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort))
-		}
+		assertEndpointsEqual(t, newRecords, records)
+		assertEndpointsEqual(t, requests.createRequests, records)
 		if len(requests.deleteRequests) != 0 {
 			t.Fatal("Expected no delete requests, got:", requests.deleteRequests)
 		}
@@ -203,16 +206,11 @@ func TestProvider(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !cmp.Equal(newRecords, expectedRecords, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort) {
-			t.Error("Records are not equal:", cmp.Diff(newRecords, expectedRecords, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort))
-		}
+		assertEndpointsEqual(t, newRecords, expectedRecords)
 		if len(requests.createRequests) != 0 {
 			t.Fatal("Expected no create requests, got:", requests.createRequests)
 		}
-		expectedDeletes := []*endpoint.Endpoint{recordToDeleteA, recordToDeleteAAAA}
-		if !cmp.Equal(requests.deleteRequests, expectedDeletes, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort) {
-			t.Error("Delete requests are not equal:", cmp.Diff(requests.deleteRequests, expectedDeletes, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort))
-		}
+		assertEndpointsEqual(t, requests.deleteRequests, []*endpoint.Endpoint{recordToDeleteA, recordToDeleteAAAA})
 		requests.clear()
 	})
 
@@ -239,15 +237,9 @@ func TestProvider(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !cmp.Equal(newRecords, expectedRecords, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort) {
-			t.Error("Records are not equal:", cmp.Diff(newRecords, expectedRecords, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort))
-		}
-		if !cmp.Equal(requests.createRequests, updateNew, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort) {
-			t.Error("Create requests are not equal:", cmp.Diff(requests.createRequests, updateNew, cmpopts.IgnoreUnexported(endpoint.Endpoint{}), endpointSort))
-		}
-		if !cmp.Equal(requests.deleteRequests, updateOld, cmpopts.IgnoreUnexported(endpoint.Endpoint{})) {
-			t.Error("Delete requests are not equal:", cmp.Diff(requests.deleteRequests, updateOld, cmpopts.IgnoreUnexported(endpoint.Endpoint{})))
-		}
+		assertEndpointsEqual(t, newRecords, expectedRecords)
+		assertEndpointsEqual(t, requests.createRequests, updateNew)
+		assertEndpointsEqual(t, requests.deleteRequests, updateOld)
 		requests.clear()
 	})
 }
