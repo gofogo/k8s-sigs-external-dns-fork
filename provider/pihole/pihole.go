@@ -75,7 +75,7 @@ func New(_ context.Context, cfg *externaldns.Config, domainFilter *endpoint.Doma
 
 // newProvider initializes a new Pi-hole Local DNS based Provider.
 func newProvider(cfg PiholeConfig) (*PiholeProvider, error) {
-	api, err := newPiholeClientV6(cfg)
+	api, err := newPiholeClient(cfg)
 	if err != nil {
 		return nil, err
 	}

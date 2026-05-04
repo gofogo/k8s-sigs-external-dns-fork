@@ -30,21 +30,21 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
-func newTestServerV6(t *testing.T, hdlr http.HandlerFunc) *httptest.Server {
+func newTestServer(t *testing.T, hdlr http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	svr := httptest.NewServer(hdlr)
 	return svr
 }
 
-type errorTransportV6 struct{}
+type errorTransport struct{}
 
-func (t *errorTransportV6) RoundTrip(_ *http.Request) (*http.Response, error) {
+func (t *errorTransport) RoundTrip(_ *http.Request) (*http.Response, error) {
 	return nil, errors.New("network error")
 }
 
-func TestNewPiholeClientV6(t *testing.T) {
+func TestNewPiholeClient(t *testing.T) {
 	// Test correct error on no server provided
-	_, err := newPiholeClientV6(PiholeConfig{})
+	_, err := newPiholeClient(PiholeConfig{})
 	if err == nil {
 		t.Error("Expected error from config with no server")
 	} else if !errors.Is(err, ErrNoPiholeServer) {
@@ -52,18 +52,18 @@ func TestNewPiholeClientV6(t *testing.T) {
 	}
 
 	// Test new client with no password. Should create the client cleanly.
-	cl, err := newPiholeClientV6(PiholeConfig{
+	cl, err := newPiholeClient(PiholeConfig{
 		Server: "test",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := cl.(*piholeClientV6); !ok {
+	if _, ok := cl.(*piholeClient); !ok {
 		t.Error("Did not create a new pihole client")
 	}
 
 	// Create a test server
-	srvr := newTestServerV6(t, func(w http.ResponseWriter, r *http.Request) {
+	srvr := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/auth" && r.Method == http.MethodPost {
 			var requestData map[string]string
 			err := json.NewDecoder(r.Body).Decode(&requestData)
@@ -112,7 +112,7 @@ func TestNewPiholeClientV6(t *testing.T) {
 	defer srvr.Close()
 
 	// Test invalid password
-	_, err = newPiholeClientV6(
+	_, err = newPiholeClient(
 		PiholeConfig{Server: srvr.URL, Password: "wrong"},
 	)
 	if err == nil {
@@ -120,20 +120,54 @@ func TestNewPiholeClientV6(t *testing.T) {
 	}
 
 	// Test correct password
-	cl, err = newPiholeClientV6(
+	cl, err = newPiholeClient(
 		PiholeConfig{Server: srvr.URL, Password: "correct"},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cl.(*piholeClientV6).token != "supersecret" {
-		t.Error("Parsed invalid token from login response:", cl.(*piholeClientV6).token)
+	if cl.(*piholeClient).token != "supersecret" {
+		t.Error("Parsed invalid token from login response:", cl.(*piholeClient).token)
 	}
 }
 
-func TestListRecordsV6(t *testing.T) {
+func TestRetrieveNewTokenSpecialPassword(t *testing.T) {
+	// Passwords containing JSON metacharacters must be correctly escaped.
+	specialPassword := `p4ss"w\ord`
+
+	srvr := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/auth" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("server failed to decode request body: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if body["password"] != specialPassword {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"session":{"valid":false,"sid":null,"validity":-1,"message":"wrong"},"took":0.1}`))
+			return
+		}
+		w.Write([]byte(`{"session":{"valid":true,"sid":"tok123","csrf":"x","validity":1800,"message":"ok"},"took":0.1}`))
+	})
+	defer srvr.Close()
+
+	cl, err := newPiholeClient(PiholeConfig{Server: srvr.URL, Password: specialPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cl.(*piholeClient).token != "tok123" {
+		t.Errorf("expected token %q, got %q", "tok123", cl.(*piholeClient).token)
+	}
+}
+
+func TestListRecords(t *testing.T) {
 	// Create a test server
-	srvr := newTestServerV6(t, func(w http.ResponseWriter, r *http.Request) {
+	srvr := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/config/dns/hosts" && r.Method == http.MethodGet:
 
@@ -192,7 +226,7 @@ func TestListRecordsV6(t *testing.T) {
 	cfg := PiholeConfig{
 		Server: srvr.URL,
 	}
-	cl, err := newPiholeClientV6(cfg)
+	cl, err := newPiholeClient(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,14 +367,14 @@ func TestListRecordsV6(t *testing.T) {
 	}
 }
 
-func TestErrorsV6(t *testing.T) {
+func TestErrors(t *testing.T) {
 	// Error test cases
 
 	// Create a client
 	cfgErrURL := PiholeConfig{
 		Server: "not an url",
 	}
-	clErrURL, err := newPiholeClientV6(cfgErrURL)
+	clErrURL, err := newPiholeClient(cfgErrURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +388,7 @@ func TestErrorsV6(t *testing.T) {
 		t.Fatal("Expected error for nil context")
 	}
 	// Unmarshalling error
-	srvrErrJson := newTestServerV6(t, func(w http.ResponseWriter, _ *http.Request) {
+	srvrErrJson := newTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
@@ -367,7 +401,7 @@ func TestErrorsV6(t *testing.T) {
 	cfgErr := PiholeConfig{
 		Server: srvrErrJson.URL,
 	}
-	clErr, _ := newPiholeClientV6(cfgErr)
+	clErr, _ := newPiholeClient(cfgErr)
 
 	resp, err := clErr.listRecords(t.Context(), endpoint.RecordTypeA)
 	if err == nil {
@@ -379,7 +413,7 @@ func TestErrorsV6(t *testing.T) {
 	}
 
 	// bad record format return by server
-	srvrErr := newTestServerV6(t, func(w http.ResponseWriter, r *http.Request) {
+	srvrErr := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/config/dns/hosts" && r.Method == http.MethodGet:
 			w.WriteHeader(http.StatusOK)
@@ -422,7 +456,7 @@ func TestErrorsV6(t *testing.T) {
 	cfgErr = PiholeConfig{
 		Server: srvrErr.URL,
 	}
-	clErr, _ = newPiholeClientV6(cfgErr)
+	clErr, _ = newPiholeClient(cfgErr)
 
 	resp, err = clErr.listRecords(t.Context(), endpoint.RecordTypeA)
 	if err != nil {
@@ -471,7 +505,7 @@ func TestErrorsV6(t *testing.T) {
 }
 
 func TestTokenValidity(t *testing.T) {
-	srvok := newTestServerV6(t, func(w http.ResponseWriter, r *http.Request) {
+	srvok := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/auth" && r.Method == http.MethodGet {
 			w.WriteHeader(http.StatusOK)
 			w.Header().Set("Content-Type", "application/json")
@@ -494,9 +528,9 @@ func TestTokenValidity(t *testing.T) {
 	cfgOK := PiholeConfig{
 		Server: srvok.URL,
 	}
-	clOK, err := newPiholeClientV6(cfgOK)
-	clOK.(*piholeClientV6).token = "valid"
-	validity, err := clOK.(*piholeClientV6).checkTokenValidity(t.Context())
+	clOK, err := newPiholeClient(cfgOK)
+	clOK.(*piholeClient).token = "valid"
+	validity, err := clOK.(*piholeClient).checkTokenValidity(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +539,7 @@ func TestTokenValidity(t *testing.T) {
 	}
 
 	// Create a test server
-	srvr := newTestServerV6(t, func(w http.ResponseWriter, r *http.Request) {
+	srvr := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 
 		if r.URL.Path == "/api/auth" && r.Method == http.MethodGet {
 			w.WriteHeader(http.StatusOK)
@@ -521,11 +555,11 @@ func TestTokenValidity(t *testing.T) {
 	cfg := PiholeConfig{
 		Server: srvr.URL,
 	}
-	cl, err := newPiholeClientV6(cfg)
+	cl, err := newPiholeClient(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	validity, err = cl.(*piholeClientV6).checkTokenValidity(t.Context())
+	validity, err = cl.(*piholeClient).checkTokenValidity(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,9 +567,9 @@ func TestTokenValidity(t *testing.T) {
 		t.Fatal("Should be invalid : no token")
 	}
 	// Test token validity
-	cl.(*piholeClientV6).token = "valid"
+	cl.(*piholeClient).token = "valid"
 
-	validity, err = cl.(*piholeClientV6).checkTokenValidity(nil)
+	validity, err = cl.(*piholeClient).checkTokenValidity(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +577,7 @@ func TestTokenValidity(t *testing.T) {
 		t.Fatal("Should be invalid : nil context")
 	}
 
-	validity, err = cl.(*piholeClientV6).checkTokenValidity(t.Context())
+	validity, err = cl.(*piholeClient).checkTokenValidity(t.Context())
 	if err == nil {
 		t.Fatal("Should be invalid : failed to unmarshal error")
 	}
@@ -557,7 +591,7 @@ func TestTokenValidity(t *testing.T) {
 
 func TestDo(t *testing.T) {
 
-	srvDo := newTestServerV6(t, func(w http.ResponseWriter, r *http.Request) {
+	srvDo := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/auth/ok" && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
@@ -634,11 +668,11 @@ func TestDo(t *testing.T) {
 	cfg := PiholeConfig{
 		Server: srvDo.URL,
 	}
-	cl, err := newPiholeClientV6(cfg)
-	cl.(*piholeClientV6).token = "valid"
+	cl, err := newPiholeClient(cfg)
+	cl.(*piholeClient).token = "valid"
 
 	rq, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, srvDo.URL+"/api/auth/ok", nil)
-	resp, err := cl.(*piholeClientV6).do(rq)
+	resp, err := cl.(*piholeClient).do(rq)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,7 +681,7 @@ func TestDo(t *testing.T) {
 	}
 	// Test not handled error code
 	rq, _ = http.NewRequestWithContext(t.Context(), http.MethodGet, srvDo.URL+"/api/auth/418", nil)
-	resp, err = cl.(*piholeClientV6).do(rq)
+	resp, err = cl.(*piholeClient).do(rq)
 	if resp != nil {
 		t.Fatal(err)
 	}
@@ -659,7 +693,7 @@ func TestDo(t *testing.T) {
 	}
 	// Test error on non JSON response
 	rq, _ = http.NewRequestWithContext(t.Context(), http.MethodGet, srvDo.URL+"/api/auth/nojson", nil)
-	resp, err = cl.(*piholeClientV6).do(rq)
+	resp, err = cl.(*piholeClient).do(rq)
 	if resp != nil {
 		t.Fatal(err)
 	}
@@ -671,7 +705,7 @@ func TestDo(t *testing.T) {
 	}
 	// Test Unauthorized retry failed
 	rq, _ = http.NewRequestWithContext(t.Context(), http.MethodGet, srvDo.URL+"/api/auth/401", nil)
-	resp, err = cl.(*piholeClientV6).do(rq)
+	resp, err = cl.(*piholeClient).do(rq)
 	if resp != nil {
 		t.Fatal(err)
 	}
@@ -685,7 +719,7 @@ func TestDo(t *testing.T) {
 
 func TestDoRetryOne(t *testing.T) {
 	nbCall := 0
-	srvRetry := newTestServerV6(t, func(w http.ResponseWriter, r *http.Request) {
+	srvRetry := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/auth" && r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -726,11 +760,11 @@ func TestDoRetryOne(t *testing.T) {
 	cfgRetryOK := PiholeConfig{
 		Server: srvRetry.URL,
 	}
-	clRetryOK, err := newPiholeClientV6(cfgRetryOK)
-	clRetryOK.(*piholeClientV6).token = "valid"
+	clRetryOK, err := newPiholeClient(cfgRetryOK)
+	clRetryOK.(*piholeClient).token = "valid"
 	// Test Unauthorized refresh OK
 	rq, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, srvRetry.URL+"/api/auth/401", nil)
-	resp, err := clRetryOK.(*piholeClientV6).do(rq)
+	resp, err := clRetryOK.(*piholeClient).do(rq)
 	if err != nil {
 		t.Fatal("Should succeed", err)
 	}
@@ -740,11 +774,11 @@ func TestDoRetryOne(t *testing.T) {
 
 }
 
-func TestDoV6AdditionalCases(t *testing.T) {
+func TestDoAdditionalCases(t *testing.T) {
 	t.Run("http client error", func(t *testing.T) {
-		client := &piholeClientV6{
+		client := &piholeClient{
 			httpClient: &http.Client{
-				Transport: &errorTransportV6{},
+				Transport: &errorTransport{},
 			},
 		}
 		req, _ := http.NewRequest(http.MethodGet, "http://localhost", nil)
@@ -758,7 +792,7 @@ func TestDoV6AdditionalCases(t *testing.T) {
 	})
 
 	t.Run("item already present", func(t *testing.T) {
-		server := newTestServerV6(t, func(w http.ResponseWriter, _ *http.Request) {
+		server := newTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(`{
 				"error": {
@@ -771,7 +805,7 @@ func TestDoV6AdditionalCases(t *testing.T) {
 		})
 		defer server.Close()
 
-		client := &piholeClientV6{
+		client := &piholeClient{
 			httpClient: server.Client(),
 			token:      "test-token",
 		}
@@ -786,7 +820,7 @@ func TestDoV6AdditionalCases(t *testing.T) {
 	})
 
 	t.Run("404 on DELETE", func(t *testing.T) {
-		server := newTestServerV6(t, func(w http.ResponseWriter, _ *http.Request) {
+		server := newTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte(`{
 				"error": {
@@ -799,7 +833,7 @@ func TestDoV6AdditionalCases(t *testing.T) {
 		})
 		defer server.Close()
 
-		client := &piholeClientV6{
+		client := &piholeClient{
 			httpClient: server.Client(),
 			token:      "test-token",
 		}
@@ -814,9 +848,9 @@ func TestDoV6AdditionalCases(t *testing.T) {
 	})
 }
 
-func TestCreateRecordV6(t *testing.T) {
+func TestCreateRecord(t *testing.T) {
 	var ep *endpoint.Endpoint
-	srvr := newTestServerV6(t, func(w http.ResponseWriter, r *http.Request) {
+	srvr := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut && (r.URL.Path == "/api/config/dns/hosts/192.168.1.1 test.example.com" ||
 			r.URL.Path == "/api/config/dns/hosts/fc00::1:192:168:1:1 test.example.com" ||
 			r.URL.Path == "/api/config/dns/cnameRecords/source1.example.com,target1.domain.com" ||
@@ -839,7 +873,7 @@ func TestCreateRecordV6(t *testing.T) {
 		Server:       srvr.URL,
 		DomainFilter: endpoint.NewDomainFilter([]string{"example.com"}),
 	}
-	cl, err := newPiholeClientV6(cfg)
+	cl, err := newPiholeClient(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -953,7 +987,7 @@ func TestCreateRecordV6(t *testing.T) {
 		DomainFilter: endpoint.NewDomainFilter([]string{"example.com"}),
 		DryRun:       true,
 	}
-	clDr, err := newPiholeClientV6(cfgDr)
+	clDr, err := newPiholeClient(cfgDr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -979,9 +1013,9 @@ func TestCreateRecordV6(t *testing.T) {
 	}
 }
 
-func TestDeleteRecordV6(t *testing.T) {
+func TestDeleteRecord(t *testing.T) {
 	var ep *endpoint.Endpoint
-	srvr := newTestServerV6(t, func(w http.ResponseWriter, r *http.Request) {
+	srvr := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodDelete && (r.URL.Path == "/api/config/dns/hosts/192.168.1.1 test.example.com" ||
 			r.URL.Path == "/api/config/dns/hosts/fc00::1:192:168:1:1 test.example.com" ||
 			r.URL.Path == "/api/config/dns/cnameRecords/source1.example.com,target1.domain.com" ||
@@ -999,7 +1033,7 @@ func TestDeleteRecordV6(t *testing.T) {
 	cfg := PiholeConfig{
 		Server: srvr.URL,
 	}
-	cl, err := newPiholeClientV6(cfg)
+	cl, err := newPiholeClient(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
